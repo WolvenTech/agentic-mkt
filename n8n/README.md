@@ -23,11 +23,11 @@ Runtime agent configs and skills are loaded from this repository via the n8n Git
 | Agent config path | `agents/{agent_id}.json` |
 | Skill path | `agents/skills/{skill_name}.md` |
 
-Example raw URLs for `linkedin-writer`:
+Example fetch paths for `linkedin-writer` (via n8n GitHub node with PAT — repo is **private**, so anonymous raw URLs will 404):
 
-- `https://raw.githubusercontent.com/rafiti052/agentic-mkt/main/agents/linkedin-writer.json`
-- `https://raw.githubusercontent.com/rafiti052/agentic-mkt/main/agents/skills/wolven-voice.md`
-- `https://raw.githubusercontent.com/rafiti052/agentic-mkt/main/agents/skills/linkedin-format.md`
+- `agents/linkedin-writer.json`
+- `agents/skills/wolven-voice.md`
+- `agents/skills/linkedin-format.md`
 
 ### GitHub credential (n8n)
 

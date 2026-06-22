@@ -3,12 +3,11 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import subprocess
 import unittest
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -63,8 +62,19 @@ def _parse_github_remote() -> tuple[str, str, str] | None:
     return owner, repo, branch
 
 
-def _raw_github_url(owner: str, repo: str, branch: str, path: str) -> str:
-    return f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
+def _fetch_github_content(owner: str, repo: str, path: str) -> str:
+    """Fetch file content via GitHub API (works for private repos with gh auth)."""
+    result = subprocess.run(
+        ["gh", "api", f"repos/{owner}/{repo}/contents/{path}", "--jq", ".content"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"gh api failed for {path}: {result.stderr.strip()}")
+    encoded = result.stdout.strip().strip('"')
+    return base64.b64decode(encoded).decode("utf-8")
 
 
 class TestTask05GitIgnore(unittest.TestCase):
@@ -126,34 +136,26 @@ class TestTask05GitHubFetch(unittest.TestCase):
     def test_github_remote_configured(self) -> None:
         self.assertIsNotNone(self.remote, "origin remote must point to GitHub")
 
-    def test_agent_json_fetchable_via_raw_github(self) -> None:
+    def test_agent_json_fetchable_via_github_api(self) -> None:
         self.assertIsNotNone(self.remote)
-        owner, repo, branch = self.remote  # type: ignore[misc]
-        url = _raw_github_url(owner, repo, branch, "agents/linkedin-writer.json")
-        with urllib.request.urlopen(url, timeout=30) as response:
-            body = response.read().decode("utf-8")
+        owner, repo, _branch = self.remote  # type: ignore[misc]
+        body = _fetch_github_content(owner, repo, "agents/linkedin-writer.json")
         data = json.loads(body)
         self.assertEqual(data.get("id"), "linkedin-writer")
 
-    def test_skill_files_fetchable_via_raw_github(self) -> None:
+    def test_skill_files_fetchable_via_github_api(self) -> None:
         self.assertIsNotNone(self.remote)
-        owner, repo, branch = self.remote  # type: ignore[misc]
+        owner, repo, _branch = self.remote  # type: ignore[misc]
         for path in ("agents/skills/wolven-voice.md", "agents/skills/linkedin-format.md"):
-            url = _raw_github_url(owner, repo, branch, path)
-            with urllib.request.urlopen(url, timeout=30) as response:
-                content = response.read().decode("utf-8")
+            content = _fetch_github_content(owner, repo, path)
             self.assertTrue(len(content.strip()) > 0, f"{path} returned empty content")
 
     def test_all_github_fetch_paths_reachable(self) -> None:
         self.assertIsNotNone(self.remote)
-        owner, repo, branch = self.remote  # type: ignore[misc]
+        owner, repo, _branch = self.remote  # type: ignore[misc]
         for path in GITHUB_FETCH_PATHS:
-            url = _raw_github_url(owner, repo, branch, path)
-            try:
-                with urllib.request.urlopen(url, timeout=30) as response:
-                    self.assertEqual(response.status, 200, f"{path} returned {response.status}")
-            except urllib.error.HTTPError as exc:
-                self.fail(f"{path} not reachable: HTTP {exc.code}")
+            content = _fetch_github_content(owner, repo, path)
+            self.assertTrue(len(content.strip()) > 0, f"{path} returned empty content")
 
 
 if __name__ == "__main__":
