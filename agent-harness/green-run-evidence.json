@@ -1,0 +1,116 @@
+{
+  "recorded_at": "2026-06-22",
+  "session": "m1-green-run-validation",
+  "validation_status": "blocked",
+  "preflight": {
+    "checklist": [
+      {
+        "step": "field_mapping_synced",
+        "status": "fail",
+        "detail": "clickup_list_id is unset — run sync-field-mapping.py"
+      },
+      {
+        "step": "clickup_list_configured",
+        "status": "fail",
+        "detail": "CLICKUP_LIST_ID / clickup_list_id unset"
+      },
+      {
+        "step": "clickup_custom_fields_present",
+        "status": "fail",
+        "detail": "Skipped — list ID unset"
+      },
+      {
+        "step": "clickup_statuses_present",
+        "status": "fail",
+        "detail": "Skipped — list ID unset"
+      },
+      {
+        "step": "n8n_call_agent_workflow_present",
+        "status": "pass",
+        "detail": "Call Agent sub-workflow imported"
+      },
+      {
+        "step": "n8n_main_workflow_present",
+        "status": "pass",
+        "detail": "Marketing Pipeline main workflow imported"
+      },
+      {
+        "step": "n8n_main_workflow_active",
+        "status": "fail",
+        "detail": "Activate Marketing Pipeline after binding credentials"
+      },
+      {
+        "step": "test_task_brief_complete",
+        "status": "skip",
+        "detail": "Runtime step — execute after preflight passes (move task to Ready to Work)"
+      },
+      {
+        "step": "status_in_progress_within_5s",
+        "status": "skip",
+        "detail": "Runtime step — execute after preflight passes (move task to Ready to Work)"
+      },
+      {
+        "step": "comment_has_three_sections",
+        "status": "skip",
+        "detail": "Runtime step — execute after preflight passes (move task to Ready to Work)"
+      },
+      {
+        "step": "latency_under_60s",
+        "status": "skip",
+        "detail": "Runtime step — execute after preflight passes (move task to Ready to Work)"
+      },
+      {
+        "step": "final_status_review",
+        "status": "skip",
+        "detail": "Runtime step — execute after preflight passes (move task to Ready to Work)"
+      },
+      {
+        "step": "n8n_execution_success",
+        "status": "skip",
+        "detail": "Runtime step — execute after preflight passes (move task to Ready to Work)"
+      },
+      {
+        "step": "marketing_lead_usability",
+        "status": "skip",
+        "detail": "Runtime step — execute after preflight passes (move task to Ready to Work)"
+      }
+    ],
+    "coverage_percent": 28.6,
+    "blockers": [
+      "clickup_list_id is unset — run sync-field-mapping.py",
+      "CLICKUP_LIST_ID / clickup_list_id unset",
+      "Skipped — list ID unset",
+      "Skipped — list ID unset",
+      "Activate Marketing Pipeline after binding credentials"
+    ]
+  },
+  "main_workflow": {
+    "verified": false,
+    "n8n_execution_id": "",
+    "n8n_host": "n8n.wolven.com.br",
+    "clickup_task_id": "",
+    "clickup_task_url": "",
+    "clickup_task_name": "[M1 green run] Launch post for Q3 product update",
+    "status_path": [
+      "Ready to Work",
+      "In Progress",
+      "Review"
+    ],
+    "latency_seconds": null,
+    "latency_breakdown": {},
+    "comment_sections_verified": [],
+    "marketing_lead_usability": "pending — run green run after operator setup",
+    "silent_failures": null
+  },
+  "call_agent_subworkflow": {
+    "n8n_execution_id": "",
+    "latency_ms": null,
+    "parse_success": null,
+    "agent_id": "linkedin-writer",
+    "model": "gemini-2.5-flash"
+  },
+  "failure_observations": {
+    "missing_criterios_de_aceite": "Workflow still runs; draft autochecagem may be weak — brief gate is manual only in M1",
+    "duplicate_webhook": "Second delivery may post duplicate comment per ADR-001; no dedup in M1"
+  }
+}

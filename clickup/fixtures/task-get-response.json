@@ -1,0 +1,23 @@
+{
+  "id": "86btest01",
+  "name": "Launch post for Q3 product update",
+  "description": "Announce the new dashboard feature for marketing leads.",
+  "text_content": "Announce the new dashboard feature for marketing leads.",
+  "status": {
+    "status": "Ready to Work"
+  },
+  "custom_fields": [
+    {
+      "id": "cf_criterios_001",
+      "name": "Critérios de Aceite",
+      "type": "text",
+      "value": "- Mention the dashboard\n- CTA to sign up\n- Under 300 words"
+    },
+    {
+      "id": "cf_agent_id_001",
+      "name": "agent_id",
+      "type": "short_text",
+      "value": "linkedin-writer"
+    }
+  ]
+}

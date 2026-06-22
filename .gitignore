@@ -35,3 +35,8 @@ htmlcov/
 
 # Compozy task tracking (local planning; not runtime artifacts)
 .compozy/
+
+# Local run logs (see logs/README.md — only .gitkeep and README are tracked)
+logs/**
+!logs/.gitkeep
+!logs/README.md

@@ -50,9 +50,11 @@ Requires a fine-grained GitHub PAT (read-only, repo scope) in n8n. Push this rep
 
 ## Skill copy procedure (from skill-vault)
 
-Runtime skills are adapted from the sibling `skill-vault` catalog. Manual copy until M2 sync automation exists.
+Runtime skills are adapted from the sibling `skill-vault` catalog. **Manual copy until M2 sync automation exists** ([ADR-004](../.compozy/tasks/marketing-pipeline-clickup-n8n/adrs/adr-004.md)).
 
-1. **Source paths** (skill-vault repo):
+### Copy steps
+
+1. **Source paths** (skill-vault repo, sibling to agentic-mkt):
    - `catalog/marketing/skills/wolven-voice/SKILL.md` → `agents/skills/wolven-voice.md`
    - `catalog/marketing/skills/linkedin-format/SKILL.md` → `agents/skills/linkedin-format.md`
    - Agent persona reference: `catalog/marketing/agents/linkedin-writer/AGENT.md` (used in n8n system prompt assembly, not stored as a separate runtime file in M1)
@@ -64,8 +66,33 @@ Runtime skills are adapted from the sibling `skill-vault` catalog. Manual copy u
    - Update `skills[]` in agent JSON to match filenames without `.md`.
 
 3. **Verify** after copy:
-   - Run `python -m unittest tests.test_task_02_agents -v`
-   - Confirm each `skills[]` entry resolves to `agents/skills/{name}.md`
+   ```bash
+   python3 -m unittest tests.test_task_02_agents -v
+   ```
+   Confirm each `skills[]` entry resolves to `agents/skills/{name}.md`.
+
+4. **Push to GitHub** — Call Agent sub-workflow fetches skills at execution time via GitHub node.
+
+### Drift risk and planned sync script
+
+| Risk | Mitigation (M1) | Planned (M2+) |
+|------|-----------------|---------------|
+| skill-vault catalog updated but `agents/skills/` not | Manual copy procedure above; document changes in commit message | On-demand sync script: skill-vault → `agents/skills/` |
+| Agent JSON `skills[]` out of sync with files on disk | `tests.test_task_02_agents` validates resolution | Sync script updates both files and JSON refs |
+| Proprietary voice skills diverge from public catalog | Keep voice/tone skills in private `agentic-mkt` only | Same sync script with proprietary path filter |
+
+**Do not block M1/M2 on sync script** — stubs and manual copy are sufficient per PRD scope. Track drift in PR reviews when skill-vault changes land.
+
+### Provider note (ADR-005)
+
+M1 ships `linkedin-writer` with `"provider": "google"`, `"model": "gemini-2.5-flash"`. The PRD originally specified Claude Sonnet 4.6. Phase 2 may swap to Anthropic by updating agent JSON only — no workflow restructure required. Evaluate draft quality during Phase 2 planning.
+
+## M2 operational runbook
+
+1. After skill copy, run `python3 -m unittest tests.test_task_02_agents -v`.
+2. Push `agentic-mkt` to GitHub (`main` branch).
+3. Verify n8n Call Agent isolation test loads both skills in **Assemble Prompt** output.
+4. See [GitHub Runtime Config Pattern](../agent-harness/io-contract.md#4-github-runtime-config-pattern) for cross-project replication.
 
 ## Manual setup
 

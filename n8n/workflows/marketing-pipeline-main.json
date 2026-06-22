@@ -1,6 +1,432 @@
 {
-  "_comment": "Placeholder — will be replaced after n8n export in task_07",
   "name": "Marketing Pipeline",
-  "nodes": [],
-  "connections": {}
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marketing-pipeline-ready-to-work",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "204a1262-ee4c-4e66-bef3-d8e051ca81f9",
+      "name": "ClickUp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "50fe1fde-71ea-4d75-8cd8-54259ab773b1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "0becf273-9745-4a24-8dc6-55fba559db90",
+              "leftValue": "={{ $json.history_items[0].field }}",
+              "rightValue": "status",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "37215caa-4ffa-4bb0-aa57-3b4b1d46827f",
+              "leftValue": "={{ $json.history_items[0].after.status }}",
+              "rightValue": "Ready to Work",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b40521cd-319b-44b0-b2b3-954fbb79cb12",
+      "name": "Ready to Work?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\nreturn [{\n  json: {\n    task_id: String(payload.task_id ?? ''),\n    webhook_id: String(payload.webhook_id ?? ''),\n    history_item_id: String(first.id ?? ''),\n    list_id: String(first.parent_id ?? ''),\n    received_at_ms: Date.now(),\n  },\n}];"
+      },
+      "id": "d5a14e7e-35ae-4b75-b7fa-3f6e2a259b66",
+      "name": "Extract Webhook Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "id": "={{ $json.task_id }}"
+      },
+      "id": "56c50b6c-13f7-42c4-be80-34285c42e2ed",
+      "name": "GET ClickUp Task",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        720,
+        300
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const FIELD_IDS = {\n  criterios_de_aceite: \"<TBD>\",\n  agent_id: \"<TBD>\",\n  default_agent_id: \"linkedin-writer\",\n};\n\nfunction readCustomField(task, fieldId) {\n  if (!fieldId || fieldId === '<TBD>') return '';\n  const fields = task.custom_fields || [];\n  const match = fields.find((field) => String(field.id) === String(fieldId));\n  if (!match || match.value === null || match.value === undefined) return '';\n  if (typeof match.value === 'object') {\n    return String(match.value.value ?? match.value.name ?? match.value.label ?? '');\n  }\n  return String(match.value);\n}\n\nconst task = $input.first().json;\nconst webhook = $('Extract Webhook Context').first().json;\nconst agentId = readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id;\n\nreturn [{\n  json: {\n    task_id: String(task.id ?? webhook.task_id ?? ''),\n    agent_id: agentId,\n    task_title: String(task.name ?? ''),\n    task_description: String(task.description ?? task.text_content ?? ''),\n    criterios_de_aceite: readCustomField(task, FIELD_IDS.criterios_de_aceite),\n    model: 'gemini-2.5-flash',\n  },\n}];"
+      },
+      "id": "f10f5402-e5f8-4b88-94f9-8c01a2114c7f",
+      "name": "Extract Task Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "id": "={{ $json.task_id }}",
+        "updateFields": {
+          "status": "In Progress"
+        }
+      },
+      "id": "f18866ce-2acc-4260-9700-63ebc157f1a0",
+      "name": "Status \u2192 In Progress",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        300
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const fields = $('Extract Task Fields').first().json;\nreturn [{\n  json: {\n    agent_id: fields.agent_id,\n    task_title: fields.task_title,\n    task_description: fields.task_description,\n    criterios_de_aceite: fields.criterios_de_aceite,\n    task_id: fields.task_id,\n  },\n}];"
+      },
+      "id": "3524fdd0-b82b-4486-bd34-9767fd565456",
+      "name": "Prepare Call Agent Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "CALL_AGENT_WORKFLOW_ID"
+        },
+        "mode": "once",
+        "options": {}
+      },
+      "id": "4439676e-2b02-4a4a-b593-9ae3af69e1aa",
+      "name": "Execute Call Agent",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "7324ede7-83f1-48ea-9bb6-3b41d47cdc7c",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notExists"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "14f417d7-9357-44ad-8dfd-b0fa8ce83d70",
+      "name": "Agent Output OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst agentId = taskFields.agent_id ?? 'linkedin-writer';\nconst model = taskFields.model ?? 'gemini-2.5-flash';\n\nconst commentText = [\n  '## LinkedIn Draft',\n  '',\n  agentOutput.deliverable_markdown ?? '',\n  '',\n  '---',\n  '',\n  '## Resumo',\n  '',\n  agentOutput.resumo ?? '',\n  '',\n  '---',\n  '',\n  '## Autochecagem',\n  '',\n  agentOutput.autochecagem ?? '',\n  '',\n  '---',\n  `_Generated by ${agentId} (${model})_`,\n].join('\\n');\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    agent_id: agentId,\n    model,\n    comment_text: commentText,\n    deliverable_markdown: agentOutput.deliverable_markdown,\n    resumo: agentOutput.resumo,\n    autochecagem: agentOutput.autochecagem,\n  },\n}];"
+      },
+      "id": "b94a17ec-5c03-432c-8e91-d5fae4598fb6",
+      "name": "Format Draft Comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2040,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "comment",
+        "operation": "create",
+        "id": "={{ $json.task_id }}",
+        "commentText": "={{ $json.comment_text }}"
+      },
+      "id": "4d01940f-eec0-49fa-832a-be6359ea7f07",
+      "name": "POST Task Comment",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        2280,
+        220
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "id": "={{ $('Extract Task Fields').item.json.task_id }}",
+        "updateFields": {
+          "status": "Review"
+        }
+      },
+      "id": "587b4309-ccf9-4689-8242-d79c19940c94",
+      "name": "Status \u2192 Review",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        2520,
+        220
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $input.first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconsole.log(JSON.stringify({\n  task_id: taskFields.task_id,\n  agent_id: taskFields.agent_id,\n  execution_id: $execution.id,\n  parse_success: false,\n  error: output.error ?? 'Agent returned error envelope',\n}));\nthrow new Error(`Call Agent failed: ${output.error ?? 'unknown error'}`);"
+      },
+      "id": "c1c0b670-4b06-45eb-af5c-46616667013f",
+      "name": "Agent Parse Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2040,
+        420
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "d644f6c4-e216-4545-8d08-abd2fc69c335",
+      "name": "Ignore Non-Matching Webhook",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        480,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "ClickUp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Ready to Work?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ready to Work?": {
+      "main": [
+        [
+          {
+            "node": "Extract Webhook Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignore Non-Matching Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Webhook Context": {
+      "main": [
+        [
+          {
+            "node": "GET ClickUp Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET ClickUp Task": {
+      "main": [
+        [
+          {
+            "node": "Extract Task Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Task Fields": {
+      "main": [
+        [
+          {
+            "node": "Status \u2192 In Progress",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status \u2192 In Progress": {
+      "main": [
+        [
+          {
+            "node": "Prepare Call Agent Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Call Agent Input": {
+      "main": [
+        [
+          {
+            "node": "Execute Call Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Call Agent": {
+      "main": [
+        [
+          {
+            "node": "Agent Output OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Output OK?": {
+      "main": [
+        [
+          {
+            "node": "Format Draft Comment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agent Parse Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Draft Comment": {
+      "main": [
+        [
+          {
+            "node": "POST Task Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Task Comment": {
+      "main": [
+        [
+          {
+            "node": "Status \u2192 Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "e4b2ea4e-6334-43bb-9c20-cb6432f7fe33",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "agentic-mkt-marketing-pipeline-export"
+  },
+  "tags": [
+    {
+      "name": "marketing-pipeline"
+    }
+  ]
 }

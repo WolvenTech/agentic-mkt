@@ -11,6 +11,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Paths task_01 creates (excludes task_02+ artifacts from full TechSpec tree).
 TASK_01_PATHS = [
+    "README.md",
+    "logs/.gitkeep",
+    "logs/README.md",
     "n8n/README.md",
     "n8n/mcp-config.stub.json",
     "n8n/workflows/marketing-pipeline-main.json",
@@ -29,6 +32,7 @@ TASK_01_PATHS = [
 TOP_LEVEL_DOMAIN_FOLDERS = ["n8n", "clickup", "agent-harness", "agents"]
 
 README_REQUIRED_SECTIONS = ["purpose", "key files", "manual setup"]
+ROOT_README_REQUIRED_SECTIONS = ["architecture", "quick start", "repository layout"]
 
 
 class TestTask01Scaffold(unittest.TestCase):
@@ -39,6 +43,19 @@ class TestTask01Scaffold(unittest.TestCase):
     def test_top_level_domain_folders_exist(self) -> None:
         missing = [d for d in TOP_LEVEL_DOMAIN_FOLDERS if not (REPO_ROOT / d).is_dir()]
         self.assertEqual(missing, [], f"Missing domain folders: {missing}")
+
+    def test_root_readme_exists_with_key_sections(self) -> None:
+        readme = REPO_ROOT / "README.md"
+        self.assertTrue(readme.is_file(), "Missing root README.md")
+        lower = readme.read_text(encoding="utf-8").lower()
+        for section in ROOT_README_REQUIRED_SECTIONS:
+            self.assertIn(section, lower, f"README.md missing section hint: {section}")
+
+    def test_logs_scaffold_exists(self) -> None:
+        logs = REPO_ROOT / "logs"
+        self.assertTrue(logs.is_dir())
+        self.assertTrue((logs / ".gitkeep").is_file())
+        self.assertTrue((logs / "README.md").is_file())
 
     def test_domain_readmes_non_empty_with_required_sections(self) -> None:
         for folder in TOP_LEVEL_DOMAIN_FOLDERS:
@@ -75,11 +92,17 @@ class TestTask01Scaffold(unittest.TestCase):
             self.assertIn("name", field, f"{key} missing name")
             self.assertIn("clickup_field_id", field, f"{key} missing clickup_field_id")
 
-    def test_workflow_json_are_stubs_not_live_logic(self) -> None:
-        for name in ("marketing-pipeline-main.json", "call-agent-subworkflow.json"):
-            data = json.loads((REPO_ROOT / "n8n" / "workflows" / name).read_text())
-            self.assertIn("_comment", data, f"{name} should be a stub with _comment")
-            self.assertEqual(data.get("nodes"), [], f"{name} nodes must be empty stub")
+    def test_marketing_pipeline_main_workflow_export_exists(self) -> None:
+        path = REPO_ROOT / "n8n" / "workflows" / "marketing-pipeline-main.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        self.assertNotIn("_comment", data)
+        self.assertGreater(len(data.get("nodes", [])), 0)
+
+    def test_call_agent_subworkflow_export_exists(self) -> None:
+        path = REPO_ROOT / "n8n" / "workflows" / "call-agent-subworkflow.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        self.assertNotIn("_comment", data)
+        self.assertGreater(len(data.get("nodes", [])), 0)
 
 
 if __name__ == "__main__":

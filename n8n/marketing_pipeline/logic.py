@@ -1,0 +1,184 @@
+"""Marketing Pipeline main workflow logic mirrored for unit tests and Code node parity."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FIELD_MAPPING_PATH = REPO_ROOT / "clickup" / "field-mapping.json"
+
+READY_TO_WORK_STATUS = "Ready to Work"
+DEFAULT_AGENT_ID = "linkedin-writer"
+DEFAULT_MODEL = "gemini-2.5-flash"
+
+COMMENT_SECTIONS = ("## LinkedIn Draft", "## Resumo", "## Autochecagem")
+
+# Expected main-workflow node order (happy path) for topology validation.
+HAPPY_PATH_NODE_SEQUENCE = (
+    "ClickUp Webhook",
+    "Ready to Work?",
+    "Extract Webhook Context",
+    "GET ClickUp Task",
+    "Extract Task Fields",
+    "Status → In Progress",
+    "Prepare Call Agent Input",
+    "Execute Call Agent",
+    "Agent Output OK?",
+    "Format Draft Comment",
+    "POST Task Comment",
+    "Status → Review",
+)
+
+
+def load_field_mapping(path: Path | None = None) -> dict[str, Any]:
+    mapping_path = path or FIELD_MAPPING_PATH
+    return json.loads(mapping_path.read_text(encoding="utf-8"))
+
+
+def ingress_matches_ready_to_work(payload: dict[str, Any]) -> bool:
+    """Return True when webhook payload enters Ready to Work (ClickUp taskStatusUpdated shape)."""
+    items = payload.get("history_items") or []
+    if not items:
+        return False
+    item = items[0]
+    if item.get("field") != "status":
+        return False
+    after = item.get("after") or {}
+    status = after.get("status") if isinstance(after, dict) else after
+    return status == READY_TO_WORK_STATUS
+
+
+def webhook_if_expression() -> str:
+    """n8n IF node expression per clickup/webhook-contract.md."""
+    return (
+        '={{ $json.history_items[0].field === "status" && '
+        '$json.history_items[0].after.status === "Ready to Work" }}'
+    )
+
+
+def extract_webhook_context(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize webhook payload into task context for downstream nodes."""
+    items = payload.get("history_items") or []
+    first = items[0] if items else {}
+    return {
+        "task_id": str(payload.get("task_id", "")),
+        "webhook_id": str(payload.get("webhook_id", "")),
+        "history_item_id": str(first.get("id", "")),
+        "list_id": str(first.get("parent_id", "")),
+        "received_at_ms": payload.get("received_at_ms"),
+    }
+
+
+def extract_custom_field_value(task: dict[str, Any], field_id: str) -> str:
+    """Read a ClickUp custom field value by field id from GET /task response."""
+    if not field_id or field_id == "<TBD>":
+        return ""
+    for field in task.get("custom_fields") or []:
+        if str(field.get("id")) != str(field_id):
+            continue
+        value = field.get("value")
+        if value is None:
+            return ""
+        if isinstance(value, dict):
+            for key in ("value", "name", "label"):
+                if value.get(key) not in (None, ""):
+                    return str(value[key])
+            return ""
+        return str(value)
+    return ""
+
+
+def extract_task_fields(task: dict[str, Any], field_mapping: dict[str, Any]) -> dict[str, str]:
+    """Map ClickUp task response to CallAgentInput fields plus task_id."""
+    custom = field_mapping.get("custom_fields", {})
+    criterios_id = str(custom.get("criterios_de_aceite", {}).get("clickup_field_id", ""))
+    agent_id_field = custom.get("agent_id", {})
+    agent_id_value = extract_custom_field_value(task, str(agent_id_field.get("clickup_field_id", "")))
+    default_agent = str(agent_id_field.get("default", DEFAULT_AGENT_ID))
+    return {
+        "task_id": str(task.get("id", "")),
+        "task_title": str(task.get("name", "")),
+        "task_description": str(task.get("description", "") or task.get("text_content", "") or ""),
+        "criterios_de_aceite": extract_custom_field_value(task, criterios_id),
+        "agent_id": agent_id_value.strip() or default_agent,
+    }
+
+
+def build_call_agent_input(task_fields: dict[str, str]) -> dict[str, str]:
+    """Build CallAgentInput envelope for the Call Agent sub-workflow."""
+    return {
+        "agent_id": task_fields["agent_id"],
+        "task_title": task_fields["task_title"],
+        "task_description": task_fields["task_description"],
+        "criterios_de_aceite": task_fields["criterios_de_aceite"],
+    }
+
+
+def agent_output_has_error(agent_output: dict[str, Any]) -> bool:
+    return bool(agent_output.get("error"))
+
+
+def format_clickup_comment(
+    agent_output: dict[str, str],
+    *,
+    agent_id: str = DEFAULT_AGENT_ID,
+    model: str = DEFAULT_MODEL,
+) -> str:
+    """Format ClickUp task comment per agent-harness/io-contract.md."""
+    return (
+        "## LinkedIn Draft\n\n"
+        f"{agent_output['deliverable_markdown']}\n\n"
+        "---\n\n"
+        "## Resumo\n\n"
+        f"{agent_output['resumo']}\n\n"
+        "---\n\n"
+        "## Autochecagem\n\n"
+        f"{agent_output['autochecagem']}\n\n"
+        "---\n"
+        f"_Generated by {agent_id} ({model})_"
+    )
+
+
+def comment_includes_required_sections(comment: str) -> bool:
+    return all(section in comment for section in COMMENT_SECTIONS)
+
+
+def comment_footer(agent_id: str, model: str) -> str:
+    return f"_Generated by {agent_id} ({model})_"
+
+
+def status_name(field_mapping: dict[str, Any], key: str) -> str:
+    return str(field_mapping.get("statuses", {}).get(key, ""))
+
+
+def field_id(field_mapping: dict[str, Any], key: str) -> str:
+    return str(field_mapping.get("custom_fields", {}).get(key, {}).get("clickup_field_id", ""))
+
+
+def workflow_connection_path(workflow: dict[str, Any], start: str, end: str) -> list[str] | None:
+    """Return first node path from start to end following main connections, or None."""
+    connections = workflow.get("connections", {})
+    nodes_by_name = {node["name"]: node for node in workflow.get("nodes", [])}
+
+    def walk(current: str, visited: set[str]) -> list[str] | None:
+        if current == end:
+            return [current]
+        if current in visited:
+            return None
+        visited.add(current)
+        outputs = connections.get(current, {}).get("main", [])
+        for branch in outputs:
+            for link in branch:
+                target = link.get("node")
+                if target not in nodes_by_name:
+                    continue
+                subpath = walk(target, visited.copy())
+                if subpath is not None:
+                    return [current, *subpath]
+        return None
+
+    if start not in nodes_by_name or end not in nodes_by_name:
+        return None
+    return walk(start, set())

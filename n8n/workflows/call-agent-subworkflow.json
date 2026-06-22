@@ -1,6 +1,397 @@
 {
-  "_comment": "Placeholder — will be replaced after n8n export in task_06",
   "name": "Call Agent",
-  "nodes": [],
-  "connections": {}
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "5cfd74c4-905f-4cd3-ac8f-67b8078d05cd",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "92422c77-bce8-4c5b-ac1d-f7f04b027c08",
+      "name": "Manual Trigger (Isolation Test)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\"agent_id\": \"linkedin-writer\", \"task_title\": \"Launch post for Q3 product update\", \"task_description\": \"Announce the new dashboard feature for marketing leads.\", \"criterios_de_aceite\": \"- Mention the dashboard\\n- CTA to sign up\\n- Under 300 words\"}",
+        "options": {}
+      },
+      "id": "1bed23c1-441d-44e4-8e9e-537512737fe9",
+      "name": "Hardcoded Test Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{\n  json: {\n    ...item,\n    _started_at_ms: Date.now(),\n    task_id: item.task_id ?? item.task_title ?? 'isolation-test',\n  },\n}];"
+      },
+      "id": "a504cc9c-f399-4be0-ba40-3059bf7a2bcf",
+      "name": "Store Input Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "rafiti052"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "agentic-mkt"
+        },
+        "filePath": "=agents/{{ $json.agent_id }}.json",
+        "asBinaryProperty": false
+      },
+      "id": "329877da-4da0-4e68-88b8-a51267dc66cb",
+      "name": "Fetch Agent Config",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "githubApi": {
+          "id": "GITHUB_CREDENTIAL_ID",
+          "name": "GitHub agentic-mkt (read-only PAT)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Store Input Context').first().json;\nconst github = $input.first().json;\nconst encoded = github.content;\nif (!encoded) {\n  return [{ json: { error: 'GitHub agent config fetch failed', raw_response: JSON.stringify(github) } }];\n}\nconst decoded = Buffer.from(String(encoded).replace(/\\n/g, ''), 'base64').toString('utf8');\nconst agentConfig = JSON.parse(decoded);\nconst skills = Array.isArray(agentConfig.skills) ? agentConfig.skills : [];\nreturn skills.map((skill) => ({\n  json: {\n    ...input,\n    agent_config: agentConfig,\n    skill,\n    skill_path: `agents/skills/${skill}.md`,\n  },\n}));"
+      },
+      "id": "f4512202-a1cf-4763-88bb-062f161a66df",
+      "name": "Parse Agent Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "rafiti052"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "agentic-mkt"
+        },
+        "filePath": "={{ $json.skill_path }}",
+        "asBinaryProperty": false
+      },
+      "id": "8706df2b-7fa1-4129-b72a-f4b4ac31845e",
+      "name": "Fetch Skill Markdown",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "githubApi": {
+          "id": "GITHUB_CREDENTIAL_ID",
+          "name": "GitHub agentic-mkt (read-only PAT)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst base = items[0]?.json ?? {};\nconst agentConfig = base.agent_config;\nconst skillContents = {};\nfor (const item of items) {\n  const skill = item.json.skill;\n  const encoded = item.json.content;\n  if (!skill || !encoded) continue;\n  skillContents[skill] = Buffer.from(String(encoded).replace(/\\n/g, ''), 'base64').toString('utf8');\n}\nconst schema = agentConfig.output_schema ?? {};\nconst example = {\n  deliverable_markdown: schema.deliverable_markdown ?? 'Full LinkedIn post draft in markdown',\n  resumo: schema.resumo ?? '2-3 sentence summary of the draft',\n  autochecagem: schema.autochecagem ?? 'Bullet list validating draft against acceptance criteria',\n};\nconst skillBlocks = (agentConfig.skills ?? []).map((skill) => {\n  const body = (skillContents[skill] ?? '').trim();\n  return `## Skill: ${skill}\\n${body}`;\n}).join('\\n\\n');\nconst systemPrompt = [\n  '# Agent Role',\n  `You are the \\`${agentConfig.id}\\` marketing worker agent.`,\n  '',\n  '# Skills',\n  skillBlocks,\n  '',\n  '# Required Output Format',\n  'Respond with JSON only. Do not wrap the JSON in markdown code fences.',\n  'Required keys and semantics:',\n  JSON.stringify(example, null, 2),\n].join('\\n');\nconst userMessage = [\n  '# Task Title',\n  base.task_title ?? '',\n  '',\n  '# Task Description',\n  base.task_description ?? '',\n  '',\n  '# Crit\u00e9rios de Aceite',\n  base.criterios_de_aceite ?? '',\n].join('\\n');\nreturn [{\n  json: {\n    ...base,\n    agent_config: agentConfig,\n    skill_contents: skillContents,\n    system_prompt: systemPrompt,\n    user_message: userMessage,\n    temperature: agentConfig.temperature ?? 0.7,\n    max_output_tokens: agentConfig.max_output_tokens ?? 1024,\n    provider: agentConfig.provider ?? 'google',\n    model: agentConfig.model ?? 'gemini-2.5-flash',\n  },\n}];"
+      },
+      "id": "321b7271-3c96-4d6b-986f-15c186c5a5ab",
+      "name": "Assemble Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "7c7a8526-244e-4381-a68e-88bc07315978",
+              "leftValue": "={{ $json.provider }}",
+              "rightValue": "google",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2c76fd7b-76a7-4636-8a1d-c76bd1429fa3",
+      "name": "Route Provider",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ 'models/' + ($json.model || 'gemini-2.5-flash').replace(/^models\\//, '') }}"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.user_message }}",
+              "role": "user"
+            }
+          ]
+        },
+        "simplify": true,
+        "jsonOutput": true,
+        "options": {
+          "systemMessage": "={{ $json.system_prompt }}",
+          "temperature": "={{ $json.temperature ?? 0.7 }}",
+          "maxOutputTokens": "={{ $json.max_output_tokens ?? 1024 }}"
+        }
+      },
+      "id": "849d5895-e132-48ab-9444-c3efc5e44c35",
+      "name": "Google Gemini",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        1920,
+        120
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "GEMINI_CREDENTIAL_ID",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const REQUIRED_KEYS = ['deliverable_markdown', 'resumo', 'autochecagem'];\nconst startedAt = $('Store Input Context').first().json._started_at_ms ?? Date.now();\nconst input = $('Store Input Context').first().json;\nconst agentId = input.agent_id ?? 'unknown';\nconst taskId = input.task_id ?? input.task_title ?? 'unknown';\nconst executionId = $execution.id;\n\nfunction stripFences(text) {\n  const trimmed = (text ?? '').trim();\n  if (!trimmed.startsWith('```')) return trimmed;\n  const lines = trimmed.split('\\n');\n  if (lines[0].startsWith('```')) lines.shift();\n  if (lines.length && lines[lines.length - 1].trim() === '```') lines.pop();\n  return lines.join('\\n').trim();\n}\n\nfunction extractGeminiText(item) {\n  const json = item.json ?? {};\n  const content = json.content;\n  if (content && typeof content === 'object' && Array.isArray(content.parts) && content.parts[0]?.text) {\n    return String(content.parts[0].text);\n  }\n  for (const key of ['text', 'output', 'message']) {\n    if (typeof json[key] === 'string') return json[key];\n  }\n  return JSON.stringify(json);\n}\n\nconst rawResponse = extractGeminiText($input.first());\nlet parseSuccess = false;\nlet result;\n\ntry {\n  const cleaned = stripFences(rawResponse);\n  const parsed = JSON.parse(cleaned);\n  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {\n    throw new Error('Expected JSON object');\n  }\n  const missing = REQUIRED_KEYS.filter((key) => !(key in parsed));\n  if (missing.length) throw new Error(`Missing required keys: ${missing.join(', ')}`);\n  const invalid = REQUIRED_KEYS.filter((key) => typeof parsed[key] !== 'string' || !parsed[key].trim());\n  if (invalid.length) throw new Error(`Empty or non-string values for: ${invalid.join(', ')}`);\n  result = {\n    deliverable_markdown: parsed.deliverable_markdown,\n    resumo: parsed.resumo,\n    autochecagem: parsed.autochecagem,\n  };\n  parseSuccess = true;\n} catch (error) {\n  result = {\n    error: `Failed to parse AgentOutput: ${error.message}`,\n    raw_response: rawResponse,\n  };\n}\n\nconst latencyMs = Date.now() - startedAt;\nconsole.log(JSON.stringify({\n  task_id: taskId,\n  agent_id: agentId,\n  execution_id: executionId,\n  latency_ms: latencyMs,\n  parse_success: parseSuccess,\n}));\n\nreturn [{ json: result }];"
+      },
+      "id": "bc40c903-95cb-4f74-9540-ba68c9ae71d5",
+      "name": "Parse Agent Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    error: `Unsupported provider: ${$json.provider ?? 'unknown'}. M1 supports google only.`,\n    raw_response: JSON.stringify($json),\n  },\n}];"
+      },
+      "id": "b73181b3-9e10-4f39-a929-becd2990adc2",
+      "name": "Unsupported Provider Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        320
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Store Input Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger (Isolation Test)": {
+      "main": [
+        [
+          {
+            "node": "Hardcoded Test Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hardcoded Test Input": {
+      "main": [
+        [
+          {
+            "node": "Store Input Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Input Context": {
+      "main": [
+        [
+          {
+            "node": "Fetch Agent Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Agent Config": {
+      "main": [
+        [
+          {
+            "node": "Parse Agent Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Agent Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Skill Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Skill Markdown": {
+      "main": [
+        [
+          {
+            "node": "Assemble Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Prompt": {
+      "main": [
+        [
+          {
+            "node": "Route Provider",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Provider": {
+      "main": [
+        [
+          {
+            "node": "Google Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unsupported Provider Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini": {
+      "main": [
+        [
+          {
+            "node": "Parse Agent Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "agent_id": "linkedin-writer",
+          "task_title": "Launch post for Q3 product update",
+          "task_description": "Announce the new dashboard feature for marketing leads.",
+          "criterios_de_aceite": "- Mention the dashboard\n- CTA to sign up\n- Under 300 words"
+        }
+      }
+    ]
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b1c4947f-b2eb-4276-bf59-eaf668258a80",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "agentic-mkt-call-agent-export"
+  },
+  "tags": [
+    {
+      "name": "marketing-pipeline"
+    }
+  ]
 }

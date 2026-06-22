@@ -13,6 +13,7 @@ Schema, webhook contract, and field mapping for the Marketing Pipeline ClickUp l
 | [`field-mapping.json`](field-mapping.json) | ClickUp list ID, field IDs, and status display strings |
 | [`sync-field-mapping.py`](sync-field-mapping.py) | Pull field IDs from ClickUp API into `field-mapping.json` |
 | [`verify-api.py`](verify-api.py) | Integration check — create test task and verify custom fields via GET |
+| [`green_run_validation.py`](green_run_validation.py) | M1 green run preflight + execution; writes `logs/green-run/<timestamp>/evidence.json` (see [`logs/README.md`](../logs/README.md)) |
 | [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) | Sample webhook payload for contract tests |
 
 ## Manual setup checklist
@@ -80,6 +81,45 @@ Do **not** register the webhook until the n8n main workflow HTTPS URL exists (ta
 | `CLICKUP_LIST_ID` | API sync/verify | Numeric list ID |
 
 See [`.env.example`](../.env.example) at repo root.
+
+## M2 operational runbook
+
+Validated during M1/M2. Complete before importing n8n main workflow.
+
+### Quick validation checklist
+
+```bash
+# 1. Sync field IDs (requires CLICKUP_API_TOKEN + CLICKUP_LIST_ID)
+python3 clickup/sync-field-mapping.py
+
+# 2. Verify API access and custom fields
+python3 clickup/verify-api.py
+
+# 3. Run contract tests
+python3 -m unittest tests.test_task_04_clickup -v
+```
+
+Confirm `field-mapping.json` has no `<TBD>` values before n8n import.
+
+### Webhook registration (after n8n main workflow is active)
+
+1. Copy production webhook URL from n8n **ClickUp Webhook** node.
+2. ClickUp → Integrations → Webhooks → **Task Status Updated** → Marketing Pipeline list.
+3. Replay test: POST [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) to n8n test webhook URL (see [`n8n/README.md`](../n8n/README.md#webhook-replay-test-no-clickup)).
+
+### Brief gate (operator discipline)
+
+Before every **Ready to Work** move, confirm title, description, and **Critérios de Aceite** are populated. V1 has no ClickUp automation blocking empty briefs — see [Brief Gate Pattern](../agent-harness/io-contract.md#3-brief-gate-pattern).
+
+### Troubleshooting
+
+| Symptom | First check |
+|---------|-------------|
+| Webhook not firing | ClickUp webhook log + n8n workflow Active status |
+| Empty custom fields in n8n | Re-run `sync-field-mapping.py`; verify field names match UI exactly |
+| Task stuck In Progress | n8n Executions for main workflow run |
+
+Full diagnostics: [`agent-harness/io-contract.md` → Troubleshooting](../agent-harness/io-contract.md#troubleshooting).
 
 ## Manual setup
 
