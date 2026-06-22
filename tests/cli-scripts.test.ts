@@ -87,8 +87,8 @@ describe("scripts/inspect-executions.ts — offline subprocess", () => {
 
 describe("scripts/build-workflows.ts — offline subprocess", () => {
   it("exits 0 and writes both workflow JSON files", () => {
-    const callAgentPath = resolve(REPO_ROOT, "n8n/workflows/call-agent-subworkflow.json");
-    const marketingPipelinePath = resolve(REPO_ROOT, "n8n/workflows/marketing-pipeline-main.json");
+    const callAgentPath = resolve(REPO_ROOT, "marketing-pipelines/call-agent-subworkflow.json");
+    const marketingPipelinePath = resolve(REPO_ROOT, "marketing-pipelines/marketing-pipeline-main.json");
 
     const result = runScript(resolve(REPO_ROOT, "scripts/build-workflows.ts"), {
       PATH: process.env.PATH ?? "",

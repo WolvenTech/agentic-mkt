@@ -119,7 +119,7 @@ Confirm `field-mapping.json` has no `<TBD>` values before n8n import.
 
 ### Brief gate (operator discipline)
 
-Before every **Ready to Work** move, confirm title, description, and **Critérios de Aceite** are populated. V1 has no ClickUp automation blocking empty briefs — see [Brief Gate Pattern](../agent-harness/io-contract.md#3-brief-gate-pattern).
+Before every **Ready to Work** move, confirm title, description, and **Critérios de Aceite** are populated. V1 has no ClickUp automation blocking empty briefs — see [Brief Gate Pattern](../agents/harness/io-contract.md#3-brief-gate-pattern).
 
 ### Troubleshooting
 
@@ -129,7 +129,7 @@ Before every **Ready to Work** move, confirm title, description, and **Critério
 | Empty custom fields in n8n | Re-run `pnpm clickup:sync`; verify field names match UI exactly |
 | Task stuck In Progress | n8n Executions for main workflow run |
 
-Full diagnostics: [`agent-harness/io-contract.md` → Troubleshooting](../agent-harness/io-contract.md#troubleshooting).
+Full diagnostics: [`agents/harness/io-contract.md` → Troubleshooting](../agents/harness/io-contract.md#troubleshooting).
 
 ## Manual setup
 

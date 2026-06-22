@@ -44,7 +44,7 @@ Required OpenAI response shape after the Code node parses JSON from the model re
 | `resumo` | string | 2–3 sentence summary of the draft |
 | `autochecagem` | string | Bullet list validating the draft against acceptance criteria |
 
-Field semantics match `output_schema` in [`agents/linkedin-writer.json`](../agents/linkedin-writer.json) (source of truth for M1 worker agent). The harness [`output-schema.json`](output-schema.json) mirrors those keys for validation and documentation — do not duplicate the full agent config here.
+Field semantics match `output_schema` in [`linkedin-writer.json`](../linkedin-writer.json) (source of truth for M1 worker agent). The harness [`output-schema.json`](output-schema.json) mirrors those keys for validation and documentation — do not duplicate the full agent config here.
 
 Example:
 
@@ -114,7 +114,7 @@ See TechSpec **Data Models → ClickUp task comment format** for the canonical t
 
 ## M1 green run evidence
 
-Anchors from the M1 green run validation (task_08). Committed scaffold: [`green-run-evidence.json`](green-run-evidence.json). Live run output goes to `logs/green-run/<timestamp>/evidence.json` (gitignored — see [`logs/README.md`](../logs/README.md)). Run:
+Anchors from the M1 green run validation (task_08). Committed scaffold: [`green-run-evidence.json`](green-run-evidence.json). Live run output goes to `logs/green-run/<timestamp>/evidence.json` (gitignored — see [`logs/README.md`](../../logs/README.md)). Run:
 
 ```bash
 pnpm vendor:gate                       # exit 0 required before any step below
@@ -139,19 +139,19 @@ GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run   # promote run into green-run-evide
 
 **Operator blockers (2026-06-22 preflight):**
 
-1. Create **Marketing Pipeline** ClickUp list with M1 statuses and custom fields per [`clickup/list-schema.md`](../clickup/list-schema.md) (current `CLICKUP_LIST_ID` points at **Linkedin Post Creator**, which lacks required fields).
+1. Create **Marketing Pipeline** ClickUp list with M1 statuses and custom fields per [`clickup/list-schema.md`](../../clickup/list-schema.md) (current `CLICKUP_LIST_ID` points at **Linkedin Post Creator**, which lacks required fields).
 2. Run `pnpm vendor:gate` then `pnpm clickup:sync` and commit updated `field-mapping.json`.
 3. Bind ClickUp + OpenAI credentials on imported n8n workflows; activate **Marketing Pipeline**; register ClickUp webhook.
 4. Re-run `GREEN_RUN_EXECUTE=1 pnpm green-run` and record execution ID + task URL here.
 
 **Failure observations (best-effort M1):**
 
-- **Missing Critérios de Aceite:** workflow still runs; autochecagem quality may suffer — brief gate is manual only ([`clickup/list-schema.md`](../clickup/list-schema.md)).
+- **Missing Critérios de Aceite:** workflow still runs; autochecagem quality may suffer — brief gate is manual only ([`clickup/list-schema.md`](../../clickup/list-schema.md)).
 - **Duplicate webhook:** second delivery may produce a duplicate comment per ADR-001; no dedup in M1.
 
 ## Live ClickUp status names vs n8n node labels
 
-[`clickup/field-mapping.json`](../clickup/field-mapping.json) defines API status strings. n8n node names retain TechSpec labels for operator traceability in Executions.
+[`clickup/field-mapping.json`](../../clickup/field-mapping.json) defines API status strings. n8n node names retain TechSpec labels for operator traceability in Executions.
 
 | ClickUp status | `field-mapping.json` key | n8n node |
 |----------------|--------------------------|----------|
@@ -161,7 +161,7 @@ GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run   # promote run into green-run-evide
 
 **Happy-path transitions:** `backlog → ready` (ingress) → workflow sets `writing` → agent + comment → workflow sets `approval`.
 
-**Self-echo executions (expected):** each workflow PATCH emits another `taskStatusUpdated` (`ready → writing`, then `writing → approval`). Ingress ignores these because `after.status` is not `ready`. They appear as short green n8n runs (~7 ms) — not duplicate pipeline work. See [`clickup/webhook-contract.md`](../clickup/webhook-contract.md#self-echo-webhooks-expected-noise).
+**Self-echo executions (expected):** each workflow PATCH emits another `taskStatusUpdated` (`ready → writing`, then `writing → approval`). Ingress ignores these because `after.status` is not `ready`. They appear as short green n8n runs (~7 ms) — not duplicate pipeline work. See [`clickup/webhook-contract.md`](../../clickup/webhook-contract.md#self-echo-webhooks-expected-noise).
 
 ## Workflow sequence expectations
 
@@ -216,8 +216,8 @@ Actionable diagnostics for common M1 failure modes. Primary diagnostic surface: 
 2. Copy the production webhook URL from the **ClickUp Webhook** node — must be `https://n8n.wolven.com.br/webhook/marketing-pipeline-ready-to-work` (not the test URL unless using **Listen for test event**).
 3. In ClickUp → Integrations → Webhooks, verify the endpoint URL matches exactly (no trailing slash mismatch).
 4. Check ClickUp webhook delivery log for HTTP status codes (401/403/404/502 indicate credential, path, or host issues).
-5. **Simulate without ClickUp:** open the webhook node → **Listen for test event** → POST [`clickup/fixtures/task-status-updated-ready-to-work.json`](../clickup/fixtures/task-status-updated-ready-to-work.json) to the test URL. If this succeeds but production fails, the ClickUp registration is wrong — re-register with the production URL.
-6. Verify ingress filter: payload must have `history_items[0].field === "status"` and entering `ready` per [`field-mapping.json`](../clickup/field-mapping.json) ([`clickup/webhook-contract.md`](../clickup/webhook-contract.md)). Transitions such as `writing → approval` are self-echo and correctly ignored.
+5. **Simulate without ClickUp:** open the webhook node → **Listen for test event** → POST [`clickup/fixtures/task-status-updated-ready-to-work.json`](../../clickup/fixtures/task-status-updated-ready-to-work.json) to the test URL. If this succeeds but production fails, the ClickUp registration is wrong — re-register with the production URL.
+6. Verify ingress filter: payload must have `history_items[0].field === "status"` and entering `ready` per [`field-mapping.json`](../../clickup/field-mapping.json) ([`clickup/webhook-contract.md`](../../clickup/webhook-contract.md)). Transitions such as `writing → approval` are self-echo and correctly ignored.
 
 ### Task stuck in In Progress
 
@@ -246,7 +246,7 @@ Actionable diagnostics for common M1 failure modes. Primary diagnostic surface: 
    - Non-JSON text → disable conversational preamble in OpenAI node settings.
 3. Check structured log fields: `parse_success: false`, `execution_id`, `agent_id`.
 4. Main workflow **Agent Parse Failure** node throws with logged `error` — execution must **not** post a partial comment or advance to approval (Status → Review).
-5. **Isolation test:** run **Manual Trigger (Isolation Test)** on Call Agent sub-workflow per [`n8n/README.md`](../n8n/README.md#sub-workflow-isolation-test-procedure) before debugging the main workflow.
+5. **Isolation test:** run **Manual Trigger (Isolation Test)** on Call Agent sub-workflow per [`n8n/README.md`](../../n8n/README.md#sub-workflow-isolation-test-procedure) before debugging the main workflow.
 
 ### Field ID mismatches
 
@@ -254,7 +254,7 @@ Actionable diagnostics for common M1 failure modes. Primary diagnostic surface: 
 
 **Diagnostic steps:**
 
-1. Open [`clickup/field-mapping.json`](../clickup/field-mapping.json) — `clickup_field_id` values must not be `<TBD>`.
+1. Open [`clickup/field-mapping.json`](../../clickup/field-mapping.json) — `clickup_field_id` values must not be `<TBD>`.
 2. Re-sync from ClickUp API (`pnpm clickup:sync`, the TypeScript successor to the original `sync-field-mapping.py` script):
    ```bash
    export CLICKUP_API_TOKEN="pk_..."
@@ -280,8 +280,8 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 | Artifact | Reference |
 |----------|-----------|
 | Input/output types | This doc — [Input](#input-callagentinput), [Output](#output-agentoutput), [Error envelope](#error-envelope) |
-| Sub-workflow export | [`n8n/workflows/call-agent-subworkflow.json`](../n8n/workflows/call-agent-subworkflow.json) |
-| Isolation test | [`n8n/README.md`](../n8n/README.md#sub-workflow-isolation-test-procedure) |
+| Sub-workflow export | [`marketing-pipelines/call-agent-subworkflow.json`](../../marketing-pipelines/call-agent-subworkflow.json) |
+| Isolation test | [`n8n/README.md`](../../n8n/README.md#sub-workflow-isolation-test-procedure) |
 | TechSpec | **Core Interfaces**, **Call Agent sub-workflow** |
 
 ### 2. Status Flow Pattern
@@ -292,9 +292,9 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 | Artifact | Reference |
 |----------|-----------|
-| Status definitions | [`clickup/list-schema.md`](../clickup/list-schema.md) |
-| Webhook filter | [`clickup/webhook-contract.md`](../clickup/webhook-contract.md) |
-| Main workflow | [`n8n/workflows/marketing-pipeline-main.json`](../n8n/workflows/marketing-pipeline-main.json) |
+| Status definitions | [`clickup/list-schema.md`](../../clickup/list-schema.md) |
+| Webhook filter | [`clickup/webhook-contract.md`](../../clickup/webhook-contract.md) |
+| Main workflow | [`marketing-pipelines/marketing-pipeline-main.json`](../../marketing-pipelines/marketing-pipeline-main.json) |
 | TechSpec | **Integration Tests** green run checklist |
 
 ### 3. Brief Gate Pattern
@@ -305,8 +305,8 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 | Artifact | Reference |
 |----------|-----------|
-| Field schema | [`clickup/list-schema.md`](../clickup/list-schema.md) |
-| Operational checklist | [`clickup/README.md`](../clickup/README.md#4-brief-gate-operational) |
+| Field schema | [`clickup/list-schema.md`](../../clickup/list-schema.md) |
+| Operational checklist | [`clickup/README.md`](../../clickup/README.md#4-brief-gate-operational) |
 | PRD | F2 — Brief gate requirements |
 
 ### 4. GitHub Runtime Config Pattern
@@ -317,8 +317,8 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 | Artifact | Reference |
 |----------|-----------|
-| Agent schema | [`agents/README.md`](../agents/README.md) |
-| Skill copy procedure | [`agents/README.md`](../agents/README.md#skill-copy-procedure-from-skill-vault) |
+| Agent schema | [`agents/README.md`](../README.md) |
+| Skill copy procedure | [`agents/README.md`](../README.md#skill-copy-procedure-from-skill-vault) |
 | ADR | [ADR-004](../.compozy/tasks/marketing-pipeline-clickup-n8n/adrs/adr-004.md) |
 | TechSpec | **Agent runtime config**, **GitHub load paths** |
 
@@ -328,6 +328,6 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 |------|------|
 | [`output-schema.json`](output-schema.json) | JSON Schema for `AgentOutput` validation |
 | [`green-run-evidence.json`](green-run-evidence.json) | Committed green-run scaffold; promote from `logs/green-run/` after verified run |
-| [`agents/linkedin-writer.json`](../agents/linkedin-writer.json) | M1 agent config and `output_schema` descriptions |
-| [`../.compozy/tasks/marketing-pipeline-clickup-n8n/_techspec.md`](../.compozy/tasks/marketing-pipeline-clickup-n8n/_techspec.md) | Core Interfaces, sub-workflow contract, integration error handling |
-| [`../.compozy/tasks/marketing-pipeline-clickup-n8n/_prd.md`](../.compozy/tasks/marketing-pipeline-clickup-n8n/_prd.md) | F5 harness documentation requirements |
+| [`linkedin-writer.json`](../linkedin-writer.json) | M1 agent config and `output_schema` descriptions |
+| [`../../.compozy/tasks/marketing-pipeline-clickup-n8n/_techspec.md`](../../.compozy/tasks/marketing-pipeline-clickup-n8n/_techspec.md) | Core Interfaces, sub-workflow contract, integration error handling |
+| [`../../.compozy/tasks/marketing-pipeline-clickup-n8n/_prd.md`](../../.compozy/tasks/marketing-pipeline-clickup-n8n/_prd.md) | F5 harness documentation requirements |

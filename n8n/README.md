@@ -2,14 +2,13 @@
 
 ## Purpose
 
-Workflow JSON exports and n8n configuration for the ClickUp → agent → ClickUp marketing pipeline.
+n8n host configuration, credentials runbook, and MCP stub for the marketing pipeline. Workflow JSON exports live in [`marketing-pipelines/`](../marketing-pipelines/README.md).
 
 ## Key files
 
 | Path | Purpose |
 |------|---------|
-| `workflows/marketing-pipeline-main.json` | Main workflow: webhook ingress, status transitions, comment post |
-| `workflows/call-agent-subworkflow.json` | Sub-workflow: load agent config, invoke OpenAI, parse output |
+| [`../marketing-pipelines/`](../marketing-pipelines/README.md) | Workflow JSON exports (import/deploy from there) |
 | `mcp-config.stub.json` | MCP stub only — no implementation in M1 |
 
 ## GitHub repository (Call Agent config fetch)
@@ -44,7 +43,7 @@ The Call Agent sub-workflow depends on this repo being pushed before isolation t
 
 ## Call Agent sub-workflow (task_06)
 
-Import `workflows/call-agent-subworkflow.json` into `n8n.wolven.com.br` before the main workflow. This sub-workflow is a pure function: it accepts `CallAgentInput`, fetches agent config and skills from GitHub, invokes OpenAI, and returns `AgentOutput` or an error envelope — no ClickUp writes.
+Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) into `n8n.wolven.com.br` before the main workflow. This sub-workflow is a pure function: it accepts `CallAgentInput`, fetches agent config and skills from GitHub, invokes OpenAI, and returns `AgentOutput` or an error envelope — no ClickUp writes.
 
 | Node | Purpose |
 |------|---------|
@@ -58,19 +57,19 @@ After import, replace placeholder credential IDs (`GITHUB_CREDENTIAL_ID`, `OPENA
 
 ### Sub-workflow isolation test procedure
 
-1. Import `workflows/call-agent-subworkflow.json` and configure **GitHub** (read-only PAT on `rafiti052/agentic-mkt`) and **OpenAI** credentials.
+1. Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) and configure **GitHub** (read-only PAT on `rafiti052/agentic-mkt`) and **OpenAI** credentials.
 2. Open the workflow and run **Manual Trigger (Isolation Test)** — this executes the **Hardcoded Test Input** node with `agent_id: linkedin-writer`.
 3. Confirm execution succeeds and **Parse Agent Output** returns JSON with all three keys: `deliverable_markdown`, `resumo`, `autochecagem` (non-empty strings).
 4. In the execution log for **Parse Agent Output**, verify structured log fields include `parse_success: true`, `agent_id`, `execution_id`, and `latency_ms`.
 5. **Parse-failure test:** temporarily disable **OpenAI Chat Model** JSON output (or inject malformed text in a scratch Code node before **Parse Agent Output**) and confirm the sub-workflow returns `{ "error": "...", "raw_response": "..." }` — not partial `AgentOutput`.
 6. Inspect **Assemble Prompt** execution data: both `wolven-voice` and `linkedin-format` skill bodies must appear in `system_prompt`.
-7. Re-export the workflow from n8n after credential binding and commit to `n8n/workflows/call-agent-subworkflow.json` if the live graph differs from repo export.
+7. Re-export the workflow from n8n after credential binding and commit to `marketing-pipelines/call-agent-subworkflow.json` if the live graph differs from repo export.
 
 Alternative: pin the same hardcoded `CallAgentInput` on **When Executed by Another Workflow** (included in repo export `pinData`) and execute via **Test workflow** on that trigger.
 
 ## Marketing Pipeline main workflow (task_07)
 
-Import `workflows/marketing-pipeline-main.json` after the Call Agent sub-workflow is imported and active. The main workflow is the sole ClickUp mutator for the happy path: webhook ingress → task fetch → status transitions → sub-workflow call → draft comment → Review.
+Import [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelines/marketing-pipeline-main.json) after the Call Agent sub-workflow is imported and active. The main workflow is the sole ClickUp mutator for the happy path: webhook ingress → task fetch → status transitions → sub-workflow call → draft comment → Review.
 
 ### Live ClickUp status names vs n8n node labels
 
@@ -107,7 +106,7 @@ Ensure `clickup/field-mapping.json` has real field IDs (run `pnpm clickup:sync` 
 
 ### Main workflow activation and ClickUp webhook
 
-1. Import `workflows/marketing-pipeline-main.json` into `n8n.wolven.com.br`.
+1. Import [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelines/marketing-pipeline-main.json) into `n8n.wolven.com.br`.
 2. Bind **ClickUp** credential on all ClickUp nodes and set **Execute Call Agent** → workflow = **Call Agent**.
 3. **Activate** the Marketing Pipeline workflow.
 4. Copy the production webhook URL from the **ClickUp Webhook** node (format: `https://n8n.wolven.com.br/webhook/marketing-pipeline-ready-to-work`).
@@ -132,7 +131,7 @@ Ensure `clickup/field-mapping.json` has real field IDs (run `pnpm clickup:sync` 
 - **ClickUp API failure:** disable ClickUp credential temporarily; move task to ready; confirm execution shows error in n8n Executions (not silent).
 - **Agent parse failure:** use Call Agent isolation test to confirm error envelope; main workflow **Agent Parse Failure** node must throw and must not post comment or set approval.
 
-Re-export the workflow from n8n after credential binding and commit to `n8n/workflows/marketing-pipeline-main.json` if the live graph differs from repo export.
+Re-export the workflow from n8n after credential binding and commit to `marketing-pipelines/marketing-pipeline-main.json` if the live graph differs from repo export.
 
 Regenerate repo export: `pnpm build:workflows`.
 
@@ -150,14 +149,14 @@ Validated during M1/M2. An operator can re-import and activate both workflows us
 ### Step 1 — Import Call Agent sub-workflow
 
 1. In `n8n.wolven.com.br`, go to **Workflows → Import from File**.
-2. Select `n8n/workflows/call-agent-subworkflow.json`.
+2. Select [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json).
 3. Open the workflow and bind credentials on **Fetch Agent Config**, **Fetch Skill Markdown** (GitHub), and **OpenAI Chat Model**.
 4. Run **Manual Trigger (Isolation Test)** — confirm **Parse Agent Output** returns all three `AgentOutput` keys with `parse_success: true`.
 5. Leave the sub-workflow **Inactive** (it is invoked by the main workflow, not by webhook).
 
 ### Step 2 — Import and activate Marketing Pipeline main workflow
 
-1. **Import** `n8n/workflows/marketing-pipeline-main.json`.
+1. **Import** [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelines/marketing-pipeline-main.json).
 2. Bind **ClickUp** credential on all ClickUp nodes.
 3. On **Execute Call Agent**, select workflow = **Call Agent** (imported sub-workflow).
 4. **Activate** the Marketing Pipeline workflow.
@@ -172,7 +171,7 @@ Validated during M1/M2. An operator can re-import and activate both workflows us
 
 ### Step 4 — Verify green run timing
 
-Expected behavior documented in [`agent-harness/io-contract.md`](../agent-harness/io-contract.md#workflow-sequence-expectations):
+Expected behavior documented in [`agents/harness/io-contract.md`](../agents/harness/io-contract.md#workflow-sequence-expectations):
 
 | Checkpoint | Target |
 |------------|--------|
@@ -180,11 +179,11 @@ Expected behavior documented in [`agent-harness/io-contract.md`](../agent-harnes
 | writing → comment posted | ≤ 60 s total |
 | Final status | approval (`statuses.review`) |
 
-M1 target latency: **< 60 s** end-to-end (record actuals in [`green-run-evidence.json`](../agent-harness/green-run-evidence.json) after green run).
+M1 target latency: **< 60 s** end-to-end (record actuals in [`green-run-evidence.json`](../agents/harness/green-run-evidence.json) after green run).
 
 ### Troubleshooting
 
-See [`agent-harness/io-contract.md` → Troubleshooting](../agent-harness/io-contract.md#troubleshooting) for webhook, stuck writing (`Status → In Progress`), OpenAI parse, and field-mapping failures.
+See [`agents/harness/io-contract.md` → Troubleshooting](../agents/harness/io-contract.md#troubleshooting) for webhook, stuck writing (`Status → In Progress`), OpenAI parse, and field-mapping failures.
 
 **Update live n8n after builder changes:**
 
@@ -205,6 +204,6 @@ pnpm build:workflows
 
 ## Manual setup
 
-1. Import workflow JSON into `n8n.wolven.com.br` after tasks 06–07 populate exports.
+1. Import workflow JSON from [`marketing-pipelines/`](../marketing-pipelines/README.md) into `n8n.wolven.com.br` after tasks 06–07 populate exports.
 2. Configure credentials: ClickUp, GitHub (read-only PAT on `agentic-mkt` — see above), OpenAI.
 3. Activate the main workflow and copy the HTTPS webhook URL into ClickUp (see `clickup/webhook-contract.md`).

@@ -25,7 +25,7 @@ Each `agents/{id}.json` file defines the runtime contract for the Call Agent sub
 | `max_output_tokens` | number | Maximum tokens in model response |
 | `output_schema` | object | Required JSON output keys and descriptions |
 
-M1 `output_schema` keys (must align with `agent-harness/output-schema.json`):
+M1 `output_schema` keys (must align with `agents/harness/output-schema.json`):
 
 - `deliverable_markdown` — Full draft in markdown
 - `resumo` — 2–3 sentence summary
@@ -92,7 +92,7 @@ M1 ships `linkedin-writer` with `"provider": "google"`, `"model": "gemini-2.5-fl
 1. After skill copy, run `pnpm test tests/agents.test.ts`.
 2. Push `agentic-mkt` to GitHub (`main` branch).
 3. Verify n8n Call Agent isolation test loads both skills in **Assemble Prompt** output.
-4. See [GitHub Runtime Config Pattern](../agent-harness/io-contract.md#4-github-runtime-config-pattern) for cross-project replication.
+4. See [GitHub Runtime Config Pattern](harness/io-contract.md#4-github-runtime-config-pattern) for cross-project replication.
 
 ## Manual setup
 

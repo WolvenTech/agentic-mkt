@@ -67,4 +67,4 @@ Before moving a task to **Ready**, the marketing lead must ensure:
 | Writing → Approval | n8n main workflow |
 | Approval → Publish → Completed | Marketing lead (manual) |
 
-See [`webhook-contract.md`](webhook-contract.md) for ingress filter and [`../agent-harness/io-contract.md`](../agent-harness/io-contract.md) for agent I/O.
+See [`webhook-contract.md`](webhook-contract.md) for ingress filter and [`../agents/harness/io-contract.md`](../agents/harness/io-contract.md) for agent I/O.

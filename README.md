@@ -19,9 +19,10 @@ ClickUp: ready → webhook → n8n → OpenAI → task comment → approval
 
 | Path | Purpose |
 |------|---------|
-| [`n8n/`](n8n/README.md) | Workflow JSON exports, orchestration runbooks |
+| [`n8n/`](n8n/README.md) | Host runbook, credentials, MCP stub |
+| [`marketing-pipelines/`](marketing-pipelines/README.md) | Workflow JSON exports, import/deploy runbook |
 | [`clickup/`](clickup/README.md) | List schema, field mapping, webhook contract |
-| [`agent-harness/`](agent-harness/README.md) | I/O contracts, output schema, troubleshooting |
+| [`agents/harness/`](agents/harness/README.md) | I/O contracts, output schema, troubleshooting |
 | [`agents/`](agents/README.md) | Runtime agent configs and skills (loaded by n8n) |
 | [`logs/`](logs/README.md) | **Gitignored** local run output (green-run evidence, transcripts) |
 | [`tests/`](tests/) | Contract and scaffold validation suite |
@@ -80,26 +81,27 @@ Scripts write ephemeral output under [`logs/`](logs/README.md). That directory i
 GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run
 ```
 
-Then commit `agent-harness/green-run-evidence.json` manually.
+Then commit `agents/harness/green-run-evidence.json` manually.
 
 ### Workflow deploy path
 
 After changing workflow builders or logic under `src/workflows/`:
 
 ```bash
-pnpm build:workflows    # regenerate n8n/workflows/*.json in this repo
+pnpm build:workflows    # regenerate marketing-pipelines/*.json in this repo
 pnpm deploy:workflows   # upsert to n8n.wolven.com.br (requires N8N_API_KEY)
 ```
 
-Use manual import from [`n8n/README.md`](n8n/README.md) only for first-time setup or when API deploy is unavailable.
+Use manual import from [`marketing-pipelines/README.md`](marketing-pipelines/README.md) only for first-time setup or when API deploy is unavailable.
 
 ## Domain documentation
 
 Each top-level folder has a README with purpose, key files, and manual setup:
 
-- [n8n](n8n/README.md) — import workflows, credentials, isolation test
+- [n8n](n8n/README.md) — credentials, GitHub PAT, MCP stub
+- [marketing-pipelines](marketing-pipelines/README.md) — import workflows, activation, deploy
 - [clickup](clickup/README.md) — list creation, field sync, webhook binding
-- [agent-harness](agent-harness/README.md) — I/O envelopes, M2 operational runbook
+- [agents/harness](agents/harness/README.md) — I/O envelopes, M2 operational runbook
 - [agents](agents/README.md) — agent config, skill copy from skill-vault
 
 ## Production

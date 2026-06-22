@@ -59,7 +59,7 @@ Live status names come from [`field-mapping.json`](field-mapping.json). n8n node
 1. **GET** `/task/{task_id}` — fetch title, description, and custom fields (`Critérios de Aceite`, `agent_id`) using IDs from [`field-mapping.json`](field-mapping.json)
 2. **PUT** `/task/{task_id}` — set status → `writing` (**Status → In Progress**)
 3. **Execute** Call Agent sub-workflow with `CallAgentInput` envelope
-4. **POST** `/task/{task_id}/comment` — formatted draft per [`../agent-harness/io-contract.md`](../agent-harness/io-contract.md)
+4. **POST** `/task/{task_id}/comment` — formatted draft per [`../agents/harness/io-contract.md`](../agents/harness/io-contract.md)
 5. **PUT** `/task/{task_id}` — set status → `approval` (**Status → Review**)
 
 On API or agent failure: log in n8n Executions; do not silently fail (TechSpec Integration Points).

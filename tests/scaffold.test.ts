@@ -12,18 +12,19 @@ const TASK_01_PATHS = [
   "logs/.gitkeep",
   "logs/README.md",
   "n8n/README.md",
-  "n8n/workflows/marketing-pipeline-main.json",
-  "n8n/workflows/call-agent-subworkflow.json",
+  "marketing-pipelines/README.md",
+  "marketing-pipelines/marketing-pipeline-main.json",
+  "marketing-pipelines/call-agent-subworkflow.json",
   "clickup/README.md",
   "clickup/field-mapping.json",
-  "agent-harness/README.md",
-  "agent-harness/io-contract.md",
-  "agent-harness/output-schema.json",
+  "agents/harness/README.md",
+  "agents/harness/io-contract.md",
+  "agents/harness/output-schema.json",
   "agents/README.md",
   "agents/skills",
 ];
 
-const TOP_LEVEL_DOMAIN_FOLDERS = ["n8n", "clickup", "agent-harness", "agents"];
+const TOP_LEVEL_DOMAIN_FOLDERS = ["n8n", "clickup", "marketing-pipelines", "agents"];
 
 const README_REQUIRED_SECTIONS = ["purpose", "key files", "manual setup"];
 const ROOT_README_REQUIRED_SECTIONS = ["architecture", "quick start", "repository layout"];
@@ -78,12 +79,17 @@ describe("task_01 scaffold", () => {
   });
 
   it("keeps the workflow placeholder filenames", () => {
-    const workflows = resolve(REPO_ROOT, "n8n", "workflows");
+    const workflows = resolve(REPO_ROOT, "marketing-pipelines");
     const expected = ["marketing-pipeline-main.json", "call-agent-subworkflow.json"];
     const actual = readdirSync(workflows);
     for (const name of expected) {
       expect(actual).toContain(name);
     }
+  });
+
+  it("has an agents/harness directory", () => {
+    const harness = resolve(REPO_ROOT, "agents", "harness");
+    expect(statSync(harness, { throwIfNoEntry: false })?.isDirectory()).toBe(true);
   });
 
   it("has an agents/skills directory", () => {
@@ -105,14 +111,14 @@ describe("task_01 scaffold", () => {
   });
 
   it("keeps the marketing-pipeline-main workflow export non-empty", () => {
-    const path = resolve(REPO_ROOT, "n8n", "workflows", "marketing-pipeline-main.json");
+    const path = resolve(REPO_ROOT, "marketing-pipelines", "marketing-pipeline-main.json");
     const data = JSON.parse(readFileSync(path, "utf-8"));
     expect(data).not.toHaveProperty("_comment");
     expect((data.nodes ?? []).length).toBeGreaterThan(0);
   });
 
   it("keeps the call-agent-subworkflow export non-empty", () => {
-    const path = resolve(REPO_ROOT, "n8n", "workflows", "call-agent-subworkflow.json");
+    const path = resolve(REPO_ROOT, "marketing-pipelines", "call-agent-subworkflow.json");
     const data = JSON.parse(readFileSync(path, "utf-8"));
     expect(data).not.toHaveProperty("_comment");
     expect((data.nodes ?? []).length).toBeGreaterThan(0);

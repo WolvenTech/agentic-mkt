@@ -5,6 +5,7 @@ import { REPO_ROOT } from "../load-env.js";
 import { buildCallAgentWorkflow } from "./build-call-agent.js";
 import { buildMarketingPipelineWorkflow } from "./build-marketing-pipeline.js";
 
+export const WORKFLOWS_DIR = "marketing-pipelines";
 export const CALL_AGENT_FILENAME = "call-agent-subworkflow.json";
 export const MARKETING_PIPELINE_FILENAME = "marketing-pipeline-main.json";
 
@@ -14,7 +15,7 @@ export interface WorkflowExportPaths {
 }
 
 export function defaultWorkflowExportPaths(): WorkflowExportPaths {
-  const workflowsDir = resolve(REPO_ROOT, "n8n", "workflows");
+  const workflowsDir = resolve(REPO_ROOT, WORKFLOWS_DIR);
   return {
     callAgentPath: resolve(workflowsDir, CALL_AGENT_FILENAME),
     marketingPipelinePath: resolve(workflowsDir, MARKETING_PIPELINE_FILENAME),

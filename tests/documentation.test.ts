@@ -4,13 +4,13 @@ import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = resolve(__dirname, "..");
 
-const IO_CONTRACT_PATH = resolve(REPO_ROOT, "agent-harness", "io-contract.md");
-const GREEN_RUN_EVIDENCE_PATH = resolve(REPO_ROOT, "agent-harness", "green-run-evidence.json");
+const IO_CONTRACT_PATH = resolve(REPO_ROOT, "agents", "harness", "io-contract.md");
+const GREEN_RUN_EVIDENCE_PATH = resolve(REPO_ROOT, "agents", "harness", "green-run-evidence.json");
 
 const DOMAIN_READMES = {
   n8n: resolve(REPO_ROOT, "n8n", "README.md"),
   clickup: resolve(REPO_ROOT, "clickup", "README.md"),
-  "agent-harness": resolve(REPO_ROOT, "agent-harness", "README.md"),
+  "marketing-pipelines": resolve(REPO_ROOT, "marketing-pipelines", "README.md"),
   agents: resolve(REPO_ROOT, "agents", "README.md"),
 } as const;
 
@@ -34,7 +34,7 @@ const PRD_F5_REQUIREMENTS = [
   "adr-005",
 ];
 
-// Grep-tested READMEs only — `agent-harness/io-contract.md`, `.env.example`, and
+// Grep-tested READMEs only — `agents/harness/io-contract.md`, `.env.example`, and
 // `webhook-contract.md` still document the coexisting Python tooling by design
 // (root README's "coexists until task 13" section) and are out of scope here;
 // task_12 owns the full python3 -> pnpm command rewrite across docs.
@@ -42,7 +42,7 @@ const PYTHON_COMMAND_GREP_PATHS: Record<string, string> = {
   "README.md": resolve(REPO_ROOT, "README.md"),
   "n8n/README.md": resolve(REPO_ROOT, "n8n", "README.md"),
   "clickup/README.md": resolve(REPO_ROOT, "clickup", "README.md"),
-  "agent-harness/README.md": resolve(REPO_ROOT, "agent-harness", "README.md"),
+  "agents/harness/README.md": resolve(REPO_ROOT, "agents", "harness", "README.md"),
 };
 
 const PYTHON_COMMAND_PATTERNS = [/\bpython3\b/, /\.py\b/];

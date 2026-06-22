@@ -292,7 +292,7 @@ export function agentOutputHasError(agentOutput: Record<string, unknown>): boole
   return Boolean(agentOutput.error);
 }
 
-/** Format ClickUp task comment per agent-harness/io-contract.md. */
+/** Format ClickUp task comment per agents/harness/io-contract.md. */
 export function formatClickupComment(
   agentOutput: { deliverable_markdown: string; resumo: string; autochecagem: string },
   options: { agentId?: string; model?: string } = {}

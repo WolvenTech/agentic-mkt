@@ -5,10 +5,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = resolve(__dirname, "..");
-const IO_CONTRACT_PATH = resolve(REPO_ROOT, "agent-harness", "io-contract.md");
-const OUTPUT_SCHEMA_PATH = resolve(REPO_ROOT, "agent-harness", "output-schema.json");
+const IO_CONTRACT_PATH = resolve(REPO_ROOT, "agents", "harness", "io-contract.md");
+const OUTPUT_SCHEMA_PATH = resolve(REPO_ROOT, "agents", "harness", "output-schema.json");
 const AGENT_JSON_PATH = resolve(REPO_ROOT, "agents", "linkedin-writer.json");
-const HARNESS_README_PATH = resolve(REPO_ROOT, "agent-harness", "README.md");
+const HARNESS_README_PATH = resolve(REPO_ROOT, "agents", "harness", "README.md");
 
 const CALL_AGENT_INPUT_FIELDS = ["agent_id", "task_title", "task_description", "criterios_de_aceite"];
 const AGENT_OUTPUT_FIELDS = ["deliverable_markdown", "resumo", "autochecagem"];
@@ -114,7 +114,7 @@ describe("harness integration", () => {
     }
   });
 
-  it("agent-harness README links the contract artifacts", () => {
+  it("agents harness README links the contract artifacts", () => {
     const readme = readFileSync(HARNESS_README_PATH, "utf-8");
     for (const fragment of ["io-contract.md", "output-schema.json", "CallAgentInput", "AgentOutput", "ADR-001"]) {
       expect(readme).toContain(fragment);

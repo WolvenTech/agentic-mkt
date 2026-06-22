@@ -97,11 +97,11 @@ describe("allowedSettings", () => {
 describe("deployWorkflows", () => {
   it("PUTs merged local workflow JSON for Call Agent and Marketing Pipeline", async () => {
     const callAgentLocal = readFileSync(
-      resolve(REPO_ROOT, "n8n/workflows/call-agent-subworkflow.json"),
+      resolve(REPO_ROOT, "marketing-pipelines/call-agent-subworkflow.json"),
       "utf-8"
     );
     const marketingLocal = readFileSync(
-      resolve(REPO_ROOT, "n8n/workflows/marketing-pipeline-main.json"),
+      resolve(REPO_ROOT, "marketing-pipelines/marketing-pipeline-main.json"),
       "utf-8"
     );
 

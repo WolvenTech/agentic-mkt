@@ -22,7 +22,7 @@ M1 has **no idempotency** ([ADR-001](../.compozy/tasks/marketing-pipeline-clicku
 | [`io-contract.md`](io-contract.md) | Input envelope, sub-workflow contract, error handling, ClickUp comment template, troubleshooting, reusable patterns |
 | [`output-schema.json`](output-schema.json) | JSON Schema for required Gemini response shape (`AgentOutput`) |
 | [`green-run-evidence.json`](green-run-evidence.json) | Committed green-run scaffold; promote from `logs/green-run/` after verified run |
-| [`../agents/linkedin-writer.json`](../agents/linkedin-writer.json) | M1 agent config; `output_schema` is the semantic source of truth |
+| [`../agents/linkedin-writer.json`](../linkedin-writer.json) | M1 agent config; `output_schema` is the semantic source of truth |
 
 ## M2 operational runbook
 
@@ -33,7 +33,7 @@ After the M1 green run (task_08), operators use this harness for diagnosis and c
 3. **Understand timing** — [`io-contract.md` → Workflow sequence expectations](io-contract.md#workflow-sequence-expectations) documents the marketing lead experience and n8n node sequence.
 4. **Replicate on new projects** — adopt the four patterns in [`io-contract.md` → Reusable harness patterns](io-contract.md#reusable-harness-patterns) (sub-workflow contract, status flow, brief gate, GitHub runtime config).
 
-**MCP/CLI:** [`../n8n/mcp-config.stub.json`](../n8n/mcp-config.stub.json) remains a stub in M1 — no implementation required for Milestone 2.
+**MCP/CLI:** [`../../n8n/mcp-config.stub.json`](../../n8n/mcp-config.stub.json) remains a stub in M1 — no implementation required for Milestone 2.
 
 ## Manual setup
 

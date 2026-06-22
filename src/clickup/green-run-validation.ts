@@ -23,7 +23,7 @@ import { ClickUpHttpError, clickupDelete, clickupGet, clickupPost, clickupPut } 
 import type { ClickUpClientOptions } from "./client.js";
 
 export { COMMENT_SECTIONS, N8N_API_URL_DEFAULT };
-export const EVIDENCE_PATH = resolve(REPO_ROOT, "agent-harness", "green-run-evidence.json");
+export const EVIDENCE_PATH = resolve(REPO_ROOT, "agents", "harness", "green-run-evidence.json");
 export const RUN_LOG_ROOT = resolve(REPO_ROOT, "logs", "green-run");
 
 export const GREEN_RUN_CHECKLIST = [
@@ -242,12 +242,12 @@ async function n8nWorkflowChecks(apiUrl: string, apiKey: string): Promise<CheckR
     {
       step: "n8n_call_agent_workflow_present",
       passed: callAgent !== undefined,
-      detail: callAgent ? "Call Agent sub-workflow imported" : "Import n8n/workflows/call-agent-subworkflow.json",
+      detail: callAgent ? "Call Agent sub-workflow imported" : "Import marketing-pipelines/call-agent-subworkflow.json",
     },
     {
       step: "n8n_main_workflow_present",
       passed: main !== undefined,
-      detail: main ? "Marketing Pipeline main workflow imported" : "Import n8n/workflows/marketing-pipeline-main.json",
+      detail: main ? "Marketing Pipeline main workflow imported" : "Import marketing-pipelines/marketing-pipeline-main.json",
     },
     {
       step: "n8n_main_workflow_active",

@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../load-env.js";
+import {
+  CALL_AGENT_FILENAME,
+  MARKETING_PIPELINE_FILENAME,
+  WORKFLOWS_DIR,
+} from "../workflows/write-workflows.js";
 import { N8N_API_URL_DEFAULT, createN8nClient } from "./client.js";
-
-export const MARKETING_PIPELINE_FILENAME = "marketing-pipeline-main.json";
-export const CALL_AGENT_FILENAME = "call-agent-subworkflow.json";
 
 export interface N8nDeployNode {
   name: string;
@@ -97,7 +99,7 @@ export function allowedSettings(settings: Record<string, unknown> | undefined): 
 }
 
 function workflowPaths(repoRoot: string): { marketing: string; callAgent: string } {
-  const workflowsDir = resolve(repoRoot, "n8n", "workflows");
+  const workflowsDir = resolve(repoRoot, WORKFLOWS_DIR);
   return {
     marketing: resolve(workflowsDir, MARKETING_PIPELINE_FILENAME),
     callAgent: resolve(workflowsDir, CALL_AGENT_FILENAME),

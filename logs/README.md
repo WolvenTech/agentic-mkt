@@ -27,7 +27,7 @@ To promote a successful run into the committed canonical evidence file (for docs
 GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run
 ```
 
-That updates [`agent-harness/green-run-evidence.json`](../agent-harness/green-run-evidence.json) — commit only after a verified green run.
+That updates [`agents/harness/green-run-evidence.json`](../agents/harness/green-run-evidence.json) — commit only after a verified green run.
 
 ## Cleanup
 
