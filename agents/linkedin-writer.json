@@ -1,0 +1,13 @@
+{
+  "id": "linkedin-writer",
+  "provider": "google",
+  "model": "gemini-2.5-flash",
+  "temperature": 0.7,
+  "max_output_tokens": 1024,
+  "skills": ["wolven-voice", "linkedin-format"],
+  "output_schema": {
+    "deliverable_markdown": "Full LinkedIn post draft in markdown",
+    "resumo": "2-3 sentence summary of the draft",
+    "autochecagem": "Bullet list validating draft against acceptance criteria"
+  }
+}

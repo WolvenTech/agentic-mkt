@@ -1,0 +1,37 @@
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*
+*credential*.json
+*.p12
+*.pfx
+
+# n8n credential exports
+n8n/credentials/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.coverage
+htmlcov/
+
+# Editor and IDE
+.vscode/
+.cursor/
+.idea/
+*.swp
+*.swo
+*~
+
+# Compozy task tracking (local planning; not runtime artifacts)
+.compozy/

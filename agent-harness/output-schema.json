@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/wolven/agentic-mkt/agent-harness/output-schema.json",
+  "title": "AgentOutput",
+  "description": "Required Gemini response shape after parsing. Keys align with agents/linkedin-writer.json output_schema.",
+  "type": "object",
+  "required": ["deliverable_markdown", "resumo", "autochecagem"],
+  "properties": {
+    "deliverable_markdown": {
+      "type": "string",
+      "description": "Full LinkedIn post draft in markdown"
+    },
+    "resumo": {
+      "type": "string",
+      "description": "2-3 sentence summary of the draft"
+    },
+    "autochecagem": {
+      "type": "string",
+      "description": "Bullet list validating draft against acceptance criteria"
+    }
+  },
+  "additionalProperties": false
+}

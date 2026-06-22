@@ -1,0 +1,33 @@
+{
+  "list_name": "Marketing Pipeline",
+  "clickup_list_id": "<TBD>",
+  "custom_fields": {
+    "criterios_de_aceite": {
+      "name": "Critérios de Aceite",
+      "type": "text",
+      "clickup_field_id": "<TBD>"
+    },
+    "agent_id": {
+      "name": "agent_id",
+      "type": "short_text",
+      "default": "linkedin-writer",
+      "clickup_field_id": "<TBD>"
+    },
+    "revision_count": {
+      "name": "revision_count",
+      "type": "number",
+      "default": 0,
+      "clickup_field_id": "<TBD>"
+    }
+  },
+  "statuses": {
+    "backlog": "Backlog",
+    "ready_to_work": "Ready to Work",
+    "in_progress": "In Progress",
+    "review": "Review",
+    "approved": "Approved",
+    "done": "Done",
+    "blocked": "Blocked",
+    "needs_revision": "Needs Revision"
+  }
+}
