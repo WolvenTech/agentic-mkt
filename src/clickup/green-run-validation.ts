@@ -9,17 +9,20 @@ import type { FieldMapping } from "../types/field-mapping.js";
 import { AUTOMATION_STATUS_KEYS, automationStatusDisplayName, automationStatusDisplayNames } from "../types/field-mapping.js";
 import { loadRepoDotenv, REPO_ROOT } from "../load-env.js";
 import {
+  N8N_API_URL_DEFAULT,
+  N8nHttpError,
+  N8nRequestError,
+  createN8nClient,
   n8nClientFromEnv,
   summarizeExecution,
   type N8nClient,
   type N8nExecution,
+  type N8nWorkflowSummary,
 } from "../n8n/client.js";
 import { ClickUpHttpError, clickupDelete, clickupGet, clickupPost, clickupPut } from "./client.js";
 import type { ClickUpClientOptions } from "./client.js";
 
-export { COMMENT_SECTIONS };
-
-export const N8N_API_URL_DEFAULT = "https://n8n.wolven.com.br";
+export { COMMENT_SECTIONS, N8N_API_URL_DEFAULT };
 export const EVIDENCE_PATH = resolve(REPO_ROOT, "agent-harness", "green-run-evidence.json");
 export const RUN_LOG_ROOT = resolve(REPO_ROOT, "logs", "green-run");
 
@@ -202,40 +205,30 @@ async function clickupStatusesPresent(
   }
 }
 
-interface N8nWorkflowSummary {
-  name?: string;
-  active?: boolean;
-}
+interface N8nWorkflowCheckSummary extends Pick<N8nWorkflowSummary, "name" | "active"> {}
 
-function findN8nWorkflow(workflows: N8nWorkflowSummary[], ...names: string[]): N8nWorkflowSummary | undefined {
+function findN8nWorkflow(workflows: N8nWorkflowCheckSummary[], ...names: string[]): N8nWorkflowCheckSummary | undefined {
   const lowered = new Set(names.map((n) => n.toLowerCase()));
   return workflows.find((wf) => lowered.has((wf.name ?? "").toLowerCase()));
 }
 
-async function n8nFetchWorkflows(apiUrl: string, apiKey: string): Promise<{ data?: N8nWorkflowSummary[] }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30_000);
-  try {
-    const res = await fetch(`${apiUrl.replace(/\/+$/, "")}/api/v1/workflows?limit=100`, {
-      headers: { "X-N8N-API-KEY": apiKey, Accept: "application/json" },
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status} ${body.slice(0, 200)}`);
-    }
-    return (await res.json()) as { data?: N8nWorkflowSummary[] };
-  } finally {
-    clearTimeout(timer);
+function n8nWorkflowErrorDetail(err: unknown): string {
+  if (err instanceof N8nHttpError) {
+    return `n8n API error: HTTP ${err.status} ${err.bodySnippet}`;
   }
+  if (err instanceof N8nRequestError) {
+    return `n8n API error: ${err.message}`;
+  }
+  return `n8n API error: ${err instanceof Error ? err.message : String(err)}`;
 }
 
 async function n8nWorkflowChecks(apiUrl: string, apiKey: string): Promise<CheckResult[]> {
-  let response: { data?: N8nWorkflowSummary[] };
+  let workflows: N8nWorkflowCheckSummary[];
   try {
-    response = await n8nFetchWorkflows(apiUrl, apiKey);
+    const client = createN8nClient({ apiUrl, apiKey });
+    workflows = await client.listWorkflows(100);
   } catch (err) {
-    const detail = `n8n API error: ${err instanceof Error ? err.message : String(err)}`;
+    const detail = n8nWorkflowErrorDetail(err);
     return [
       { step: "n8n_call_agent_workflow_present", passed: false, detail },
       { step: "n8n_main_workflow_present", passed: false, detail },
@@ -243,7 +236,6 @@ async function n8nWorkflowChecks(apiUrl: string, apiKey: string): Promise<CheckR
     ];
   }
 
-  const workflows = response.data ?? [];
   const callAgent = findN8nWorkflow(workflows, "Call Agent");
   const main = findN8nWorkflow(workflows, "Marketing Pipeline");
   return [

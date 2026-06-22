@@ -259,7 +259,7 @@ describe("summarizeExecution", () => {
     expect(summary.path).toBe("full");
   });
 
-  it("summarizes a filtered self-echo execution", () => {
+  it("summarizes a filtered self-echo execution (legacy noOp node)", () => {
     const execution = webhookExecution({
       id: "1256",
       status: "success",
@@ -305,6 +305,79 @@ describe("summarizeExecution", () => {
       duration_ms: 7,
     });
     expect(summary.failed_node).toBeUndefined();
+  });
+
+  it("summarizes a filtered self-echo execution (Log Ingress Skipped node)", () => {
+    const execution = webhookExecution({
+      id: "1256",
+      status: "success",
+      startedAt: "2026-06-22T12:01:00.000Z",
+      stoppedAt: "2026-06-22T12:01:00.007Z",
+      data: {
+        resultData: {
+          runData: {
+            "ClickUp Webhook": [
+              {
+                data: {
+                  main: [
+                    [
+                      {
+                        json: {
+                          task_id: "86aj66hkb",
+                          history_items: [
+                            {
+                              field: "status",
+                              before: { status: "ready" },
+                              after: { status: "writing" },
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  ],
+                },
+              },
+            ],
+            "Log Ingress Skipped": [{ executionTime: 1 }],
+          },
+        },
+      },
+    });
+
+    const summary = summarizeExecution(execution);
+    expect(summary).toMatchObject({
+      execution_id: "1256",
+      task_id: "86aj66hkb",
+      transition: "ready → writing",
+      path: "filtered",
+      duration_ms: 7,
+    });
+  });
+
+  it("gets a workflow by id", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toBe(`${N8N_API_URL_DEFAULT}/api/v1/workflows/wf-main`);
+      return jsonResponse({ id: "wf-main", name: "Marketing Pipeline", nodes: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createN8nClient(OPTIONS);
+    const workflow = await client.getWorkflow("wf-main");
+    expect(workflow.name).toBe("Marketing Pipeline");
+  });
+
+  it("updates a workflow via PUT", async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(`${N8N_API_URL_DEFAULT}/api/v1/workflows/wf-main`);
+      expect(init.method).toBe("PUT");
+      expect(init.body).toContain('"name":"Marketing Pipeline"');
+      return jsonResponse({ ok: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createN8nClient(OPTIONS);
+    await client.updateWorkflow("wf-main", { name: "Marketing Pipeline", nodes: [] });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("summarizes an error execution with failed node", () => {

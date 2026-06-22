@@ -108,7 +108,7 @@ describe("pnpm test:live — gate enforcement", () => {
   it("does not reach Vitest when vendor:gate fails (no credentials)", () => {
     const result = spawnSync("pnpm", ["run", "test:live"], {
       cwd: REPO_ROOT,
-      env: { ...process.env, PATH: process.env.PATH ?? "", SKIP_DOTENV: "1" },
+      env: { PATH: process.env.PATH ?? "", SKIP_DOTENV: "1" },
       encoding: "utf-8",
     });
 

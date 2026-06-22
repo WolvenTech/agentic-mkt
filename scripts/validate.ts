@@ -18,8 +18,6 @@ function hasVendorEnv(env: NodeJS.ProcessEnv): boolean {
   );
 }
 
-loadRepoDotenv();
-
 const testCode = runPnpmScript("test");
 if (testCode !== 0) {
   process.exit(testCode);
@@ -29,6 +27,8 @@ const checkCode = runPnpmScript("build:workflows:check");
 if (checkCode !== 0) {
   process.exit(checkCode);
 }
+
+loadRepoDotenv();
 
 if (hasVendorEnv(process.env)) {
   const gateCode = runPnpmScript("vendor:gate");

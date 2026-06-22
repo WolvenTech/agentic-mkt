@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../load-env.js";
-import { N8N_API_URL_DEFAULT } from "./client.js";
+import { N8N_API_URL_DEFAULT, createN8nClient } from "./client.js";
 
 export const MARKETING_PIPELINE_FILENAME = "marketing-pipeline-main.json";
 export const CALL_AGENT_FILENAME = "call-agent-subworkflow.json";
@@ -104,54 +104,6 @@ function workflowPaths(repoRoot: string): { marketing: string; callAgent: string
   };
 }
 
-async function fetchWorkflow(
-  fetchImpl: typeof fetch,
-  apiUrl: string,
-  apiKey: string,
-  id: string
-): Promise<N8nDeployWorkflow> {
-  const res = await fetchImpl(`${apiUrl}/api/v1/workflows/${id}`, {
-    headers: { "X-N8N-API-KEY": apiKey, Accept: "application/json" },
-  });
-  if (!res.ok) {
-    throw new Error(`GET workflow ${id} failed: HTTP ${res.status}`);
-  }
-  return (await res.json()) as N8nDeployWorkflow;
-}
-
-async function listWorkflows(
-  fetchImpl: typeof fetch,
-  apiUrl: string,
-  apiKey: string
-): Promise<Array<{ id: string; name: string }>> {
-  const res = await fetchImpl(`${apiUrl}/api/v1/workflows?limit=100`, {
-    headers: { "X-N8N-API-KEY": apiKey, Accept: "application/json" },
-  });
-  if (!res.ok) {
-    throw new Error(`List workflows failed: HTTP ${res.status}`);
-  }
-  const data = (await res.json()) as { data?: Array<{ id: string; name: string }> };
-  return data.data ?? [];
-}
-
-async function updateWorkflow(
-  fetchImpl: typeof fetch,
-  apiUrl: string,
-  apiKey: string,
-  id: string,
-  body: Record<string, unknown>
-): Promise<void> {
-  const res = await fetchImpl(`${apiUrl}/api/v1/workflows/${id}`, {
-    method: "PUT",
-    headers: { "X-N8N-API-KEY": apiKey, Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`PUT workflow ${id} failed: HTTP ${res.status} ${text.slice(0, 300)}`);
-  }
-}
-
 function readLocalWorkflow(path: string): N8nDeployWorkflow {
   return JSON.parse(readFileSync(path, "utf-8")) as N8nDeployWorkflow;
 }
@@ -177,9 +129,7 @@ function marketingStatusSummary(workflow: N8nDeployWorkflow): Pick<
 }
 
 async function deployWorkflowByName(
-  fetchImpl: typeof fetch,
-  apiUrl: string,
-  apiKey: string,
+  client: ReturnType<typeof createN8nClient>,
   workflows: Array<{ id: string; name: string }>,
   workflowName: string,
   localPath: string
@@ -189,10 +139,10 @@ async function deployWorkflowByName(
     throw new Error(`Workflow "${workflowName}" not found on n8n — import ${localPath} first`);
   }
 
-  const live = await fetchWorkflow(fetchImpl, apiUrl, apiKey, match.id);
+  const live = (await client.getWorkflow(match.id)) as N8nDeployWorkflow;
   const local = readLocalWorkflow(localPath);
   const nodes = mergeLiveBindings(live.nodes, local.nodes);
-  await updateWorkflow(fetchImpl, apiUrl, apiKey, match.id, {
+  await client.updateWorkflow(match.id, {
     name: local.name,
     nodes,
     connections: local.connections,
@@ -204,30 +154,20 @@ async function deployWorkflowByName(
 
 /** Push committed workflow JSON to n8n, preserving live credential and webhook bindings. */
 export async function deployWorkflows(options: DeployWorkflowsOptions): Promise<DeployWorkflowsReport> {
-  const fetchImpl = options.fetchImpl ?? fetch;
   const apiUrl = (options.apiUrl ?? N8N_API_URL_DEFAULT).replace(/\/+$/, "");
   const repoRoot = options.repoRoot ?? REPO_ROOT;
   const paths = workflowPaths(repoRoot);
-  const workflows = await listWorkflows(fetchImpl, apiUrl, options.apiKey);
-
-  const callAgent = await deployWorkflowByName(
-    fetchImpl,
+  const client = createN8nClient({
     apiUrl,
-    options.apiKey,
-    workflows,
-    "Call Agent",
-    paths.callAgent
-  );
+    apiKey: options.apiKey,
+    fetchImpl: options.fetchImpl,
+  });
+  const workflows = await client.listWorkflows(100);
 
-  const marketing = await deployWorkflowByName(
-    fetchImpl,
-    apiUrl,
-    options.apiKey,
-    workflows,
-    "Marketing Pipeline",
-    paths.marketing
-  );
-  const marketingLive = await fetchWorkflow(fetchImpl, apiUrl, options.apiKey, marketing.id);
+  const callAgent = await deployWorkflowByName(client, workflows, "Call Agent", paths.callAgent);
+
+  const marketing = await deployWorkflowByName(client, workflows, "Marketing Pipeline", paths.marketing);
+  const marketingLive = (await client.getWorkflow(marketing.id)) as N8nDeployWorkflow;
 
   return {
     apiUrl,

@@ -3,7 +3,7 @@ import { unwrapWebhookPayload, type ClickUpWebhookPayload } from "../marketing-p
 export const N8N_API_URL_DEFAULT = "https://n8n.wolven.com.br";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const FILTERED_NODE = "Ignore Non-Matching Webhook";
+const FILTERED_PATH_NODES = ["Log Ingress Skipped", "Ignore Non-Matching Webhook"] as const;
 const FULL_PATH_MARKERS = ["Extract Webhook Context", "GET ClickUp Task", "Execute Call Agent"] as const;
 
 export type ExecutionPathType = "full" | "filtered" | "error";
@@ -19,6 +19,14 @@ export interface N8nWorkflowSummary {
   id: string;
   name: string;
   active?: boolean;
+}
+
+export interface N8nWorkflow extends N8nWorkflowSummary {
+  nodes?: unknown[];
+  connections?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
+  staticData?: unknown;
+  [key: string]: unknown;
 }
 
 export interface N8nExecution {
@@ -69,6 +77,8 @@ export interface ExecutionSummary {
 
 export interface N8nClient {
   listWorkflows(limit?: number): Promise<N8nWorkflowSummary[]>;
+  getWorkflow(id: string): Promise<N8nWorkflow>;
+  updateWorkflow(id: string, body: Record<string, unknown>): Promise<void>;
   getExecution(id: string, includeData?: boolean): Promise<N8nExecution>;
   listExecutions(options?: { workflowId?: string; limit?: number }): Promise<N8nExecution[]>;
 }
@@ -106,9 +116,10 @@ function authHeaders(apiKey: string): Record<string, string> {
 }
 
 async function request<T>(
-  method: "GET",
+  method: "GET" | "PUT",
   path: string,
-  options: N8nClientOptions
+  options: N8nClientOptions,
+  body?: Record<string, unknown>
 ): Promise<T> {
   const apiUrl = resolveApiUrl(options.apiUrl);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -121,14 +132,18 @@ async function request<T>(
   try {
     res = await fetchImpl(`${apiUrl}${path}`, {
       method,
-      headers: authHeaders(options.apiKey),
+      headers: {
+        ...authHeaders(options.apiKey),
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
     });
   } catch (err) {
     if (controller.signal.aborted) {
-      throw new N8nRequestError(`n8n request timed out after ${timeoutMs}ms: GET ${path}`, err);
+      throw new N8nRequestError(`n8n request timed out after ${timeoutMs}ms: ${method} ${path}`, err);
     }
-    throw new N8nRequestError(`n8n request failed: GET ${path}`, err);
+    throw new N8nRequestError(`n8n request failed: ${method} ${path}`, err);
   } finally {
     clearTimeout(timer);
   }
@@ -136,6 +151,10 @@ async function request<T>(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new N8nHttpError(res.status, text.slice(0, 200));
+  }
+
+  if (method === "PUT") {
+    return undefined as T;
   }
 
   return (await res.json()) as T;
@@ -151,6 +170,14 @@ export function createN8nClient(options: N8nClientOptions): N8nClient {
         options
       );
       return data.data ?? [];
+    },
+
+    async getWorkflow(id: string): Promise<N8nWorkflow> {
+      return request<N8nWorkflow>("GET", `/api/v1/workflows/${id}`, options);
+    },
+
+    async updateWorkflow(id: string, body: Record<string, unknown>): Promise<void> {
+      await request<void>("PUT", `/api/v1/workflows/${id}`, options, body);
     },
 
     async getExecution(id: string, includeData = false): Promise<N8nExecution> {
@@ -280,7 +307,7 @@ function classifyExecutionPath(execution: N8nExecution, nodeNames: Set<string>):
     return "error";
   }
 
-  const ranFiltered = nodeNames.has(FILTERED_NODE);
+  const ranFiltered = FILTERED_PATH_NODES.some((name) => nodeNames.has(name));
   const ranFullMarker = FULL_PATH_MARKERS.some((name) => nodeNames.has(name));
   if (ranFiltered && !ranFullMarker) {
     return "filtered";

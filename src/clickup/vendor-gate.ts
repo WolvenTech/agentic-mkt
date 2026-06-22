@@ -1,9 +1,15 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadRepoDotenv, REPO_ROOT } from "../load-env.js";
+import {
+  N8N_API_URL_DEFAULT,
+  N8nHttpError,
+  N8nRequestError,
+  createN8nClient,
+} from "../n8n/client.js";
 
+export { N8N_API_URL_DEFAULT };
 export const CLICKUP_API = "https://api.clickup.com/api/v2";
-export const N8N_API_URL_DEFAULT = "https://n8n.wolven.com.br";
 
 const REQUIRED_CUSTOM_FIELDS = ["Critérios de Aceite", "agent_id", "revision_count"];
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -50,11 +56,14 @@ function clickupRequest(token: string, path: string): Promise<FetchResult> {
   return fetchJson(`${CLICKUP_API}${path}`, { Authorization: token, Accept: "application/json" });
 }
 
-function n8nRequest(apiUrl: string, apiKey: string, path: string): Promise<FetchResult> {
-  return fetchJson(`${apiUrl.replace(/\/+$/, "")}${path}`, {
-    "X-N8N-API-KEY": apiKey,
-    Accept: "application/json",
-  });
+function n8nErrorMessage(err: unknown): string {
+  if (err instanceof N8nHttpError) {
+    return `HTTP ${err.status}: ${err.bodySnippet}`;
+  }
+  if (err instanceof N8nRequestError) {
+    return `connection failed: ${err.message}`;
+  }
+  return `connection failed: ${err instanceof Error ? err.message : String(err)}`;
 }
 
 function envChecks(env: NodeJS.ProcessEnv): GateCheck[] {
@@ -127,7 +136,15 @@ async function liveChecks(config: VendorConfig): Promise<GateCheck[]> {
     });
   }
 
-  const workflowsResult = await n8nRequest(config.n8nUrl, config.n8nKey, "/api/v1/workflows?limit=100");
+  const workflowsResult = await (async (): Promise<FetchResult> => {
+    try {
+      const client = createN8nClient({ apiUrl: config.n8nUrl, apiKey: config.n8nKey });
+      const workflows = await client.listWorkflows(100);
+      return { ok: true, data: { data: workflows } };
+    } catch (err) {
+      return { ok: false, message: n8nErrorMessage(err) };
+    }
+  })();
   if (workflowsResult.ok) {
     const workflows: Array<{ name?: string }> = workflowsResult.data?.data ?? [];
     const names = new Set(workflows.map((w) => (w.name ?? "").toLowerCase()));
