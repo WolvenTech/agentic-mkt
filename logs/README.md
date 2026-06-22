@@ -14,16 +14,17 @@ Ephemeral output from local scripts and validation runs. Nothing in this directo
 Green run validation writes here by default:
 
 ```bash
-python3 clickup/green_run_validation.py
+pnpm vendor:gate
+pnpm green-run
 # → logs/green-run/2026-06-22T143022/evidence.json
 
-GREEN_RUN_EXECUTE=1 python3 clickup/green_run_validation.py
+GREEN_RUN_EXECUTE=1 pnpm green-run
 ```
 
 To promote a successful run into the committed canonical evidence file (for docs and tests), copy manually or set:
 
 ```bash
-GREEN_RUN_UPDATE_CANONICAL=1 python3 clickup/green_run_validation.py
+GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run
 ```
 
 That updates [`agent-harness/green-run-evidence.json`](../agent-harness/green-run-evidence.json) — commit only after a verified green run.

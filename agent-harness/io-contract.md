@@ -7,7 +7,7 @@ M1 harness contract between n8n orchestration and the worker agent. Type definit
 | Direction | Shape | Notes |
 |-----------|-------|-------|
 | **Input** | `CallAgentInput` | Passed by the main workflow when executing the sub-workflow |
-| **Output (success)** | `AgentOutput` | Parsed Gemini JSON; validated against [`output-schema.json`](output-schema.json) |
+| **Output (success)** | `AgentOutput` | Parsed OpenAI JSON; validated against [`output-schema.json`](output-schema.json) |
 | **Output (parse failure)** | Error envelope | `{ "error": string, "raw_response": string }` — see [Error envelope](#error-envelope) |
 
 **Idempotency:** None in M1 ([ADR-001](../.compozy/tasks/marketing-pipeline-clickup-n8n/adrs/adr-001.md)). Duplicate webhook deliveries may produce duplicate ClickUp comments. Phase 2 adds ingress dedup.
@@ -36,7 +36,7 @@ Example:
 
 ## Output (`AgentOutput`)
 
-Required Gemini response shape after the Code node parses JSON from the model response.
+Required OpenAI response shape after the Code node parses JSON from the model response.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -58,7 +58,7 @@ Example:
 
 ## Error envelope
 
-When the Code node cannot parse valid `AgentOutput` JSON from Gemini:
+When the Code node cannot parse valid `AgentOutput` JSON from the model:
 
 ```json
 {
@@ -117,9 +117,10 @@ See TechSpec **Data Models → ClickUp task comment format** for the canonical t
 Anchors from the M1 green run validation (task_08). Committed scaffold: [`green-run-evidence.json`](green-run-evidence.json). Live run output goes to `logs/green-run/<timestamp>/evidence.json` (gitignored — see [`logs/README.md`](../logs/README.md)). Run:
 
 ```bash
-python3 clickup/green_run_validation.py          # preflight only → logs/
-GREEN_RUN_EXECUTE=1 python3 clickup/green_run_validation.py   # after infra ready
-GREEN_RUN_UPDATE_CANONICAL=1 ...                 # promote run into green-run-evidence.json for commit
+pnpm vendor:gate                       # exit 0 required before any step below
+pnpm green-run                         # preflight only → logs/
+GREEN_RUN_EXECUTE=1 pnpm green-run      # after infra ready
+GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run   # promote run into green-run-evidence.json for commit
 ```
 
 **Current `validation_status`:** `blocked` (see preflight blockers in JSON). Update this section after a successful production run sets `main_workflow.verified: true`.
@@ -132,21 +133,35 @@ GREEN_RUN_UPDATE_CANONICAL=1 ...                 # promote run into green-run-ev
 | **Call Agent sub-workflow execution ID** | _(pending green run)_ |
 | **ClickUp task URL** | _(pending green run)_ |
 | **End-to-end latency** | _(pending — target < 60 s)_ |
-| **Status path** | Ready to Work → In Progress → Review |
+| **Status path** | ready → writing → approval (see [Live status names](#live-clickup-status-names-vs-n8n-node-labels)) |
 | **Marketing lead usability** | pending — run green run after operator setup |
 | **Silent failures** | _(pending green run)_ |
 
 **Operator blockers (2026-06-22 preflight):**
 
 1. Create **Marketing Pipeline** ClickUp list with M1 statuses and custom fields per [`clickup/list-schema.md`](../clickup/list-schema.md) (current `CLICKUP_LIST_ID` points at **Linkedin Post Creator**, which lacks required fields).
-2. Run `python3 clickup/sync-field-mapping.py` and commit updated `field-mapping.json`.
-3. Bind ClickUp + Gemini credentials on imported n8n workflows; activate **Marketing Pipeline**; register ClickUp webhook.
-4. Re-run `GREEN_RUN_EXECUTE=1 python3 clickup/green_run_validation.py` and record execution ID + task URL here.
+2. Run `pnpm vendor:gate` then `pnpm clickup:sync` and commit updated `field-mapping.json`.
+3. Bind ClickUp + OpenAI credentials on imported n8n workflows; activate **Marketing Pipeline**; register ClickUp webhook.
+4. Re-run `GREEN_RUN_EXECUTE=1 pnpm green-run` and record execution ID + task URL here.
 
 **Failure observations (best-effort M1):**
 
 - **Missing Critérios de Aceite:** workflow still runs; autochecagem quality may suffer — brief gate is manual only ([`clickup/list-schema.md`](../clickup/list-schema.md)).
 - **Duplicate webhook:** second delivery may produce a duplicate comment per ADR-001; no dedup in M1.
+
+## Live ClickUp status names vs n8n node labels
+
+[`clickup/field-mapping.json`](../clickup/field-mapping.json) defines API status strings. n8n node names retain TechSpec labels for operator traceability in Executions.
+
+| ClickUp status | `field-mapping.json` key | n8n node |
+|----------------|--------------------------|----------|
+| `ready` | `statuses.ready` | **Ready to Work?** (ingress filter) |
+| `writing` | `statuses.writing` | **Status → In Progress** |
+| `approval` | `statuses.review` | **Status → Review** |
+
+**Happy-path transitions:** `backlog → ready` (ingress) → workflow sets `writing` → agent + comment → workflow sets `approval`.
+
+**Self-echo executions (expected):** each workflow PATCH emits another `taskStatusUpdated` (`ready → writing`, then `writing → approval`). Ingress ignores these because `after.status` is not `ready`. They appear as short green n8n runs (~7 ms) — not duplicate pipeline work. See [`clickup/webhook-contract.md`](../clickup/webhook-contract.md#self-echo-webhooks-expected-noise).
 
 ## Workflow sequence expectations
 
@@ -160,32 +175,32 @@ sequenceDiagram
     participant Main as Main Workflow
     participant Agent as Call Agent Sub-workflow
     participant GH as GitHub (agentic-mkt)
-    participant LLM as Gemini 2.5 Flash
+    participant LLM as OpenAI gpt-4.1-mini
 
-    Lead->>CU: Move task to Ready to Work
+    Lead->>CU: Move task to ready
     CU->>WH: taskStatusUpdated webhook
-    WH->>Main: Ingress filter (after.status = Ready to Work)
+    WH->>Main: Ingress filter (entering ready)
     Main->>CU: GET task (title, description, custom fields)
-    Main->>CU: PATCH status → In Progress
-    Lead->>CU: Sees In Progress (~3 s)
+    Main->>CU: PATCH status → writing
+    Lead->>CU: Sees writing (~3 s)
     Main->>Agent: CallAgentInput envelope
     Agent->>GH: Fetch agents/{agent_id}.json + skills/*.md
     Agent->>LLM: Assembled system prompt + JSON output mode
     LLM-->>Agent: Structured JSON response
     Agent-->>Main: AgentOutput or error envelope
     Main->>CU: POST comment (LinkedIn Draft, Resumo, Autochecagem)
-    Main->>CU: PATCH status → Review
-    Lead->>CU: Reads draft comment in Review (< 60 s target)
+    Main->>CU: PATCH status → approval
+    Lead->>CU: Reads draft comment in approval (< 60 s target)
 ```
 
 | Step | Timing | Visible to lead | n8n node (main workflow) |
 |------|--------|-----------------|---------------------------|
-| 1 | T+0 s | Task in Ready to Work | ClickUp Webhook receives payload |
-| 2 | T+1–3 s | Status → In Progress | GET ClickUp Task → Extract Task Fields → Status → In Progress |
-| 3 | T+3–60 s | (In Progress) | Execute Call Agent → Format Draft Comment → POST Task Comment |
-| 4 | T+<60 s | Comment with three sections | Status → Review |
+| 1 | T+0 s | Task in ready | ClickUp Webhook receives payload |
+| 2 | T+1–3 s | Status → writing | GET ClickUp Task → Extract Task Fields → Status → In Progress |
+| 3 | T+3–60 s | (writing) | Execute Call Agent → Format Draft Comment → POST Task Comment |
+| 4 | T+<60 s | Comment with three sections | Status → Review (PATCH → approval) |
 
-**Provider note (ADR-005):** M1 uses **Gemini 2.5 Flash** via the n8n Gemini node. The PRD originally specified Claude Sonnet 4.6. Phase 2 may swap providers by changing `provider` and `model` in `agents/{agent_id}.json` without restructuring workflows — evaluate draft quality during Phase 2 planning.
+**Provider note (ADR-005):** M1 uses **OpenAI `gpt-4.1-mini`** via the n8n OpenAI Chat Model node (defaults in [`src/call-agent/logic.ts`](../src/call-agent/logic.ts)). The PRD originally specified Claude Sonnet 4.6; an earlier draft used Gemini. Phase 2 may swap providers by changing `provider` and `model` in `agents/{agent_id}.json` without restructuring workflows — evaluate draft quality during Phase 2 planning.
 
 ## Troubleshooting
 
@@ -193,7 +208,7 @@ Actionable diagnostics for common M1 failure modes. Primary diagnostic surface: 
 
 ### Webhook not reaching n8n
 
-**Symptoms:** Task stays in Ready to Work; no new execution in n8n; ClickUp webhook log shows failed or no delivery.
+**Symptoms:** Task stays in ready; no new execution in n8n; ClickUp webhook log shows failed or no delivery.
 
 **Diagnostic steps:**
 
@@ -202,11 +217,11 @@ Actionable diagnostics for common M1 failure modes. Primary diagnostic surface: 
 3. In ClickUp → Integrations → Webhooks, verify the endpoint URL matches exactly (no trailing slash mismatch).
 4. Check ClickUp webhook delivery log for HTTP status codes (401/403/404/502 indicate credential, path, or host issues).
 5. **Simulate without ClickUp:** open the webhook node → **Listen for test event** → POST [`clickup/fixtures/task-status-updated-ready-to-work.json`](../clickup/fixtures/task-status-updated-ready-to-work.json) to the test URL. If this succeeds but production fails, the ClickUp registration is wrong — re-register with the production URL.
-6. Verify ingress filter: payload must have `history_items[0].field === "status"` and `history_items[0].after.status === "Ready to Work"` ([`clickup/webhook-contract.md`](../clickup/webhook-contract.md)). Transitions *from* Ready to Work to other statuses are ignored.
+6. Verify ingress filter: payload must have `history_items[0].field === "status"` and entering `ready` per [`field-mapping.json`](../clickup/field-mapping.json) ([`clickup/webhook-contract.md`](../clickup/webhook-contract.md)). Transitions such as `writing → approval` are self-echo and correctly ignored.
 
 ### Task stuck in In Progress
 
-**Symptoms:** Status changed to In Progress but no comment appeared; task never reached Review.
+**Symptoms:** Status changed to writing but no comment appeared; task never reached approval.
 
 **Diagnostic steps:**
 
@@ -215,22 +230,22 @@ Actionable diagnostics for common M1 failure modes. Primary diagnostic surface: 
 3. Walk the node sequence per TechSpec happy path: **Ready to Work?** → **GET ClickUp Task** → **Extract Task Fields** → **Status → In Progress** → **Execute Call Agent** → **Format Draft Comment** → **POST Task Comment** → **Status → Review**.
 4. If failed at **Execute Call Agent**, open the sub-workflow execution (ID often one less than main — see [green run evidence](#m1-green-run-evidence)). Check **Parse Agent Output** for `parse_success: false` or error envelope.
 5. If failed at **GET ClickUp Task** or **POST Task Comment**, re-bind the ClickUp credential and verify the token has access to the Marketing Pipeline list.
-6. If **Running** for > 120 s, check Gemini node timeout and GitHub fetch retries (max 2). Cancel stale execution and retry after fixing credentials.
-7. Confirm task was not manually moved out of In Progress during the run — partial runs leave the task in In Progress with no comment.
+6. If **Running** for > 120 s, check OpenAI node timeout and GitHub fetch retries (max 2). Cancel stale execution and retry after fixing credentials.
+7. Confirm task was not manually moved out of writing during the run — partial runs leave the task in writing with no comment.
 
-### Gemini JSON parse failures
+### OpenAI JSON parse failures
 
-**Symptoms:** n8n execution errors at **Agent Parse Failure** or **Parse Agent Output**; task stays In Progress; no ClickUp comment.
+**Symptoms:** n8n execution errors at **Agent Parse Failure** or **Parse Agent Output**; task stays in writing; no ClickUp comment.
 
 **Diagnostic steps:**
 
 1. In the Call Agent sub-workflow execution, open **Parse Agent Output** node output.
 2. If output is `{ "error": "...", "raw_response": "..." }` (error envelope), inspect `raw_response`:
-   - Markdown fences around JSON → Code node should strip; if not, check Gemini JSON output mode is enabled.
+   - Markdown fences around JSON → Code node should strip; if not, check OpenAI JSON output mode is enabled.
    - Missing keys (`deliverable_markdown`, `resumo`, `autochecagem`) → model returned partial JSON; tighten system prompt or reduce `max_output_tokens`.
-   - Non-JSON text → disable conversational preamble in Gemini node settings.
+   - Non-JSON text → disable conversational preamble in OpenAI node settings.
 3. Check structured log fields: `parse_success: false`, `execution_id`, `agent_id`.
-4. Main workflow **Agent Parse Failure** node throws with logged `error` — execution must **not** post a partial comment or advance to Review (TechSpec **Integration Points**).
+4. Main workflow **Agent Parse Failure** node throws with logged `error` — execution must **not** post a partial comment or advance to approval (Status → Review).
 5. **Isolation test:** run **Manual Trigger (Isolation Test)** on Call Agent sub-workflow per [`n8n/README.md`](../n8n/README.md#sub-workflow-isolation-test-procedure) before debugging the main workflow.
 
 ### Field ID mismatches
@@ -240,15 +255,16 @@ Actionable diagnostics for common M1 failure modes. Primary diagnostic surface: 
 **Diagnostic steps:**
 
 1. Open [`clickup/field-mapping.json`](../clickup/field-mapping.json) — `clickup_field_id` values must not be `<TBD>`.
-2. Re-sync from ClickUp API:
+2. Re-sync from ClickUp API (`pnpm clickup:sync`, the TypeScript successor to the original `sync-field-mapping.py` script):
    ```bash
    export CLICKUP_API_TOKEN="pk_..."
    export CLICKUP_LIST_ID="your_list_id"
-   python3 clickup/sync-field-mapping.py
+   pnpm vendor:gate
+   pnpm clickup:sync
    ```
-3. Run `python3 clickup/verify-api.py` and `python3 -m unittest tests.test_task_04_clickup -v`.
+3. Run `pnpm clickup:verify` and `pnpm test tests/clickup.test.ts`.
 4. In n8n **Extract Task Fields** Code node, confirm expressions reference `field-mapping.json` IDs, not hardcoded stale values.
-5. Re-import main workflow JSON after updating `field-mapping.json` if the builder embeds IDs at export time: `python3 n8n/scripts/build_marketing_pipeline_workflow.py`.
+5. Re-import main workflow JSON after updating `field-mapping.json` if the builder embeds IDs at export time: `pnpm build:workflows`.
 6. Verify custom field **names** in ClickUp UI match exactly: `Critérios de Aceite` (with accent), `agent_id`, `revision_count`.
 
 ## Reusable harness patterns
@@ -272,7 +288,7 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 **When to use:** Human-in-the-loop pipelines where the GUI (ClickUp) shows progress and the orchestrator mutates status at defined gates.
 
-**Description:** Webhook ingress on a single status (`Ready to Work`) triggers processing. Orchestrator sets **In Progress** before long-running work and **Review** only after successful delivery. Failures leave the task in In Progress with a visible n8n error — never silent.
+**Description:** Webhook ingress when entering `ready` triggers processing. Orchestrator sets **writing** (**Status → In Progress**) before long-running work and **approval** (**Status → Review**) only after successful delivery. Failures leave the task in writing with a visible n8n error — never silent.
 
 | Artifact | Reference |
 |----------|-----------|
@@ -285,7 +301,7 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 **When to use:** Agent quality depends on structured input; automated gates are deferred but human discipline must be documented.
 
-**Description:** Require title, description, and **Critérios de Aceite** before moving to **Ready to Work**. V1 enforcement is manual (lead self-check); n8n may still run if fields are empty. Acceptance criteria flow into `CallAgentInput.criterios_de_aceite` and appear in output `autochecagem`.
+**Description:** Require title, description, and **Critérios de Aceite** before moving to **ready**. V1 enforcement is manual (lead self-check); n8n may still run if fields are empty. Acceptance criteria flow into `CallAgentInput.criterios_de_aceite` and appear in output `autochecagem`.
 
 | Artifact | Reference |
 |----------|-----------|

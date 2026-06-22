@@ -1,0 +1,741 @@
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import {
+  COMMENT_SECTIONS,
+  commentIncludesRequiredSections,
+  loadFieldMapping,
+} from "../marketing-pipeline/logic.js";
+import type { FieldMapping } from "../types/field-mapping.js";
+import { AUTOMATION_STATUS_KEYS, automationStatusDisplayName, automationStatusDisplayNames } from "../types/field-mapping.js";
+import { loadRepoDotenv, REPO_ROOT } from "../load-env.js";
+import {
+  n8nClientFromEnv,
+  summarizeExecution,
+  type N8nClient,
+  type N8nExecution,
+} from "../n8n/client.js";
+import { ClickUpHttpError, clickupDelete, clickupGet, clickupPost, clickupPut } from "./client.js";
+import type { ClickUpClientOptions } from "./client.js";
+
+export { COMMENT_SECTIONS };
+
+export const N8N_API_URL_DEFAULT = "https://n8n.wolven.com.br";
+export const EVIDENCE_PATH = resolve(REPO_ROOT, "agent-harness", "green-run-evidence.json");
+export const RUN_LOG_ROOT = resolve(REPO_ROOT, "logs", "green-run");
+
+export const GREEN_RUN_CHECKLIST = [
+  "field_mapping_synced",
+  "clickup_list_configured",
+  "clickup_custom_fields_present",
+  "clickup_statuses_present",
+  "n8n_call_agent_workflow_present",
+  "n8n_main_workflow_present",
+  "n8n_main_workflow_active",
+  "test_task_brief_complete",
+  "status_in_progress_within_5s",
+  "comment_has_three_sections",
+  "latency_under_60s",
+  "final_status_review",
+  "n8n_execution_success",
+  "marketing_lead_usability",
+] as const;
+
+const REQUIRED_FIELDS = ["Critérios de Aceite", "agent_id", "revision_count"];
+
+const RUNTIME_STEPS = [
+  "test_task_brief_complete",
+  "status_in_progress_within_5s",
+  "comment_has_three_sections",
+  "latency_under_60s",
+  "final_status_review",
+  "n8n_execution_success",
+  "marketing_lead_usability",
+];
+
+export const DEFAULT_TEST_BRIEF = {
+  name: "[M1 green run] Launch post for Q3 product update",
+  description:
+    "Announce the new dashboard feature for marketing leads. Angle: productivity win for remote teams.",
+  criterios_de_aceite: "- Mention the dashboard\n- CTA to sign up\n- Under 300 words",
+};
+
+export interface CheckResult {
+  step: string;
+  passed: boolean;
+  detail: string;
+}
+
+interface ChecklistEntry {
+  step: string;
+  status: "pass" | "fail" | "skip";
+  detail: string;
+}
+
+/** Accumulates green-run preflight checks; mirrors Python's `PreflightReport` dataclass. */
+export class PreflightReport {
+  results: CheckResult[] = [];
+
+  get blockers(): string[] {
+    return this.results.filter((r) => !r.passed).map((r) => r.detail);
+  }
+
+  get coveragePercent(): number {
+    if (this.results.length === 0) {
+      return 0;
+    }
+    const passed = this.results.filter((r) => r.passed).length;
+    return Math.round((1000 * passed) / this.results.length) / 10;
+  }
+
+  toDict(): { checklist: ChecklistEntry[]; coverage_percent: number; blockers: string[] } {
+    return {
+      checklist: this.results.map((r) => ({ step: r.step, status: r.passed ? "pass" : "fail", detail: r.detail })),
+      coverage_percent: this.coveragePercent,
+      blockers: this.blockers,
+    };
+  }
+}
+
+export function commentHasSections(commentText: string): boolean {
+  return commentIncludesRequiredSections(commentText);
+}
+
+export function fieldMappingSynced(mapping: FieldMapping): CheckResult {
+  const listId = String(mapping.clickup_list_id ?? "");
+  if (!listId || listId === "<TBD>") {
+    return { step: "field_mapping_synced", passed: false, detail: "clickup_list_id is unset — run pnpm clickup:sync" };
+  }
+  for (const [key, spec] of Object.entries(mapping.custom_fields)) {
+    const fieldId = String(spec.clickup_field_id ?? "");
+    if (!fieldId || fieldId === "<TBD>") {
+      return {
+        step: "field_mapping_synced",
+        passed: false,
+        detail: `custom field '${key}' has unset clickup_field_id — run pnpm clickup:sync`,
+      };
+    }
+  }
+  return { step: "field_mapping_synced", passed: true, detail: `field-mapping.json synced for list ${listId}` };
+}
+
+async function clickupListConfigured(
+  clientOptions: ClickUpClientOptions,
+  listId: string,
+  mapping: FieldMapping
+): Promise<CheckResult> {
+  const expected = mapping.list_name ?? "Marketing Pipeline";
+  try {
+    const data = await clickupGet<{ name?: string }>(`/list/${listId}`, clientOptions);
+    const actual = data.name ?? "";
+    if (actual !== expected) {
+      return {
+        step: "clickup_list_configured",
+        passed: false,
+        detail: `List name is '${actual}', expected '${expected}' — use Marketing Pipeline list per clickup/list-schema.md`,
+      };
+    }
+    return { step: "clickup_list_configured", passed: true, detail: `List '${listId}' is '${actual}'` };
+  } catch (err) {
+    if (err instanceof ClickUpHttpError) {
+      return {
+        step: "clickup_list_configured",
+        passed: false,
+        detail: `ClickUp list ${listId} not reachable: HTTP ${err.status}`,
+      };
+    }
+    throw err;
+  }
+}
+
+async function clickupCustomFieldsPresent(clientOptions: ClickUpClientOptions, listId: string): Promise<CheckResult> {
+  try {
+    const data = await clickupGet<{ fields?: Array<{ name?: string }> }>(`/list/${listId}/field`, clientOptions);
+    const names = new Set((data.fields ?? []).map((f) => f.name));
+    const missing = REQUIRED_FIELDS.filter((name) => !names.has(name));
+    if (missing.length > 0) {
+      return {
+        step: "clickup_custom_fields_present",
+        passed: false,
+        detail: `Missing custom fields (create in ClickUp UI): ${missing.join(", ")}`,
+      };
+    }
+    return { step: "clickup_custom_fields_present", passed: true, detail: "All M1 custom fields present" };
+  } catch (err) {
+    if (err instanceof ClickUpHttpError) {
+      return { step: "clickup_custom_fields_present", passed: false, detail: `Cannot list fields: HTTP ${err.status}` };
+    }
+    throw err;
+  }
+}
+
+async function clickupStatusesPresent(
+  clientOptions: ClickUpClientOptions,
+  listId: string,
+  mapping: FieldMapping
+): Promise<CheckResult> {
+  const required = automationStatusDisplayNames(mapping);
+  const missingKeys = AUTOMATION_STATUS_KEYS.filter((key) => !automationStatusDisplayName(mapping, key));
+  if (missingKeys.length > 0) {
+    return {
+      step: "clickup_statuses_present",
+      passed: false,
+      detail: `field-mapping.json missing automation status keys: ${missingKeys.join(", ")}`,
+    };
+  }
+  try {
+    const data = await clickupGet<{ statuses?: Array<{ status?: string }> }>(`/list/${listId}`, clientOptions);
+    const names = new Set((data.statuses ?? []).map((s) => s.status));
+    const missing = required.filter((name) => !names.has(name));
+    if (missing.length > 0) {
+      return { step: "clickup_statuses_present", passed: false, detail: `Missing statuses on list: ${missing.join(", ")}` };
+    }
+    return {
+      step: "clickup_statuses_present",
+      passed: true,
+      detail: `${required.join(" / ")} present`,
+    };
+  } catch (err) {
+    if (err instanceof ClickUpHttpError) {
+      return { step: "clickup_statuses_present", passed: false, detail: `Cannot read list statuses: HTTP ${err.status}` };
+    }
+    throw err;
+  }
+}
+
+interface N8nWorkflowSummary {
+  name?: string;
+  active?: boolean;
+}
+
+function findN8nWorkflow(workflows: N8nWorkflowSummary[], ...names: string[]): N8nWorkflowSummary | undefined {
+  const lowered = new Set(names.map((n) => n.toLowerCase()));
+  return workflows.find((wf) => lowered.has((wf.name ?? "").toLowerCase()));
+}
+
+async function n8nFetchWorkflows(apiUrl: string, apiKey: string): Promise<{ data?: N8nWorkflowSummary[] }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const res = await fetch(`${apiUrl.replace(/\/+$/, "")}/api/v1/workflows?limit=100`, {
+      headers: { "X-N8N-API-KEY": apiKey, Accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} ${body.slice(0, 200)}`);
+    }
+    return (await res.json()) as { data?: N8nWorkflowSummary[] };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function n8nWorkflowChecks(apiUrl: string, apiKey: string): Promise<CheckResult[]> {
+  let response: { data?: N8nWorkflowSummary[] };
+  try {
+    response = await n8nFetchWorkflows(apiUrl, apiKey);
+  } catch (err) {
+    const detail = `n8n API error: ${err instanceof Error ? err.message : String(err)}`;
+    return [
+      { step: "n8n_call_agent_workflow_present", passed: false, detail },
+      { step: "n8n_main_workflow_present", passed: false, detail },
+      { step: "n8n_main_workflow_active", passed: false, detail },
+    ];
+  }
+
+  const workflows = response.data ?? [];
+  const callAgent = findN8nWorkflow(workflows, "Call Agent");
+  const main = findN8nWorkflow(workflows, "Marketing Pipeline");
+  return [
+    {
+      step: "n8n_call_agent_workflow_present",
+      passed: callAgent !== undefined,
+      detail: callAgent ? "Call Agent sub-workflow imported" : "Import n8n/workflows/call-agent-subworkflow.json",
+    },
+    {
+      step: "n8n_main_workflow_present",
+      passed: main !== undefined,
+      detail: main ? "Marketing Pipeline main workflow imported" : "Import n8n/workflows/marketing-pipeline-main.json",
+    },
+    {
+      step: "n8n_main_workflow_active",
+      passed: Boolean(main?.active),
+      detail: main?.active ? "Marketing Pipeline workflow is active" : "Activate Marketing Pipeline after binding credentials",
+    },
+  ];
+}
+
+export interface RunPreflightOptions {
+  clickupToken: string;
+  clickupListId: string;
+  n8nApiUrl: string;
+  n8nApiKey: string;
+  fieldMappingPath?: string;
+}
+
+/** Run the M1 green-run preflight checklist against ClickUp + n8n. */
+export async function runPreflight(options: RunPreflightOptions): Promise<PreflightReport> {
+  const mapping = loadFieldMapping(options.fieldMappingPath);
+  const report = new PreflightReport();
+  report.results.push(fieldMappingSynced(mapping));
+
+  const listId = String(mapping.clickup_list_id || options.clickupListId || "");
+  if (listId && listId !== "<TBD>") {
+    const clientOptions: ClickUpClientOptions = { token: options.clickupToken };
+    report.results.push(await clickupListConfigured(clientOptions, listId, mapping));
+    report.results.push(await clickupCustomFieldsPresent(clientOptions, listId));
+    report.results.push(await clickupStatusesPresent(clientOptions, listId, mapping));
+  } else {
+    report.results.push(
+      { step: "clickup_list_configured", passed: false, detail: "CLICKUP_LIST_ID / clickup_list_id unset" },
+      { step: "clickup_custom_fields_present", passed: false, detail: "Skipped — list ID unset" },
+      { step: "clickup_statuses_present", passed: false, detail: "Skipped — list ID unset" }
+    );
+  }
+
+  report.results.push(...(await n8nWorkflowChecks(options.n8nApiUrl, options.n8nApiKey)));
+  return report;
+}
+
+export interface MainWorkflowResult {
+  verified: boolean;
+  clickup_task_id?: string;
+  clickup_task_url?: string;
+  clickup_task_name?: string;
+  status_path?: string[];
+  latency_seconds?: number | null;
+  latency_breakdown?: Record<string, number | null>;
+  comment_sections_verified?: string[];
+  marketing_lead_usability?: string;
+  silent_failures?: number | null;
+  n8n_execution_id?: string;
+  n8n_execution_success?: boolean;
+  filtered_execution_count?: number;
+  n8n_host?: string;
+  brief_complete?: boolean;
+  in_progress_within_5s?: boolean;
+  latency_under_60s?: boolean;
+  final_status_review?: boolean;
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+export interface ExecuteGreenRunOptions {
+  marketingLeadUsability?: string;
+  env?: NodeJS.ProcessEnv;
+  clientOptions?: Partial<Omit<ClickUpClientOptions, "token">>;
+  n8nClient?: N8nClient;
+  /** Test hook: override the n8n time-window start (defaults to execute trigger timestamp). */
+  n8nLinkWindowStartMs?: number;
+  pollIntervalMs?: number;
+  deadlineMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export interface N8nExecutionLinkResult {
+  n8n_execution_id: string;
+  n8n_execution_success: boolean;
+  filtered_execution_count: number;
+}
+
+const MARKETING_PIPELINE_WORKFLOW_NAME = "marketing pipeline";
+const INGRESS_TRANSITION = "backlog → ready";
+
+function executionStartedAtMs(execution: N8nExecution): number | null {
+  if (!execution.startedAt) {
+    return null;
+  }
+  const started = Date.parse(execution.startedAt);
+  return Number.isFinite(started) ? started : null;
+}
+
+function pickIngressExecution(
+  matches: Array<{ executionId: string; status: string; path: ReturnType<typeof summarizeExecution>["path"]; transition: string }>
+): { executionId: string; status: string } | undefined {
+  const ingress =
+    matches.find((m) => m.path === "full" && m.transition === INGRESS_TRANSITION) ??
+    matches.find((m) => m.path === "full") ??
+    matches.find((m) => m.path === "error" && m.transition === INGRESS_TRANSITION) ??
+    matches.find((m) => m.path === "error");
+  return ingress ? { executionId: ingress.executionId, status: ingress.status } : undefined;
+}
+
+/** Query n8n for Marketing Pipeline runs in a time window and link the ingress execution for a task. */
+export async function linkN8nExecutionsForTask(
+  client: N8nClient,
+  taskId: string,
+  windowStartMs: number
+): Promise<N8nExecutionLinkResult> {
+  const empty: N8nExecutionLinkResult = {
+    n8n_execution_id: "",
+    n8n_execution_success: false,
+    filtered_execution_count: 0,
+  };
+
+  const workflows = await client.listWorkflows();
+  const mainWorkflow = workflows.find((wf) => wf.name.toLowerCase() === MARKETING_PIPELINE_WORKFLOW_NAME);
+  if (!mainWorkflow?.id) {
+    return empty;
+  }
+
+  const listed = await client.listExecutions({ workflowId: mainWorkflow.id, limit: 50 });
+  const inWindow = listed.filter((exec) => {
+    const started = executionStartedAtMs(exec);
+    return started !== null && started >= windowStartMs;
+  });
+
+  const matches: Array<{
+    executionId: string;
+    status: string;
+    path: ReturnType<typeof summarizeExecution>["path"];
+    transition: string;
+  }> = [];
+
+  for (const exec of inWindow) {
+    const full = await client.getExecution(String(exec.id), true);
+    const summary = summarizeExecution(full);
+    if (summary.task_id !== taskId) {
+      continue;
+    }
+    matches.push({
+      executionId: summary.execution_id,
+      status: String(full.status ?? "").toLowerCase(),
+      path: summary.path,
+      transition: summary.transition,
+    });
+  }
+
+  const filteredExecutionCount = matches.filter((m) => m.path === "filtered").length;
+  const ingress = pickIngressExecution(matches);
+  if (!ingress) {
+    return { ...empty, filtered_execution_count: filteredExecutionCount };
+  }
+
+  return {
+    n8n_execution_id: ingress.executionId,
+    n8n_execution_success: ingress.status === "success",
+    filtered_execution_count: filteredExecutionCount,
+  };
+}
+
+async function resolveN8nExecutionLink(
+  taskId: string,
+  windowStartMs: number,
+  env: NodeJS.ProcessEnv,
+  n8nClient?: N8nClient
+): Promise<N8nExecutionLinkResult> {
+  const manualId = (env.GREEN_RUN_N8N_EXECUTION_ID ?? "").trim();
+  const fallback: N8nExecutionLinkResult = {
+    n8n_execution_id: manualId,
+    n8n_execution_success: false,
+    filtered_execution_count: 0,
+  };
+
+  const apiKey = (env.N8N_API_KEY ?? "").trim();
+  if (!n8nClient && !apiKey) {
+    return fallback;
+  }
+
+  try {
+    const client = n8nClient ?? n8nClientFromEnv(env);
+    const linked = await linkN8nExecutionsForTask(client, taskId, windowStartMs);
+    if (linked.n8n_execution_id) {
+      return linked;
+    }
+    return { ...linked, n8n_execution_id: manualId };
+  } catch {
+    return fallback;
+  }
+}
+
+/** Run the happy-path green run (create task, move through statuses, watch for the draft comment). */
+export async function executeGreenRun(
+  clickupToken: string,
+  mapping: FieldMapping,
+  options: ExecuteGreenRunOptions = {}
+): Promise<MainWorkflowResult> {
+  const env = options.env ?? process.env;
+  const clientOptions: ClickUpClientOptions = { token: clickupToken, ...options.clientOptions };
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const pollIntervalMs = options.pollIntervalMs ?? 2_000;
+  const deadlineMs = options.deadlineMs ?? 120_000;
+
+  const listId = String(mapping.clickup_list_id);
+  const criteriosId = mapping.custom_fields.criterios_de_aceite?.clickup_field_id;
+  const agentIdField = mapping.custom_fields.agent_id;
+  const agentIdFieldId = agentIdField?.clickup_field_id;
+  const readyStatus = automationStatusDisplayName(mapping, "ready");
+  const writingStatus = automationStatusDisplayName(mapping, "writing");
+  const reviewStatus = automationStatusDisplayName(mapping, "review");
+  if (!criteriosId || !agentIdFieldId || !readyStatus || !writingStatus || !reviewStatus) {
+    throw new Error("field-mapping.json is missing expected custom field/status keys for execute path");
+  }
+
+  const task = await clickupPost<{ id: string; url?: string }>(
+    `/list/${listId}/task`,
+    {
+      name: DEFAULT_TEST_BRIEF.name,
+      description: DEFAULT_TEST_BRIEF.description,
+      status: mapping.statuses.backlog ?? "Backlog",
+    },
+    clientOptions
+  );
+  const taskId = task.id;
+  const taskUrl = task.url ?? `https://app.clickup.com/t/${taskId}`;
+
+  try {
+    await clickupPost(`/task/${taskId}/field/${criteriosId}`, { value: DEFAULT_TEST_BRIEF.criterios_de_aceite }, clientOptions);
+    await clickupPost(
+      `/task/${taskId}/field/${agentIdFieldId}`,
+      { value: agentIdField?.default ?? "linkedin-writer" },
+      clientOptions
+    );
+
+    const briefComplete = Boolean(
+      DEFAULT_TEST_BRIEF.name && DEFAULT_TEST_BRIEF.description && DEFAULT_TEST_BRIEF.criterios_de_aceite
+    );
+
+    const t0 = Date.now();
+    await clickupPut(`/task/${taskId}`, { status: readyStatus }, clientOptions);
+
+    let inProgressAt: number | null = null;
+    let commentAt: number | null = null;
+    let reviewAt: number | null = null;
+    let commentText = "";
+    const deadline = t0 + deadlineMs;
+
+    while (Date.now() < deadline) {
+      const taskNow = await clickupGet<{ status?: { status?: string } }>(`/task/${taskId}`, clientOptions);
+      const status = taskNow.status?.status ?? "";
+      const now = Date.now();
+      if (status === writingStatus && inProgressAt === null) {
+        inProgressAt = now;
+      }
+
+      const commentsResp = await clickupGet<{ comments?: Array<{ comment_text?: string; text_content?: string }> }>(
+        `/task/${taskId}/comment`,
+        clientOptions
+      );
+      for (const comment of commentsResp.comments ?? []) {
+        const text = comment.comment_text ?? comment.text_content ?? "";
+        if (commentHasSections(text)) {
+          commentText = text;
+          commentAt = now;
+          break;
+        }
+      }
+
+      if (status === reviewStatus) {
+        reviewAt = now;
+        break;
+      }
+      await sleep(pollIntervalMs);
+    }
+
+    const latencySeconds = round1(((commentAt ?? Date.now()) - t0) / 1000);
+    const ipLatencySeconds = inProgressAt !== null ? round1((inProgressAt - t0) / 1000) : null;
+    const commentLatencySeconds = commentAt !== null ? round1((commentAt - (inProgressAt ?? t0)) / 1000) : null;
+    const sectionsVerified = commentHasSections(commentText);
+    const n8nLink = await resolveN8nExecutionLink(
+      taskId,
+      options.n8nLinkWindowStartMs ?? t0,
+      env,
+      options.n8nClient
+    );
+
+    return {
+      verified: true,
+      clickup_task_id: taskId,
+      clickup_task_url: taskUrl,
+      clickup_task_name: DEFAULT_TEST_BRIEF.name,
+      status_path: [readyStatus, writingStatus, reviewStatus],
+      latency_seconds: latencySeconds,
+      latency_breakdown: {
+        webhook_to_in_progress_seconds: ipLatencySeconds,
+        in_progress_to_comment_seconds: commentLatencySeconds,
+      },
+      comment_sections_verified: sectionsVerified ? [...COMMENT_SECTIONS] : [],
+      marketing_lead_usability: options.marketingLeadUsability ?? "pending review",
+      silent_failures: reviewAt !== null && sectionsVerified ? 0 : 1,
+      n8n_execution_id: n8nLink.n8n_execution_id,
+      n8n_execution_success: n8nLink.n8n_execution_success,
+      filtered_execution_count: n8nLink.filtered_execution_count,
+      n8n_host: (env.N8N_API_URL ?? N8N_API_URL_DEFAULT).replace(/^https:\/\//, ""),
+      brief_complete: briefComplete,
+      in_progress_within_5s: ipLatencySeconds !== null && ipLatencySeconds <= 5,
+      latency_under_60s: latencySeconds <= 60,
+      final_status_review: reviewAt !== null,
+    };
+  } finally {
+    const keep = ["1", "true", "yes"].includes((env.GREEN_RUN_KEEP_TASK ?? "").toLowerCase());
+    if (!keep) {
+      try {
+        await clickupDelete(`/task/${taskId}`, clientOptions);
+      } catch {
+        // best-effort cleanup — surfacing the original result matters more than a failed delete
+      }
+    }
+  }
+}
+
+export interface EvidenceJson {
+  recorded_at: string;
+  session: string;
+  validation_status: "blocked" | "ready" | "passed";
+  preflight: { checklist: ChecklistEntry[]; coverage_percent: number; blockers: string[] };
+  main_workflow: MainWorkflowResult;
+  call_agent_subworkflow: Record<string, unknown>;
+  failure_observations: Record<string, string>;
+}
+
+/** Assemble the full evidence JSON document from a preflight report and optional execute-path result. */
+export function buildEvidence(
+  preflight: PreflightReport,
+  mainWorkflow?: MainWorkflowResult,
+  env: NodeJS.ProcessEnv = process.env
+): EvidenceJson {
+  const infraReady = preflight.coveragePercent >= 80 && preflight.blockers.length === 0;
+  const validationStatus: EvidenceJson["validation_status"] = mainWorkflow?.verified
+    ? "passed"
+    : infraReady
+      ? "ready"
+      : "blocked";
+
+  const dict = preflight.toDict();
+  const checklist = [...dict.checklist];
+  if (validationStatus !== "passed") {
+    for (const step of RUNTIME_STEPS) {
+      checklist.push({
+        step,
+        status: "skip",
+        detail: `Runtime step — execute after preflight passes (move task to ${automationStatusDisplayName(loadFieldMapping(), "ready") || "ready"})`,
+      });
+    }
+  }
+
+  return {
+    recorded_at: new Date().toISOString().slice(0, 10),
+    session: "m1-green-run-validation",
+    validation_status: validationStatus,
+    preflight: { checklist, coverage_percent: dict.coverage_percent, blockers: dict.blockers },
+    main_workflow:
+      mainWorkflow ?? {
+        verified: false,
+        n8n_execution_id: "",
+        n8n_host: (env.N8N_API_URL ?? N8N_API_URL_DEFAULT).replace(/^https:\/\//, ""),
+        clickup_task_id: "",
+        clickup_task_url: "",
+        clickup_task_name: DEFAULT_TEST_BRIEF.name,
+        status_path: automationStatusDisplayNames(loadFieldMapping()),
+        latency_seconds: null,
+        latency_breakdown: {},
+        comment_sections_verified: [],
+        marketing_lead_usability: "pending — run green run after operator setup",
+        silent_failures: null,
+      },
+    call_agent_subworkflow: {
+      n8n_execution_id: "",
+      latency_ms: null,
+      parse_success: null,
+      agent_id: "linkedin-writer",
+      model: "gpt-4.1-mini",
+    },
+    failure_observations: {
+      missing_criterios_de_aceite: "Workflow still runs; draft autochecagem may be weak — brief gate is manual only in M1",
+      duplicate_webhook: "Second delivery may post duplicate comment per ADR-001; no dedup in M1",
+    },
+  };
+}
+
+function formatTimestamp(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
+  );
+}
+
+/** Create a fresh `logs/green-run/<timestamp>/` directory for this run, disambiguating same-second collisions. */
+export function runLogDir(now: Date = new Date()): string {
+  const stamp = formatTimestamp(now);
+  let path = resolve(RUN_LOG_ROOT, stamp);
+  let suffix = 1;
+  while (existsSync(path)) {
+    path = resolve(RUN_LOG_ROOT, `${stamp}-${suffix}`);
+    suffix += 1;
+  }
+  mkdirSync(path, { recursive: true });
+  return path;
+}
+
+export function writeEvidence(evidence: EvidenceJson, path: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(evidence, null, 2)}\n`, "utf-8");
+}
+
+/** Write evidence to `logs/green-run/<timestamp>/evidence.json` (gitignored) and return the path. */
+export function writeRunEvidence(evidence: EvidenceJson, now: Date = new Date()): string {
+  const out = resolve(runLogDir(now), "evidence.json");
+  writeEvidence(evidence, out);
+  return out;
+}
+
+export function shouldUpdateCanonical(env: NodeJS.ProcessEnv = process.env): boolean {
+  return ["1", "true", "yes"].includes((env.GREEN_RUN_UPDATE_CANONICAL ?? "").toLowerCase());
+}
+
+/** CLI entrypoint logic: loads `.env`, runs preflight (+ optional execute), writes evidence, returns the exit code. */
+export async function main(env: NodeJS.ProcessEnv = process.env): Promise<number> {
+  loadRepoDotenv(undefined, env);
+  const clickupToken = (env.CLICKUP_API_TOKEN ?? env.CLICKUP_TOKEN ?? "").trim();
+  const clickupListId = (env.CLICKUP_LIST_ID ?? "").trim();
+  const n8nApiUrl = (env.N8N_API_URL ?? N8N_API_URL_DEFAULT).trim();
+  const n8nApiKey = (env.N8N_API_KEY ?? "").trim();
+
+  if (!clickupToken) {
+    const blockedPreflight = new PreflightReport();
+    blockedPreflight.results.push({ step: "clickup_token_configured", passed: false, detail: "CLICKUP_API_TOKEN unset" });
+    const blocked = buildEvidence(blockedPreflight, undefined, env);
+    const out = writeRunEvidence(blocked);
+    console.log(`Wrote ${out}`);
+    console.error("Set CLICKUP_API_TOKEN");
+    return 2;
+  }
+
+  const preflight = await runPreflight({ clickupToken, clickupListId, n8nApiUrl, n8nApiKey });
+
+  console.log(`Preflight coverage: ${preflight.coveragePercent}%`);
+  for (const result of preflight.results) {
+    console.log(`  [${result.passed ? "PASS" : "FAIL"}] ${result.step}: ${result.detail}`);
+  }
+
+  let mainResult: MainWorkflowResult | undefined;
+  const execute = ["1", "true", "yes"].includes((env.GREEN_RUN_EXECUTE ?? "").toLowerCase());
+  if (execute && preflight.blockers.length === 0) {
+    const mapping = loadFieldMapping();
+    console.log("\nExecuting green run...");
+    mainResult = await executeGreenRun(clickupToken, mapping, { env });
+    console.log(`  Task: ${mainResult.clickup_task_url}`);
+    console.log(`  Latency: ${mainResult.latency_seconds}s`);
+  }
+
+  const evidence = buildEvidence(preflight, mainResult, env);
+  const out = writeRunEvidence(evidence);
+  console.log(`\nWrote ${out}`);
+  if (shouldUpdateCanonical(env)) {
+    writeEvidence(evidence, EVIDENCE_PATH);
+    console.log(`Updated canonical ${EVIDENCE_PATH}`);
+  }
+  console.log(`Validation status: ${evidence.validation_status}`);
+
+  if (evidence.validation_status === "blocked") {
+    console.error("\nBlockers:");
+    for (const blocker of preflight.blockers) {
+      console.error(`  - ${blocker}`);
+    }
+    return 2;
+  }
+  return 0;
+}

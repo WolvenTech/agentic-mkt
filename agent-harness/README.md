@@ -43,4 +43,4 @@ No runtime setup in M1. Contracts are referenced by:
 - **task_07** — Marketing Pipeline main workflow comment template from `io-contract.md`
 - **task_09** — Expanded troubleshooting, patterns, and green-run evidence (Milestone 2 complete)
 
-**Validation:** `python3 -m unittest tests.test_task_03_harness tests.test_task_09_documentation -v`
+**Validation:** `pnpm test tests/harness.test.ts tests/documentation.test.ts`

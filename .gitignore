@@ -16,14 +16,9 @@ n8n/credentials/
 .DS_Store
 Thumbs.db
 
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-.coverage
-htmlcov/
+# Node
+node_modules/
+coverage/
 
 # Editor and IDE
 .vscode/

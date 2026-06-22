@@ -7,7 +7,7 @@
       {
         "step": "field_mapping_synced",
         "status": "fail",
-        "detail": "clickup_list_id is unset — run sync-field-mapping.py"
+        "detail": "clickup_list_id is unset — run pnpm clickup:sync"
       },
       {
         "step": "clickup_list_configured",
@@ -77,7 +77,7 @@
     ],
     "coverage_percent": 28.6,
     "blockers": [
-      "clickup_list_id is unset — run sync-field-mapping.py",
+      "clickup_list_id is unset — run pnpm clickup:sync",
       "CLICKUP_LIST_ID / clickup_list_id unset",
       "Skipped — list ID unset",
       "Skipped — list ID unset",
@@ -107,7 +107,7 @@
     "latency_ms": null,
     "parse_success": null,
     "agent_id": "linkedin-writer",
-    "model": "gemini-2.5-flash"
+    "model": "gpt-4.1-mini"
   },
   "failure_observations": {
     "missing_criterios_de_aceite": "Workflow still runs; draft autochecagem may be weak — brief gate is manual only in M1",

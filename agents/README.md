@@ -67,7 +67,7 @@ Runtime skills are adapted from the sibling `skill-vault` catalog. **Manual copy
 
 3. **Verify** after copy:
    ```bash
-   python3 -m unittest tests.test_task_02_agents -v
+   pnpm test tests/agents.test.ts
    ```
    Confirm each `skills[]` entry resolves to `agents/skills/{name}.md`.
 
@@ -78,7 +78,7 @@ Runtime skills are adapted from the sibling `skill-vault` catalog. **Manual copy
 | Risk | Mitigation (M1) | Planned (M2+) |
 |------|-----------------|---------------|
 | skill-vault catalog updated but `agents/skills/` not | Manual copy procedure above; document changes in commit message | On-demand sync script: skill-vault → `agents/skills/` |
-| Agent JSON `skills[]` out of sync with files on disk | `tests.test_task_02_agents` validates resolution | Sync script updates both files and JSON refs |
+| Agent JSON `skills[]` out of sync with files on disk | `tests/agents.test.ts` validates resolution | Sync script updates both files and JSON refs |
 | Proprietary voice skills diverge from public catalog | Keep voice/tone skills in private `agentic-mkt` only | Same sync script with proprietary path filter |
 
 **Do not block M1/M2 on sync script** — stubs and manual copy are sufficient per PRD scope. Track drift in PR reviews when skill-vault changes land.
@@ -89,7 +89,7 @@ M1 ships `linkedin-writer` with `"provider": "google"`, `"model": "gemini-2.5-fl
 
 ## M2 operational runbook
 
-1. After skill copy, run `python3 -m unittest tests.test_task_02_agents -v`.
+1. After skill copy, run `pnpm test tests/agents.test.ts`.
 2. Push `agentic-mkt` to GitHub (`main` branch).
 3. Verify n8n Call Agent isolation test loads both skills in **Assemble Prompt** output.
 4. See [GitHub Runtime Config Pattern](../agent-harness/io-contract.md#4-github-runtime-config-pattern) for cross-project replication.

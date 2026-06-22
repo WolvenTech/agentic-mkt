@@ -2,13 +2,7 @@
   "name": "Marketing Pipeline",
   "nodes": [
     {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "marketing-pipeline-ready-to-work",
-        "responseMode": "onReceived",
-        "options": {}
-      },
-      "id": "204a1262-ee4c-4e66-bef3-d8e051ca81f9",
+      "id": "173c8894-019a-44ba-9246-add041eebf10",
       "name": "ClickUp Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -16,110 +10,115 @@
         0,
         300
       ],
-      "webhookId": "50fe1fde-71ea-4d75-8cd8-54259ab773b1"
+      "webhookId": "32bad2c1-71f2-4db8-b885-83949e6fb4e4",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marketing-pipeline-ready-to-work",
+        "responseMode": "onReceived",
+        "options": {}
+      }
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "version": 2,
-            "leftValue": "",
-            "caseSensitive": true,
-            "typeValidation": "strict"
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "0becf273-9745-4a24-8dc6-55fba559db90",
-              "leftValue": "={{ $json.history_items[0].field }}",
-              "rightValue": "status",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
-            },
-            {
-              "id": "37215caa-4ffa-4bb0-aa57-3b4b1d46827f",
-              "leftValue": "={{ $json.history_items[0].after.status }}",
-              "rightValue": "Ready to Work",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "b40521cd-319b-44b0-b2b3-954fbb79cb12",
+      "id": "6cd92d51-18ef-4bdd-aa99-994b8c5a1942",
       "name": "Ready to Work?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
         240,
         300
-      ]
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1de8504-085d-4758-9e2a-f1eaa780b08a",
+              "leftValue": "={{ (() => { const payload = ($json.body && $json.body.history_items ? $json.body : $json); const item = payload?.history_items?.[0]; if (!item || item.field !== \"status\") return false; const after = item.after; const status = (after !== null && typeof after === \"object\") ? after.status : after; return String(status ?? \"\").trim().toLowerCase() === \"ready\"; })() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
     },
     {
-      "parameters": {
-        "jsCode": "const payload = $input.first().json;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\nreturn [{\n  json: {\n    task_id: String(payload.task_id ?? ''),\n    webhook_id: String(payload.webhook_id ?? ''),\n    history_item_id: String(first.id ?? ''),\n    list_id: String(first.parent_id ?? ''),\n    received_at_ms: Date.now(),\n  },\n}];"
-      },
-      "id": "d5a14e7e-35ae-4b75-b7fa-3f6e2a259b66",
+      "id": "9e34af11-e4b4-4757-aef1-b2f23d810e47",
       "name": "Extract Webhook Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         480,
         300
-      ]
+      ],
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst payload = (raw.body && raw.body.history_items) ? raw.body : raw;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\nreturn [{\n  json: {\n    task_id: String(payload.task_id ?? ''),\n    webhook_id: String(payload.webhook_id ?? ''),\n    history_item_id: String(first.id ?? ''),\n    list_id: String(first.parent_id ?? ''),\n    received_at_ms: Date.now(),\n  },\n}];"
+      }
     },
     {
+      "id": "d4a102d5-54c9-46a7-bd79-a72dc170ba61",
+      "name": "Dedup?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        300
+      ],
       "parameters": {
-        "operation": "get",
-        "id": "={{ $json.task_id }}"
-      },
-      "id": "56c50b6c-13f7-42c4-be80-34285c42e2ed",
-      "name": "GET ClickUp Task",
-      "type": "n8n-nodes-base.clickUp",
-      "typeVersion": 1,
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "76967085-558e-458b-91b7-993c6b55ec10",
+              "leftValue": "={{ (() => { const staticData = $getWorkflowStaticData('global'); const key = String($json.history_item_id ?? ''); if (!key) return false; staticData.seenHistoryItems = staticData.seenHistoryItems || {}; return Boolean(staticData.seenHistoryItems[key]); })() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c332eef3-61e0-4ca2-9e35-bc221cdebe2a",
+      "name": "Mark History Item Seen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         720,
         300
       ],
-      "credentials": {
-        "clickUpApi": {
-          "id": "CLICKUP_CREDENTIAL_ID",
-          "name": "ClickUp Marketing Pipeline"
-        }
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.seenHistoryItems = staticData.seenHistoryItems || {};\nconst key = String($json.history_item_id ?? '');\nif (key) staticData.seenHistoryItems[key] = Date.now();\nreturn [{ json: $json }];"
       }
     },
     {
-      "parameters": {
-        "jsCode": "const FIELD_IDS = {\n  criterios_de_aceite: \"<TBD>\",\n  agent_id: \"<TBD>\",\n  default_agent_id: \"linkedin-writer\",\n};\n\nfunction readCustomField(task, fieldId) {\n  if (!fieldId || fieldId === '<TBD>') return '';\n  const fields = task.custom_fields || [];\n  const match = fields.find((field) => String(field.id) === String(fieldId));\n  if (!match || match.value === null || match.value === undefined) return '';\n  if (typeof match.value === 'object') {\n    return String(match.value.value ?? match.value.name ?? match.value.label ?? '');\n  }\n  return String(match.value);\n}\n\nconst task = $input.first().json;\nconst webhook = $('Extract Webhook Context').first().json;\nconst agentId = readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id;\n\nreturn [{\n  json: {\n    task_id: String(task.id ?? webhook.task_id ?? ''),\n    agent_id: agentId,\n    task_title: String(task.name ?? ''),\n    task_description: String(task.description ?? task.text_content ?? ''),\n    criterios_de_aceite: readCustomField(task, FIELD_IDS.criterios_de_aceite),\n    model: 'gemini-2.5-flash',\n  },\n}];"
-      },
-      "id": "f10f5402-e5f8-4b88-94f9-8c01a2114c7f",
-      "name": "Extract Task Fields",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        960,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "update",
-        "id": "={{ $json.task_id }}",
-        "updateFields": {
-          "status": "In Progress"
-        }
-      },
-      "id": "f18866ce-2acc-4260-9700-63ebc157f1a0",
-      "name": "Status \u2192 In Progress",
+      "id": "027fa215-306a-41b9-b5ef-d6593956328c",
+      "name": "GET ClickUp Task",
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        1200,
+        840,
         300
       ],
       "credentials": {
@@ -127,22 +126,70 @@
           "id": "CLICKUP_CREDENTIAL_ID",
           "name": "ClickUp Marketing Pipeline"
         }
+      },
+      "parameters": {
+        "operation": "get",
+        "id": "={{ $json.task_id }}"
       }
     },
     {
+      "id": "189fd512-3e67-4efc-8398-4490ed3e178d",
+      "name": "Extract Task Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        300
+      ],
       "parameters": {
-        "jsCode": "const fields = $('Extract Task Fields').first().json;\nreturn [{\n  json: {\n    agent_id: fields.agent_id,\n    task_title: fields.task_title,\n    task_description: fields.task_description,\n    criterios_de_aceite: fields.criterios_de_aceite,\n    task_id: fields.task_id,\n  },\n}];"
+        "jsCode": "const FIELD_IDS = {\n  criterios_de_aceite: \"bd2e7a51-3e9e-4d6a-9729-770fac44a504\",\n  agent_id: \"a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0\",\n  default_agent_id: \"linkedin-writer\",\n};\n\nfunction readCustomField(task, fieldId) {\n  if (!fieldId || fieldId === '<TBD>') return '';\n  const fields = task.custom_fields || [];\n  const match = fields.find((field) => String(field.id) === String(fieldId));\n  if (!match || match.value === null || match.value === undefined) return '';\n  if (typeof match.value === 'object') {\n    return String(match.value.value ?? match.value.name ?? match.value.label ?? '');\n  }\n  return String(match.value);\n}\n\nconst task = $input.first().json;\nconst webhook = $('Extract Webhook Context').first().json;\nconst agentId = readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id;\n\nreturn [{\n  json: {\n    task_id: String(task.id ?? webhook.task_id ?? ''),\n    agent_id: agentId,\n    task_title: String(task.name ?? ''),\n    task_description: String(task.description ?? task.text_content ?? ''),\n    criterios_de_aceite: readCustomField(task, FIELD_IDS.criterios_de_aceite),\n    model: \"gpt-4.1-mini\",\n  },\n}];"
+      }
+    },
+    {
+      "id": "8df41b8e-09a0-491b-8234-e2e10c80d56f",
+      "name": "Status → In Progress",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        300
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
       },
-      "id": "3524fdd0-b82b-4486-bd34-9767fd565456",
+      "parameters": {
+        "operation": "update",
+        "id": "={{ $json.task_id }}",
+        "updateFields": {
+          "status": "writing"
+        }
+      }
+    },
+    {
+      "id": "9e03e233-b4e1-4a6d-8cec-b1655a54d25c",
       "name": "Prepare Call Agent Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1320,
+        1440,
         300
-      ]
+      ],
+      "parameters": {
+        "jsCode": "const fields = $('Extract Task Fields').first().json;\nreturn [{\n  json: {\n    agent_id: fields.agent_id,\n    task_title: fields.task_title,\n    task_description: fields.task_description,\n    criterios_de_aceite: fields.criterios_de_aceite,\n    task_id: fields.task_id,\n  },\n}];"
+      }
     },
     {
+      "id": "9c0dc636-6b39-47ea-85da-6a32a911e02d",
+      "name": "Execute Call Agent",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1680,
+        300
+      ],
       "parameters": {
         "source": "database",
         "workflowId": {
@@ -152,17 +199,17 @@
         },
         "mode": "once",
         "options": {}
-      },
-      "id": "4439676e-2b02-4a4a-b593-9ae3af69e1aa",
-      "name": "Execute Call Agent",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        1560,
-        300
-      ]
+      }
     },
     {
+      "id": "505116d9-e9d9-4943-ba89-0e708d9b0479",
+      "name": "Agent Output OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        300
+      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -174,7 +221,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "7324ede7-83f1-48ea-9bb6-3b41d47cdc7c",
+              "id": "a332edb1-2947-42ef-bbe2-fe41852d5493",
               "leftValue": "={{ $json.error }}",
               "rightValue": "",
               "operator": {
@@ -185,42 +232,54 @@
           ]
         },
         "options": {}
-      },
-      "id": "14f417d7-9357-44ad-8dfd-b0fa8ce83d70",
-      "name": "Agent Output OK?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1800,
-        300
-      ]
+      }
     },
     {
-      "parameters": {
-        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst agentId = taskFields.agent_id ?? 'linkedin-writer';\nconst model = taskFields.model ?? 'gemini-2.5-flash';\n\nconst commentText = [\n  '## LinkedIn Draft',\n  '',\n  agentOutput.deliverable_markdown ?? '',\n  '',\n  '---',\n  '',\n  '## Resumo',\n  '',\n  agentOutput.resumo ?? '',\n  '',\n  '---',\n  '',\n  '## Autochecagem',\n  '',\n  agentOutput.autochecagem ?? '',\n  '',\n  '---',\n  `_Generated by ${agentId} (${model})_`,\n].join('\\n');\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    agent_id: agentId,\n    model,\n    comment_text: commentText,\n    deliverable_markdown: agentOutput.deliverable_markdown,\n    resumo: agentOutput.resumo,\n    autochecagem: agentOutput.autochecagem,\n  },\n}];"
-      },
-      "id": "b94a17ec-5c03-432c-8e91-d5fae4598fb6",
+      "id": "84f5188c-3f49-4e40-a760-996093dd32a5",
       "name": "Format Draft Comment",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2040,
+        2160,
         220
-      ]
+      ],
+      "parameters": {
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst agentId = taskFields.agent_id ?? \"linkedin-writer\";\nconst model = taskFields.model ?? \"gpt-4.1-mini\";\n\nconst commentText = [\n  '## LinkedIn Draft',\n  '',\n  agentOutput.deliverable_markdown ?? '',\n  '',\n  '---',\n  '',\n  '## Resumo',\n  '',\n  agentOutput.resumo ?? '',\n  '',\n  '---',\n  '',\n  '## Autochecagem',\n  '',\n  agentOutput.autochecagem ?? '',\n  '',\n  '---',\n  `_Generated by ${agentId} (${model})_`,\n].join('\\n');\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    agent_id: agentId,\n    model,\n    comment_text: commentText,\n    deliverable_markdown: agentOutput.deliverable_markdown,\n    resumo: agentOutput.resumo,\n    autochecagem: agentOutput.autochecagem,\n  },\n}];"
+      }
     },
     {
-      "parameters": {
-        "resource": "comment",
-        "operation": "create",
-        "id": "={{ $json.task_id }}",
-        "commentText": "={{ $json.comment_text }}"
-      },
-      "id": "4d01940f-eec0-49fa-832a-be6359ea7f07",
+      "id": "13ccd4ea-b921-4522-99b5-878165c1becc",
       "name": "POST Task Comment",
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        2280,
+        2400,
+        220
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "resource": "comment",
+        "operation": "create",
+        "commentOn": "task",
+        "id": "={{ $json.task_id }}",
+        "commentText": "={{ $json.comment_text }}"
+      }
+    },
+    {
+      "id": "f19bee03-5ef0-4896-802f-1a6ab5b90efd",
+      "name": "Status → Review",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        2640,
         220
       ],
       "credentials": {
@@ -228,54 +287,53 @@
           "id": "CLICKUP_CREDENTIAL_ID",
           "name": "ClickUp Marketing Pipeline"
         }
-      }
-    },
-    {
+      },
       "parameters": {
         "operation": "update",
         "id": "={{ $('Extract Task Fields').item.json.task_id }}",
         "updateFields": {
-          "status": "Review"
-        }
-      },
-      "id": "587b4309-ccf9-4689-8242-d79c19940c94",
-      "name": "Status \u2192 Review",
-      "type": "n8n-nodes-base.clickUp",
-      "typeVersion": 1,
-      "position": [
-        2520,
-        220
-      ],
-      "credentials": {
-        "clickUpApi": {
-          "id": "CLICKUP_CREDENTIAL_ID",
-          "name": "ClickUp Marketing Pipeline"
+          "status": "approval"
         }
       }
     },
     {
-      "parameters": {
-        "jsCode": "const output = $input.first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconsole.log(JSON.stringify({\n  task_id: taskFields.task_id,\n  agent_id: taskFields.agent_id,\n  execution_id: $execution.id,\n  parse_success: false,\n  error: output.error ?? 'Agent returned error envelope',\n}));\nthrow new Error(`Call Agent failed: ${output.error ?? 'unknown error'}`);"
-      },
-      "id": "c1c0b670-4b06-45eb-af5c-46616667013f",
+      "id": "d4be0ffc-b64c-4dbe-83c1-0cdf540c83a1",
       "name": "Agent Parse Failure",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2040,
+        2160,
         420
-      ]
+      ],
+      "parameters": {
+        "jsCode": "const output = $input.first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconsole.log(JSON.stringify({\n  task_id: taskFields.task_id,\n  agent_id: taskFields.agent_id,\n  execution_id: $execution.id,\n  parse_success: false,\n  error: output.error ?? 'Agent returned error envelope',\n}));\nthrow new Error(`Call Agent failed: ${output.error ?? 'unknown error'}`);"
+      }
     },
     {
-      "parameters": {},
-      "id": "d644f6c4-e216-4545-8d08-abd2fc69c335",
-      "name": "Ignore Non-Matching Webhook",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
+      "id": "0da61b38-2792-4506-a24a-dd3430c41d30",
+      "name": "Log Ingress Skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         480,
         500
-      ]
+      ],
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst payload = (raw.body && raw.body.history_items) ? raw.body : raw;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\n\nfunction statusValue(value) {\n  if (value !== null && typeof value === 'object') return String(value.status ?? '').trim().toLowerCase();\n  return String(value ?? '').trim().toLowerCase();\n}\n\nconst before = statusValue(first.before);\nconst after = statusValue(first.after);\nconst transition = before || after ? `${before}->${after}` : '';\n\nlet reason = 'not_entering_ready';\nif (!items.length) reason = 'no_history_items';\nelse if (first.field !== 'status') reason = 'field_not_status';\n\nconst record = {\n  event: 'ingress_skipped',\n  task_id: String(payload.task_id ?? ''),\n  webhook_id: String(payload.webhook_id ?? ''),\n  history_item_id: String(first.id ?? ''),\n  transition,\n  reason,\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
+      }
+    },
+    {
+      "id": "80c60146-26fb-49f9-a758-45b32348b5dd",
+      "name": "Log Duplicate Ingress",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        500
+      ],
+      "parameters": {
+        "jsCode": "const context = $input.first().json;\nconst record = {\n  event: 'ingress_skipped',\n  task_id: context.task_id,\n  webhook_id: context.webhook_id,\n  history_item_id: context.history_item_id,\n  transition: '',\n  reason: 'duplicate_history_item',\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
+      }
     }
   ],
   "connections": {
@@ -301,7 +359,7 @@
         ],
         [
           {
-            "node": "Ignore Non-Matching Webhook",
+            "node": "Log Ingress Skipped",
             "type": "main",
             "index": 0
           }
@@ -309,6 +367,35 @@
       ]
     },
     "Extract Webhook Context": {
+      "main": [
+        [
+          {
+            "node": "Dedup?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedup?": {
+      "main": [
+        [
+          {
+            "node": "Log Duplicate Ingress",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark History Item Seen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark History Item Seen": {
       "main": [
         [
           {
@@ -334,14 +421,14 @@
       "main": [
         [
           {
-            "node": "Status \u2192 In Progress",
+            "node": "Status → In Progress",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Status \u2192 In Progress": {
+    "Status → In Progress": {
       "main": [
         [
           {
@@ -407,7 +494,7 @@
       "main": [
         [
           {
-            "node": "Status \u2192 Review",
+            "node": "Status → Review",
             "type": "main",
             "index": 0
           }
@@ -419,7 +506,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "e4b2ea4e-6334-43bb-9c20-cb6432f7fe33",
+  "versionId": "acab4e34-43a7-4deb-a307-9e431995d086",
   "meta": {
     "templateCredsSetupCompleted": false,
     "instanceId": "agentic-mkt-marketing-pipeline-export"

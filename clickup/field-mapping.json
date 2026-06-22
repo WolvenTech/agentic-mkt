@@ -1,33 +1,31 @@
 {
-  "list_name": "Marketing Pipeline",
-  "clickup_list_id": "<TBD>",
+  "list_name": "Linkedin Post Creator",
+  "clickup_list_id": "901327635891",
   "custom_fields": {
     "criterios_de_aceite": {
       "name": "Critérios de Aceite",
       "type": "text",
-      "clickup_field_id": "<TBD>"
+      "clickup_field_id": "bd2e7a51-3e9e-4d6a-9729-770fac44a504"
     },
     "agent_id": {
       "name": "agent_id",
       "type": "short_text",
       "default": "linkedin-writer",
-      "clickup_field_id": "<TBD>"
+      "clickup_field_id": "a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0"
     },
     "revision_count": {
       "name": "revision_count",
       "type": "number",
       "default": 0,
-      "clickup_field_id": "<TBD>"
+      "clickup_field_id": "3ad37d2d-9dcb-4f42-a01e-f98be4952d2a"
     }
   },
   "statuses": {
-    "backlog": "Backlog",
-    "ready_to_work": "Ready to Work",
-    "in_progress": "In Progress",
-    "review": "Review",
-    "approved": "Approved",
-    "done": "Done",
-    "blocked": "Blocked",
-    "needs_revision": "Needs Revision"
+    "backlog": "backlog",
+    "ready": "ready",
+    "writing": "writing",
+    "review": "approval",
+    "publish": "publish",
+    "completed": "Closed"
   }
 }

@@ -25,7 +25,7 @@
         "type": "open"
       },
       "after": {
-        "status": "Ready to Work",
+        "status": "ready",
         "color": "#5f55ee",
         "orderindex": 1,
         "type": "custom"

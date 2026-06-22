@@ -1,6 +1,6 @@
 # agentic-mkt
 
-Configuration-first home for Wolven's **agentic marketing pipeline**: ClickUp briefs trigger n8n workflows that call Gemini worker agents and deliver drafts back as task comments. This repository holds runtime configs, workflow exports, harness contracts, and build/test tooling — not an application server.
+Configuration-first home for Wolven's **agentic marketing pipeline**: ClickUp briefs trigger n8n workflows that call OpenAI worker agents and deliver drafts back as task comments. This repository holds runtime configs, workflow exports, harness contracts, and build/test tooling — not an application server.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ Configuration-first home for Wolven's **agentic marketing pipeline**: ClickUp br
 | **LLM worker** | Pure function — no ClickUp write access |
 
 ```
-ClickUp: Ready to Work → webhook → n8n → Gemini → task comment → Review
+ClickUp: ready → webhook → n8n → OpenAI → task comment → approval
 ```
 
 ## Repository layout
@@ -32,36 +32,66 @@ Planning artifacts (PRD, TechSpec, tasks) live in `.compozy/tasks/` (local, giti
 
 ### Prerequisites
 
-- Python 3 (current tooling — TypeScript migration in progress; see `.compozy/tasks/python-to-typescript-migration/`)
+- Node.js 20+ and [pnpm](https://pnpm.io) (`corepack enable` then `corepack use pnpm@11`)
 - ClickUp API token and list ID for operational scripts (copy [`.env.example`](.env.example) → `.env`)
 
-### Run tests
+### Setup and tests
 
 ```bash
-python3 -m unittest discover -v
+pnpm install
+
+# Offline-safe — no ClickUp/n8n credentials required
+pnpm test
 ```
 
-### Common commands (current — pre-migration)
+### Vendor gate (required before live operations)
+
+Before running live ClickUp/n8n CLI validation or live integration tests, verify vendor connectivity:
+
+```bash
+pnpm vendor:gate
+```
+
+Exit **0** means ClickUp and n8n are reachable with valid credentials. Exit **1** (missing env) or **2** (connectivity/config failure) means **stop** — fix `.env` or vendor setup before continuing tasks that depend on live APIs.
+
+`pnpm test:live` runs `pnpm vendor:gate` first (`pnpm vendor:gate && vitest run --project live`) and stops automatically if vendor connectivity fails — Vitest never runs in that case.
+
+`pnpm vendor:gate` and all ClickUp CLI scripts auto-load the repo-root `.env` (see [`src/load-env.ts`](src/load-env.ts)). Shell-exported vars take precedence over `.env` values. Set `SKIP_DOTENV=1` to skip file loading (used by offline tests). Set `VENDOR_GATE_STRICT=0` for warn-only diagnostics — the gate prints the same checklist but exits `0` regardless of failures (not for task completion gating).
+
+### Common commands
 
 | Task | Command |
 |------|---------|
-| Regenerate workflow JSON | `python3 n8n/scripts/build_call_agent_workflow.py` and `python3 n8n/scripts/build_marketing_pipeline_workflow.py` |
-| Sync ClickUp field IDs | `python3 clickup/sync-field-mapping.py` |
-| Verify ClickUp API | `python3 clickup/verify-api.py` |
-| Green run preflight | `python3 clickup/green_run_validation.py` |
-| Green run execute | `GREEN_RUN_EXECUTE=1 python3 clickup/green_run_validation.py` |
-
-After migration, these become `pnpm build:workflows`, `pnpm clickup:sync`, etc. — see the migration TechSpec.
+| Run offline test suite | `pnpm test` |
+| Run live integration tests (gated) | `pnpm test:live` |
+| **Vendor gate** (run first for live work) | `pnpm vendor:gate` |
+| Regenerate workflow JSON | `pnpm build:workflows` |
+| Deploy workflows to live n8n | `pnpm deploy:workflows` |
+| Sync ClickUp field IDs | `pnpm clickup:sync` |
+| Verify ClickUp API | `pnpm clickup:verify` |
+| Green run preflight | `pnpm green-run` |
+| Green run execute | `GREEN_RUN_EXECUTE=1 pnpm green-run` |
 
 ### Run logs
 
 Scripts write ephemeral output under [`logs/`](logs/README.md). That directory is gitignored except `logs/README.md` and `logs/.gitkeep`. To promote a successful green run into committed docs:
 
 ```bash
-GREEN_RUN_UPDATE_CANONICAL=1 python3 clickup/green_run_validation.py
+GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run
 ```
 
 Then commit `agent-harness/green-run-evidence.json` manually.
+
+### Workflow deploy path
+
+After changing workflow builders or logic under `src/workflows/`:
+
+```bash
+pnpm build:workflows    # regenerate n8n/workflows/*.json in this repo
+pnpm deploy:workflows   # upsert to n8n.wolven.com.br (requires N8N_API_KEY)
+```
+
+Use manual import from [`n8n/README.md`](n8n/README.md) only for first-time setup or when API deploy is unavailable.
 
 ## Domain documentation
 
@@ -76,4 +106,4 @@ Each top-level folder has a README with purpose, key files, and manual setup:
 
 - n8n host: `n8n.wolven.com.br`
 - Runtime config repo: `rafiti052/agentic-mkt` (private), branch `main`
-- M1 model: Gemini 2.5 Flash via n8n Google AI node
+- M1 model: OpenAI `gpt-4.1-mini` via n8n OpenAI Chat Model node (see [`src/call-agent/logic.ts`](src/call-agent/logic.ts))

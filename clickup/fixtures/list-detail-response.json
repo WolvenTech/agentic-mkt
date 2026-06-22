@@ -1,0 +1,12 @@
+{
+  "id": "901234567",
+  "name": "Linkedin Post Creator",
+  "statuses": [
+    { "status": "Backlog" },
+    { "status": "Ready" },
+    { "status": "Writing" },
+    { "status": "Approval" },
+    { "status": "Publish" },
+    { "status": "Completed" }
+  ]
+}

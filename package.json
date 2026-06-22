@@ -1,0 +1,32 @@
+{
+  "name": "agentic-mkt",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Configuration-first home for Wolven's agentic marketing pipeline build/test tooling.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.5.1",
+  "scripts": {
+    "test": "vitest run --project unit",
+    "test:watch": "vitest --project unit",
+    "test:coverage": "vitest run --project unit --coverage",
+    "test:live": "pnpm vendor:gate && vitest run --project live",
+    "build:workflows": "tsx scripts/build-workflows.ts",
+    "deploy:workflows": "tsx scripts/deploy-workflows.ts",
+    "vendor:gate": "tsx scripts/vendor-gate.ts",
+    "clickup:sync": "tsx scripts/sync-field-mapping.ts",
+    "clickup:verify": "tsx scripts/verify-clickup.ts",
+    "green-run": "tsx scripts/green-run.ts",
+    "executions:inspect": "tsx scripts/inspect-executions.ts"
+  },
+  "devDependencies": {
+    "@types/node": "26.0.0",
+    "@vitest/coverage-v8": "4.1.9",
+    "ajv": "8.20.0",
+    "tsx": "4.22.4",
+    "typescript": "6.0.3",
+    "vitest": "4.1.9"
+  }
+}

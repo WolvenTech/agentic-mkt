@@ -1,0 +1,356 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  REQUIRED_OUTPUT_KEYS,
+  assembleSystemPrompt,
+  assembleUserMessage,
+  buildStructuredLog,
+  decodeGithubFileContent,
+  extractOpenAIText,
+  openaiModelId,
+  githubFetchPaths,
+  pairSkillContentsFromFetch,
+  parseAgentOutput,
+  providerIsOpenAI,
+  providerIsRouted,
+} from "../src/call-agent/logic.js";
+import type { AgentConfig } from "../src/types/agent-config.js";
+import type { CallAgentInput } from "../src/types/call-agent-io.js";
+import { isAgentError } from "../src/types/call-agent-io.js";
+import { buildCallAgentWorkflow, GPT_NODE_NAME } from "../src/workflows/build-call-agent.js";
+import type { N8nNode } from "../src/workflows/build-call-agent.js";
+
+const REPO_ROOT = resolve(__dirname, "..");
+const AGENT_JSON_PATH = resolve(REPO_ROOT, "agents", "linkedin-writer.json");
+const SKILLS_DIR = resolve(REPO_ROOT, "agents", "skills");
+
+const HARDCODED_CALL_AGENT_INPUT: CallAgentInput = {
+  agent_id: "linkedin-writer",
+  task_title: "Launch post for Q3 product update",
+  task_description: "Announce the new dashboard feature for marketing leads.",
+  criterios_de_aceite: "- Mention the dashboard\n- CTA to sign up\n- Under 300 words",
+};
+
+const SAMPLE_VALID_LLM_OUTPUT = {
+  deliverable_markdown: "## Hook\n\nWe shipped a new dashboard.",
+  resumo: "Summary of the dashboard launch post.",
+  autochecagem: "- Dashboard mentioned\n- Sign-up CTA present",
+};
+
+function readAgentConfig(): AgentConfig {
+  return JSON.parse(readFileSync(AGENT_JSON_PATH, "utf-8")) as AgentConfig;
+}
+
+function readSkill(name: string): string {
+  return readFileSync(resolve(SKILLS_DIR, `${name}.md`), "utf-8");
+}
+
+function githubFilePayload(text: string): { content: string; encoding: string } {
+  return { content: Buffer.from(text, "utf-8").toString("base64"), encoding: "base64" };
+}
+
+describe("parseAgentOutput", () => {
+  it("produces an AgentOutput with all required keys for valid JSON", () => {
+    const result = parseAgentOutput(JSON.stringify(SAMPLE_VALID_LLM_OUTPUT));
+    expect(isAgentError(result)).toBe(false);
+    expect(Object.keys(result).sort()).toEqual([...REQUIRED_OUTPUT_KEYS].sort());
+  });
+
+  it("returns an error envelope (not partial output) for malformed JSON", () => {
+    const result = parseAgentOutput("not-json-at-all");
+    expect(isAgentError(result)).toBe(true);
+    if (isAgentError(result)) {
+      expect(result.raw_response).toBe("not-json-at-all");
+    }
+    expect(result).not.toHaveProperty("deliverable_markdown");
+  });
+
+  it("returns an error envelope naming the missing key", () => {
+    const partial = { deliverable_markdown: "draft", resumo: "summary" };
+    const result = parseAgentOutput(JSON.stringify(partial));
+    expect(isAgentError(result)).toBe(true);
+    if (isAgentError(result)) {
+      expect(result.error).toContain("autochecagem");
+    }
+  });
+
+  it("strips ```json fences before parsing", () => {
+    const fenced = `\`\`\`json\n${JSON.stringify(SAMPLE_VALID_LLM_OUTPUT)}\n\`\`\``;
+    const result = parseAgentOutput(fenced);
+    expect(isAgentError(result)).toBe(false);
+    expect(Object.keys(result).sort()).toEqual([...REQUIRED_OUTPUT_KEYS].sort());
+  });
+
+  it("fails validation for empty/whitespace-only string values", () => {
+    const invalid = { ...SAMPLE_VALID_LLM_OUTPUT, resumo: "   " };
+    const result = parseAgentOutput(JSON.stringify(invalid));
+    expect(isAgentError(result)).toBe(true);
+    if (isAgentError(result)) {
+      expect(result.error).toContain("resumo");
+    }
+  });
+
+  it("never throws on garbage input", () => {
+    expect(() => parseAgentOutput("{")).not.toThrow();
+    expect(() => parseAgentOutput("[]")).not.toThrow();
+    expect(isAgentError(parseAgentOutput("[]"))).toBe(true);
+  });
+});
+
+describe("extractOpenAIText", () => {
+  it("extracts text from n8n OpenAI Responses simplified output", () => {
+    const response = {
+      output: [
+        {
+          type: "message",
+          status: "completed",
+          content: [{ type: "output_text", text: JSON.stringify(SAMPLE_VALID_LLM_OUTPUT) }],
+        },
+      ],
+    };
+    const text = extractOpenAIText(response);
+    const parsed = parseAgentOutput(text);
+    expect(isAgentError(parsed)).toBe(false);
+    expect(Object.keys(parsed).sort()).toEqual([...REQUIRED_OUTPUT_KEYS].sort());
+  });
+
+  it("extracts text from Chat Completions simplified output", () => {
+    const response = {
+      choices: [{ message: { content: JSON.stringify(SAMPLE_VALID_LLM_OUTPUT) } }],
+    };
+    expect(extractOpenAIText(response)).toBe(JSON.stringify(SAMPLE_VALID_LLM_OUTPUT));
+  });
+
+  it("falls back to text/message keys, then JSON.stringify", () => {
+    expect(extractOpenAIText({ text: "plain text" })).toBe("plain text");
+    expect(extractOpenAIText({ message: "message text" })).toBe("message text");
+    expect(extractOpenAIText({ foo: "bar" })).toBe(JSON.stringify({ foo: "bar" }));
+  });
+});
+
+describe("buildStructuredLog", () => {
+  it("includes every structured logging field", () => {
+    const log = buildStructuredLog({
+      taskId: "task-1",
+      agentId: "linkedin-writer",
+      executionId: "exec-1",
+      latencyMs: 1200,
+      parseSuccess: true,
+    });
+    expect(log).toEqual({
+      task_id: "task-1",
+      agent_id: "linkedin-writer",
+      execution_id: "exec-1",
+      latency_ms: 1200,
+      parse_success: true,
+    });
+  });
+});
+
+describe("prompt assembly", () => {
+  const agent = readAgentConfig();
+  const skills: Record<string, string> = {
+    "wolven-voice": readSkill("wolven-voice"),
+    "linkedin-format": readSkill("linkedin-format"),
+  };
+
+  it("system prompt includes both skill files and the output schema example", () => {
+    const prompt = assembleSystemPrompt(agent, skills);
+    expect(prompt).toContain("wolven-voice");
+    expect(prompt).toContain("linkedin-format");
+    expect(prompt).toContain("Voice pillars");
+    expect(prompt).toContain("Post structure");
+    expect(prompt).toContain("deliverable_markdown");
+  });
+
+  it("user message includes task title, description, and critérios", () => {
+    const message = assembleUserMessage(HARDCODED_CALL_AGENT_INPUT);
+    for (const field of ["task_title", "task_description", "criterios_de_aceite"] as const) {
+      expect(message).toContain(HARDCODED_CALL_AGENT_INPUT[field].split("\n")[0]);
+    }
+  });
+
+  it("pairSkillContentsFromFetch maps GitHub file responses back to Parse Agent Config skills by index", () => {
+    const parseItems = [
+      { skill: "wolven-voice" },
+      { skill: "linkedin-format" },
+    ];
+    const fetchItems = [
+      githubFilePayload(readSkill("wolven-voice")),
+      githubFilePayload(readSkill("linkedin-format")),
+    ];
+    const contents = pairSkillContentsFromFetch(parseItems, fetchItems);
+    expect(Object.keys(contents).sort()).toEqual(["linkedin-format", "wolven-voice"]);
+    expect(assembleSystemPrompt(agent, contents)).toContain("Voice pillars");
+  });
+
+  it("githubFetchPaths returns the agent config path and every skill path for linkedin-writer", () => {
+    const paths = githubFetchPaths(agent);
+    expect(paths).toContain("agents/linkedin-writer.json");
+    expect(paths).toContain("agents/skills/wolven-voice.md");
+    expect(paths).toContain("agents/skills/linkedin-format.md");
+  });
+
+  it("decodeGithubFileContent round-trips base64-encoded file content", () => {
+    const payload = githubFilePayload(JSON.stringify(agent));
+    const decoded = decodeGithubFileContent(payload);
+    expect(JSON.parse(decoded).id).toBe("linkedin-writer");
+  });
+
+  it("decodeGithubFileContent throws when content is missing", () => {
+    expect(() => decodeGithubFileContent({})).toThrow("GitHub file response missing base64 content");
+  });
+
+  it("normalizes openai model ids", () => {
+    expect(openaiModelId("gpt-4.1-mini")).toBe("gpt-4.1-mini");
+    expect(openaiModelId("models/gpt-4.1-mini")).toBe("gpt-4.1-mini");
+  });
+
+  it("routes openai and legacy google providers", () => {
+    expect(providerIsOpenAI("openai")).toBe(true);
+    expect(providerIsRouted("openai")).toBe(true);
+    expect(providerIsRouted("google")).toBe(true);
+    expect(providerIsRouted("anthropic")).toBe(false);
+  });
+});
+
+describe("buildCallAgentWorkflow (sub-workflow topology)", () => {
+  const workflow = buildCallAgentWorkflow();
+  const nodesByName = new Map<string, N8nNode>(workflow.nodes.map((node) => [node.name, node]));
+
+  it("is not a placeholder stub", () => {
+    expect(workflow).not.toHaveProperty("_comment");
+    expect(workflow.nodes.length).toBeGreaterThan(0);
+  });
+
+  it("contains the Execute Workflow trigger and OpenAI node types", () => {
+    const nodeTypes = new Set(workflow.nodes.map((node) => node.type));
+    for (const expected of [
+      "n8n-nodes-base.executeWorkflowTrigger",
+      "n8n-nodes-base.manualTrigger",
+      "n8n-nodes-base.github",
+      "n8n-nodes-base.merge",
+      "@n8n/n8n-nodes-langchain.openAi",
+      "n8n-nodes-base.code",
+      "n8n-nodes-base.if",
+    ]) {
+      expect(nodeTypes.has(expected)).toBe(true);
+    }
+  });
+
+  it("github nodes fetch the agent config and skill markdown paths, with retry configured", () => {
+    const githubNodes = workflow.nodes.filter((node) => node.type === "n8n-nodes-base.github");
+    expect(githubNodes).toHaveLength(2);
+    const filePaths = githubNodes.map((node) => String((node.parameters as { filePath?: string }).filePath ?? ""));
+    expect(filePaths.join(" ")).toContain("agent_id");
+    expect(filePaths.join(" ")).toContain("skill_path");
+    for (const node of githubNodes) {
+      expect(node.retryOnFail).toBe(true);
+      expect(node.maxTries).toBe(2);
+    }
+  });
+
+  it("GPT node sends instructions, user message, and maxTokens", () => {
+    const gpt = nodesByName.get(GPT_NODE_NAME);
+    const params = gpt?.parameters as {
+      resource?: string;
+      operation?: string;
+      simplify?: boolean;
+      modelId?: { value?: string };
+      responses?: { values?: Array<{ content?: string; role?: string }> };
+      options?: { instructions?: string; maxTokens?: string };
+    };
+    expect(params.resource).toBe("text");
+    expect(params.operation).toBe("response");
+    expect(params.simplify).toBe(true);
+    expect(params.modelId?.value).toContain("gpt-4.1-mini");
+    expect(params.options?.instructions).toContain("system_prompt");
+    expect(params.responses?.values?.[0]?.content).toContain("user_message");
+    expect(params.options?.maxTokens).toContain("max_output_tokens");
+  });
+
+  it("Route Provider accepts openai and legacy google", () => {
+    const route = nodesByName.get("Route Provider");
+    const conditions = (route?.parameters as { conditions?: { combinator?: string; conditions?: Array<{ rightValue?: string }> } })
+      ?.conditions;
+    expect(conditions?.combinator).toBe("or");
+    const values = (conditions?.conditions ?? []).map((c) => c.rightValue).sort();
+    expect(values).toEqual(["google", "openai"]);
+  });
+
+  it("Parse Agent Output node validates every required output key", () => {
+    const parseNode = nodesByName.get("Parse Agent Output");
+    const code = String((parseNode?.parameters as { jsCode?: string }).jsCode ?? "");
+    for (const key of REQUIRED_OUTPUT_KEYS) {
+      expect(code).toContain(key);
+    }
+  });
+
+  it("pins a hardcoded test input for isolation runs", () => {
+    const hardcoded = nodesByName.get("Hardcoded Test Input");
+    const payload = JSON.parse(String((hardcoded?.parameters as { jsonOutput?: string }).jsonOutput ?? "{}"));
+    expect(payload.agent_id).toBe("linkedin-writer");
+    const pin = (workflow.pinData as Record<string, Array<{ json: { agent_id: string } }>>)["When Executed by Another Workflow"];
+    expect(pin?.[0]?.json.agent_id).toBe("linkedin-writer");
+  });
+
+  it("re-imports without structural errors: every node and connection target is well-formed", () => {
+    for (const node of workflow.nodes) {
+      expect(node.name).toBeTruthy();
+      expect(node.type).toBeTruthy();
+      expect(node.parameters).toBeDefined();
+      expect(node.position).toBeDefined();
+    }
+    for (const [source, outputs] of Object.entries(workflow.connections)) {
+      expect(nodesByName.has(source)).toBe(true);
+      for (const branch of outputs.main) {
+        for (const link of branch) {
+          expect(nodesByName.has(link.node)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("routes unsupported providers to an error envelope", () => {
+    const errorNode = nodesByName.get("Unsupported Provider Error");
+    const code = String((errorNode?.parameters as { jsCode?: string }).jsCode ?? "");
+    expect(code).toContain("error");
+    expect(code).toContain("raw_response");
+  });
+
+  it("runs with no environment variables set (offline, no network access)", () => {
+    const restore = { ...process.env };
+    for (const key of Object.keys(process.env)) {
+      delete process.env[key];
+    }
+    try {
+      expect(() => buildCallAgentWorkflow()).not.toThrow();
+    } finally {
+      process.env = restore;
+    }
+  });
+});
+
+describe("end-to-end prompt assembly + parse", () => {
+  it("assembles prompts from local agent files and parses SAMPLE_VALID_LLM_OUTPUT", () => {
+    const agent = readAgentConfig();
+    const skills: Record<string, string> = {};
+    for (const name of agent.skills) {
+      skills[name] = readSkill(name);
+    }
+
+    const systemPrompt = assembleSystemPrompt(agent, skills);
+    const userMessage = assembleUserMessage(HARDCODED_CALL_AGENT_INPUT);
+    expect(systemPrompt.length).toBeGreaterThan(200);
+    expect(userMessage.length).toBeGreaterThan(50);
+
+    const simulated = parseAgentOutput(JSON.stringify(SAMPLE_VALID_LLM_OUTPUT));
+    expect(isAgentError(simulated)).toBe(false);
+    if (!isAgentError(simulated)) {
+      for (const key of REQUIRED_OUTPUT_KEYS) {
+        expect(simulated[key].trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+});

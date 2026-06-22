@@ -11,9 +11,10 @@ Schema, webhook contract, and field mapping for the Marketing Pipeline ClickUp l
 | [`list-schema.md`](list-schema.md) | List name, statuses, custom fields, brief gate rules |
 | [`webhook-contract.md`](webhook-contract.md) | Webhook trigger filter and payload shape |
 | [`field-mapping.json`](field-mapping.json) | ClickUp list ID, field IDs, and status display strings |
-| [`sync-field-mapping.py`](sync-field-mapping.py) | Pull field IDs from ClickUp API into `field-mapping.json` |
-| [`verify-api.py`](verify-api.py) | Integration check — create test task and verify custom fields via GET |
-| [`green_run_validation.py`](green_run_validation.py) | M1 green run preflight + execution; writes `logs/green-run/<timestamp>/evidence.json` (see [`logs/README.md`](../logs/README.md)) |
+| `pnpm vendor:gate` | **Run first** — verifies ClickUp + n8n connectivity before live scripts or integration tests |
+| `pnpm clickup:sync` | Pull field IDs from ClickUp API into `field-mapping.json` |
+| `pnpm clickup:verify` | Integration check — create test task and verify custom fields via GET |
+| `pnpm green-run` | M1 green run preflight + execution; writes `logs/green-run/<timestamp>/evidence.json` (see [`logs/README.md`](../logs/README.md)) |
 | [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) | Sample webhook payload for contract tests |
 
 ## Manual setup checklist
@@ -43,11 +44,17 @@ Names must match exactly (including `Critérios de Aceite` accent).
 
 ### 3. Record IDs in the repo
 
+Run the vendor gate first (required before live API scripts). Loads credentials from repo-root `.env` automatically:
+
+```bash
+pnpm vendor:gate   # exit 0 required — stop if ClickUp/n8n unreachable
+```
+
 ```bash
 export CLICKUP_API_TOKEN="pk_your_personal_token"
 export CLICKUP_LIST_ID="your_list_id"
 
-python3 clickup/sync-field-mapping.py
+pnpm clickup:sync
 ```
 
 This updates `field-mapping.json` with `clickup_list_id` and all `clickup_field_id` values. Commit the updated JSON.
@@ -55,8 +62,8 @@ This updates `field-mapping.json` with `clickup_list_id` and all `clickup_field_
 Verify:
 
 ```bash
-python3 clickup/verify-api.py
-python3 -m unittest tests.test_task_04_clickup -v
+pnpm clickup:verify
+pnpm test
 ```
 
 ### 4. Brief gate (operational)
@@ -89,14 +96,17 @@ Validated during M1/M2. Complete before importing n8n main workflow.
 ### Quick validation checklist
 
 ```bash
+# 0. Vendor gate — exit 0 required before any step below
+pnpm vendor:gate
+
 # 1. Sync field IDs (requires CLICKUP_API_TOKEN + CLICKUP_LIST_ID)
-python3 clickup/sync-field-mapping.py
+pnpm clickup:sync
 
 # 2. Verify API access and custom fields
-python3 clickup/verify-api.py
+pnpm clickup:verify
 
 # 3. Run contract tests
-python3 -m unittest tests.test_task_04_clickup -v
+pnpm test
 ```
 
 Confirm `field-mapping.json` has no `<TBD>` values before n8n import.
@@ -116,7 +126,7 @@ Before every **Ready to Work** move, confirm title, description, and **Critério
 | Symptom | First check |
 |---------|-------------|
 | Webhook not firing | ClickUp webhook log + n8n workflow Active status |
-| Empty custom fields in n8n | Re-run `sync-field-mapping.py`; verify field names match UI exactly |
+| Empty custom fields in n8n | Re-run `pnpm clickup:sync`; verify field names match UI exactly |
 | Task stuck In Progress | n8n Executions for main workflow run |
 
 Full diagnostics: [`agent-harness/io-contract.md` → Troubleshooting](../agent-harness/io-contract.md#troubleshooting).
@@ -126,6 +136,6 @@ Full diagnostics: [`agent-harness/io-contract.md` → Troubleshooting](../agent-
 This section duplicates the checklist above for README scaffold compatibility (task_01 required sections).
 
 1. Create list and fields per [`list-schema.md`](list-schema.md).
-2. Run `sync-field-mapping.py` with API credentials.
-3. Run `verify-api.py` and unit tests.
+2. Run `pnpm vendor:gate`, then `pnpm clickup:sync` with API credentials.
+3. Run `pnpm clickup:verify` and `pnpm test`.
 4. Register webhook in task_07 per [`webhook-contract.md`](webhook-contract.md).
