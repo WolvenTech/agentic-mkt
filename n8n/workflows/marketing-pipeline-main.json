@@ -2,7 +2,7 @@
   "name": "Marketing Pipeline",
   "nodes": [
     {
-      "id": "173c8894-019a-44ba-9246-add041eebf10",
+      "id": "18546c41-c085-5c2b-49d6-4ce9088d0e84",
       "name": "ClickUp Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -10,7 +10,7 @@
         0,
         300
       ],
-      "webhookId": "32bad2c1-71f2-4db8-b885-83949e6fb4e4",
+      "webhookId": "92b0a88b-d639-9f50-b485-4c416ca14ad1",
       "parameters": {
         "httpMethod": "POST",
         "path": "marketing-pipeline-ready-to-work",
@@ -19,7 +19,7 @@
       }
     },
     {
-      "id": "6cd92d51-18ef-4bdd-aa99-994b8c5a1942",
+      "id": "a09e4778-9602-9c70-bf99-867a202d274f",
       "name": "Ready to Work?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -38,7 +38,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "c1de8504-085d-4758-9e2a-f1eaa780b08a",
+              "id": "1511e6af-bcae-181c-1db7-92b08e6603d9",
               "leftValue": "={{ (() => { const payload = ($json.body && $json.body.history_items ? $json.body : $json); const item = payload?.history_items?.[0]; if (!item || item.field !== \"status\") return false; const after = item.after; const status = (after !== null && typeof after === \"object\") ? after.status : after; return String(status ?? \"\").trim().toLowerCase() === \"ready\"; })() }}",
               "rightValue": "",
               "operator": {
@@ -53,7 +53,7 @@
       }
     },
     {
-      "id": "9e34af11-e4b4-4757-aef1-b2f23d810e47",
+      "id": "5bd1a53b-6d3d-4238-2094-7d49b1303c20",
       "name": "Extract Webhook Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -66,7 +66,7 @@
       }
     },
     {
-      "id": "d4a102d5-54c9-46a7-bd79-a72dc170ba61",
+      "id": "6ce9d008-1935-d501-0456-3dd8f6ab0eaf",
       "name": "Dedup?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -85,7 +85,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "76967085-558e-458b-91b7-993c6b55ec10",
+              "id": "ef9c2eb3-064c-d371-3103-031636601e22",
               "leftValue": "={{ (() => { const staticData = $getWorkflowStaticData('global'); const key = String($json.history_item_id ?? ''); if (!key) return false; staticData.seenHistoryItems = staticData.seenHistoryItems || {}; return Boolean(staticData.seenHistoryItems[key]); })() }}",
               "rightValue": "",
               "operator": {
@@ -100,7 +100,7 @@
       }
     },
     {
-      "id": "c332eef3-61e0-4ca2-9e35-bc221cdebe2a",
+      "id": "92b1695a-9f15-858d-2034-da1f2310bb37",
       "name": "Mark History Item Seen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -113,7 +113,7 @@
       }
     },
     {
-      "id": "027fa215-306a-41b9-b5ef-d6593956328c",
+      "id": "2481c411-9ef0-205b-4827-8e4623546908",
       "name": "GET ClickUp Task",
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
@@ -133,7 +133,7 @@
       }
     },
     {
-      "id": "189fd512-3e67-4efc-8398-4490ed3e178d",
+      "id": "0f520c23-ddf3-db0a-d440-4fbb70b9e6d1",
       "name": "Extract Task Fields",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -146,7 +146,7 @@
       }
     },
     {
-      "id": "8df41b8e-09a0-491b-8234-e2e10c80d56f",
+      "id": "f648c83a-bdbd-41e0-eec2-a73b460c097a",
       "name": "Status → In Progress",
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
@@ -169,7 +169,7 @@
       }
     },
     {
-      "id": "9e03e233-b4e1-4a6d-8cec-b1655a54d25c",
+      "id": "cacc3bf4-657c-6720-2dae-a75e0f8efc81",
       "name": "Prepare Call Agent Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -182,7 +182,7 @@
       }
     },
     {
-      "id": "9c0dc636-6b39-47ea-85da-6a32a911e02d",
+      "id": "6f193e3b-4b47-04d0-301b-315ca22ec5f3",
       "name": "Execute Call Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -202,7 +202,7 @@
       }
     },
     {
-      "id": "505116d9-e9d9-4943-ba89-0e708d9b0479",
+      "id": "afc5c925-7040-b2b9-774f-284bcdde5282",
       "name": "Agent Output OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -221,7 +221,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "a332edb1-2947-42ef-bbe2-fe41852d5493",
+              "id": "865d6e5a-eb3b-de69-71b3-0d927ba46339",
               "leftValue": "={{ $json.error }}",
               "rightValue": "",
               "operator": {
@@ -235,7 +235,7 @@
       }
     },
     {
-      "id": "84f5188c-3f49-4e40-a760-996093dd32a5",
+      "id": "0af83678-f6d9-ac11-809d-0e92d824435a",
       "name": "Format Draft Comment",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -248,7 +248,7 @@
       }
     },
     {
-      "id": "13ccd4ea-b921-4522-99b5-878165c1becc",
+      "id": "33f4fdb0-1372-dbf2-7d62-019c4cb1122a",
       "name": "POST Task Comment",
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
@@ -274,7 +274,7 @@
       }
     },
     {
-      "id": "f19bee03-5ef0-4896-802f-1a6ab5b90efd",
+      "id": "a9c68a37-8603-6b02-5cc8-f5c653468c06",
       "name": "Status → Review",
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
@@ -297,7 +297,7 @@
       }
     },
     {
-      "id": "d4be0ffc-b64c-4dbe-83c1-0cdf540c83a1",
+      "id": "056c520d-dc72-3fd4-f46c-df10dcba7921",
       "name": "Agent Parse Failure",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -310,7 +310,7 @@
       }
     },
     {
-      "id": "0da61b38-2792-4506-a24a-dd3430c41d30",
+      "id": "7fb8f597-e939-23ef-8f12-3a17b8d3b2c6",
       "name": "Log Ingress Skipped",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -323,7 +323,7 @@
       }
     },
     {
-      "id": "80c60146-26fb-49f9-a758-45b32348b5dd",
+      "id": "813a22e1-e9e1-9f06-4fa4-05d2a3ac4bab",
       "name": "Log Duplicate Ingress",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -506,7 +506,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "acab4e34-43a7-4deb-a307-9e431995d086",
+  "versionId": "c7d3859f-598b-f64e-1536-e9d45f3512f9",
   "meta": {
     "templateCredsSetupCompleted": false,
     "instanceId": "agentic-mkt-marketing-pipeline-export"

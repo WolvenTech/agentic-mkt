@@ -2,7 +2,7 @@
   "name": "Call Agent",
   "nodes": [
     {
-      "id": "8e117173-aaa1-48a8-b8fe-b379adb7de4f",
+      "id": "21906f84-62b7-dcbd-67f2-b63b40ada3b3",
       "name": "When Executed by Another Workflow",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
@@ -15,7 +15,7 @@
       }
     },
     {
-      "id": "68acc605-d9a6-4ca6-ab14-75fda9829bc0",
+      "id": "43d6de75-cfc8-175b-1a02-2ba610f16c96",
       "name": "Manual Trigger (Isolation Test)",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
@@ -26,7 +26,7 @@
       "parameters": {}
     },
     {
-      "id": "f2bd1fa4-4e93-4b4e-b501-9e69d0e71880",
+      "id": "d2096141-fa71-41c1-b3ce-75cba456b35b",
       "name": "Hardcoded Test Input",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -41,7 +41,7 @@
       }
     },
     {
-      "id": "a9bd7f14-b8c0-4074-9f3c-b9c7c1fc44cd",
+      "id": "d35b7531-c7fa-f3b1-39d5-dc01a087b6db",
       "name": "Store Input Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -54,7 +54,7 @@
       }
     },
     {
-      "id": "b1ce3c3f-41c1-44f4-b04e-ef3120d31600",
+      "id": "8b8d71ab-152e-c647-81e8-f37c1e0dd7ed",
       "name": "Fetch Agent Config",
       "type": "n8n-nodes-base.github",
       "typeVersion": 1.1,
@@ -89,7 +89,7 @@
       }
     },
     {
-      "id": "64e45ac5-abe3-43cf-b7f4-3530cf01f84c",
+      "id": "50995f19-f10b-7b60-9f84-6c12e8b3ec6b",
       "name": "Parse Agent Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -102,7 +102,7 @@
       }
     },
     {
-      "id": "83743a62-1f16-4888-b953-ac4bbe95bea5",
+      "id": "7dec21d9-b2bf-1895-5ad3-a3491777a441",
       "name": "Fetch Skill Markdown",
       "type": "n8n-nodes-base.github",
       "typeVersion": 1.1,
@@ -137,7 +137,7 @@
       }
     },
     {
-      "id": "e1a8c893-00b8-4a9a-9a05-a9de4311e065",
+      "id": "1f887ca8-5e01-2bc2-009e-6cb91d2eb6cc",
       "name": "Merge Skill Fetch",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
@@ -152,7 +152,7 @@
       }
     },
     {
-      "id": "b7db080a-e31c-40a8-9c37-15ccbed8d27f",
+      "id": "686a0789-5ada-4abc-c7d1-38916e02959c",
       "name": "Assemble Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -165,7 +165,7 @@
       }
     },
     {
-      "id": "e8221c4b-2f4f-4444-a9fb-ad796e7b71da",
+      "id": "ac158a61-bf1c-278c-f51e-dbd4a4a7af0b",
       "name": "Route Provider",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -184,7 +184,7 @@
           "combinator": "or",
           "conditions": [
             {
-              "id": "81cbcec0-2dbc-4e21-af59-4d7fa45a0581",
+              "id": "4c6dcecf-a806-8de1-c468-ea7c3605c91a",
               "leftValue": "={{ $json.provider }}",
               "rightValue": "openai",
               "operator": {
@@ -193,7 +193,7 @@
               }
             },
             {
-              "id": "a64d6cdf-1569-46b8-9ece-0e7a2b7b013f",
+              "id": "c0d6dcc5-7d2a-7835-e37d-e2220eae31a9",
               "leftValue": "={{ $json.provider }}",
               "rightValue": "google",
               "operator": {
@@ -207,7 +207,7 @@
       }
     },
     {
-      "id": "d7fdb2a3-020e-4755-a83f-590cf202a3d9",
+      "id": "dea9a737-c951-d3de-c787-703edebd9538",
       "name": "Message GPT-4.1-MINI",
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 2.1,
@@ -248,7 +248,7 @@
       }
     },
     {
-      "id": "cf5f31a8-ea0f-4fae-ba5d-40c0de74babc",
+      "id": "13a64f1f-38e1-d8de-a0dc-1337f2062252",
       "name": "Parse Agent Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -261,7 +261,7 @@
       }
     },
     {
-      "id": "4e124be8-41e3-4e79-a567-2852590500a9",
+      "id": "531704e5-4ed2-bde3-5bb7-1edafa5ad33d",
       "name": "Unsupported Provider Error",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -425,7 +425,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "bbd637d8-8270-405c-a91b-01ab8f9cf25f",
+  "versionId": "729bc156-eda1-0aa6-a0b0-b36eb3d12ba4",
   "meta": {
     "templateCredsSetupCompleted": false,
     "instanceId": "agentic-mkt-call-agent-export"

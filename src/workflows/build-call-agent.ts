@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { deterministicWorkflowId } from "./deterministic-id.js";
 import {
   DEFAULT_MAX_OUTPUT_TOKENS,
   DEFAULT_MODEL,
@@ -242,11 +242,21 @@ function unsupportedProviderJs(): string {
 
 export const GPT_NODE_NAME = "Message GPT-4.1-MINI";
 
+const WORKFLOW_NAME = "Call Agent";
+
+function nodeId(nodeName: string): string {
+  return deterministicWorkflowId(WORKFLOW_NAME, nodeName);
+}
+
+function conditionId(nodeName: string, index: number): string {
+  return deterministicWorkflowId(WORKFLOW_NAME, `${nodeName}:condition:${index}`);
+}
+
 /** Build the Call Agent n8n sub-workflow export. Source of truth per ADR-006. */
 export function buildCallAgentWorkflow(): N8nWorkflowExport {
   const nodes: N8nNode[] = [
     {
-      id: randomUUID(),
+      id: nodeId("When Executed by Another Workflow"),
       name: "When Executed by Another Workflow",
       type: "n8n-nodes-base.executeWorkflowTrigger",
       typeVersion: 1.1,
@@ -254,7 +264,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       parameters: { inputSource: "passthrough" },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Manual Trigger (Isolation Test)"),
       name: "Manual Trigger (Isolation Test)",
       type: "n8n-nodes-base.manualTrigger",
       typeVersion: 1,
@@ -262,7 +272,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       parameters: {},
     },
     {
-      id: randomUUID(),
+      id: nodeId("Hardcoded Test Input"),
       name: "Hardcoded Test Input",
       type: "n8n-nodes-base.set",
       typeVersion: 3.4,
@@ -270,7 +280,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       parameters: { mode: "raw", jsonOutput: JSON.stringify(HARDCODED_TEST_INPUT), options: {} },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Store Input Context"),
       name: "Store Input Context",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -278,7 +288,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       parameters: { jsCode: storeInputContextJs() },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Fetch Agent Config"),
       name: "Fetch Agent Config",
       type: "n8n-nodes-base.github",
       typeVersion: 1.1,
@@ -297,7 +307,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Parse Agent Config"),
       name: "Parse Agent Config",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -305,7 +315,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       parameters: { jsCode: parseAgentConfigJs() },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Fetch Skill Markdown"),
       name: "Fetch Skill Markdown",
       type: "n8n-nodes-base.github",
       typeVersion: 1.1,
@@ -324,7 +334,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Merge Skill Fetch"),
       name: "Merge Skill Fetch",
       type: "n8n-nodes-base.merge",
       typeVersion: 3.2,
@@ -336,7 +346,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Assemble Prompt"),
       name: "Assemble Prompt",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -344,7 +354,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       parameters: { jsCode: assemblePromptJs() },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Route Provider"),
       name: "Route Provider",
       type: "n8n-nodes-base.if",
       typeVersion: 2.2,
@@ -355,13 +365,13 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
           combinator: "or",
           conditions: [
             {
-              id: randomUUID(),
+              id: conditionId("Route Provider", 0),
               leftValue: "={{ $json.provider }}",
               rightValue: "openai",
               operator: { type: "string", operation: "equals" },
             },
             {
-              id: randomUUID(),
+              id: conditionId("Route Provider", 1),
               leftValue: "={{ $json.provider }}",
               rightValue: "google",
               operator: { type: "string", operation: "equals" },
@@ -372,7 +382,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId(GPT_NODE_NAME),
       name: GPT_NODE_NAME,
       type: "@n8n/n8n-nodes-langchain.openAi",
       typeVersion: 2.1,
@@ -399,7 +409,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Parse Agent Output"),
       name: "Parse Agent Output",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -407,7 +417,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       parameters: { jsCode: parseAgentOutputJs() },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Unsupported Provider Error"),
       name: "Unsupported Provider Error",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -449,7 +459,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
     pinData: { "When Executed by Another Workflow": [{ json: HARDCODED_TEST_INPUT }] },
     active: false,
     settings: { executionOrder: "v1" },
-    versionId: randomUUID(),
+    versionId: nodeId("__version__"),
     meta: { templateCredsSetupCompleted: false, instanceId: "agentic-mkt-call-agent-export" },
     tags: [{ name: "marketing-pipeline" }],
   };

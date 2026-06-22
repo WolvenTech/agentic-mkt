@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { deterministicWorkflowId } from "./deterministic-id.js";
 import { DEFAULT_AGENT_ID, DEFAULT_MODEL, fieldId, statusName, webhookIfExpression } from "../marketing-pipeline/logic.js";
 import type { FieldMapping } from "../types/field-mapping.js";
 import type { N8nNode, N8nWorkflowExport } from "./build-call-agent.js";
@@ -209,17 +209,27 @@ function logDuplicateIngressJs(): string {
 
 /** Build the Marketing Pipeline n8n main workflow export. Source of truth per ADR-006. */
 export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nWorkflowExport {
+  const WORKFLOW_NAME = "Marketing Pipeline";
+
+  function nodeId(nodeName: string): string {
+    return deterministicWorkflowId(WORKFLOW_NAME, nodeName);
+  }
+
+  function conditionId(nodeName: string, index: number): string {
+    return deterministicWorkflowId(WORKFLOW_NAME, `${nodeName}:condition:${index}`);
+  }
+
   const statusWriting = statusName(fieldMapping, "writing");
   const statusReview = statusName(fieldMapping, "review");
 
   const nodes: N8nNode[] = [
     {
-      id: randomUUID(),
+      id: nodeId("ClickUp Webhook"),
       name: "ClickUp Webhook",
       type: "n8n-nodes-base.webhook",
       typeVersion: 2,
       position: [0, 300],
-      webhookId: randomUUID(),
+      webhookId: nodeId("ClickUp Webhook:webhookId"),
       parameters: {
         httpMethod: "POST",
         path: "marketing-pipeline-ready-to-work",
@@ -228,7 +238,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Ready to Work?"),
       name: "Ready to Work?",
       type: "n8n-nodes-base.if",
       typeVersion: 2.2,
@@ -239,7 +249,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
           combinator: "and",
           conditions: [
             {
-              id: randomUUID(),
+              id: conditionId("Ready to Work?", 0),
               leftValue: webhookIfExpression(fieldMapping),
               rightValue: "",
               operator: { type: "boolean", operation: "true", singleValue: true },
@@ -250,7 +260,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Extract Webhook Context"),
       name: "Extract Webhook Context",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -258,7 +268,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { jsCode: extractWebhookContextJs() },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Dedup?"),
       name: "Dedup?",
       type: "n8n-nodes-base.if",
       typeVersion: 2.2,
@@ -269,7 +279,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
           combinator: "and",
           conditions: [
             {
-              id: randomUUID(),
+              id: conditionId("Dedup?", 0),
               leftValue: dedupIfExpression(),
               rightValue: "",
               operator: { type: "boolean", operation: "true", singleValue: true },
@@ -280,7 +290,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Mark History Item Seen"),
       name: "Mark History Item Seen",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -288,7 +298,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { jsCode: markHistoryItemSeenJs() },
     },
     {
-      id: randomUUID(),
+      id: nodeId("GET ClickUp Task"),
       name: "GET ClickUp Task",
       type: "n8n-nodes-base.clickUp",
       typeVersion: 1,
@@ -297,7 +307,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { operation: "get", id: "={{ $json.task_id }}" },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Extract Task Fields"),
       name: "Extract Task Fields",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -305,7 +315,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { jsCode: extractTaskFieldsJs(fieldMapping) },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Status → In Progress"),
       name: "Status → In Progress",
       type: "n8n-nodes-base.clickUp",
       typeVersion: 1,
@@ -314,7 +324,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { operation: "update", id: "={{ $json.task_id }}", updateFields: { status: statusWriting } },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Prepare Call Agent Input"),
       name: "Prepare Call Agent Input",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -322,7 +332,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { jsCode: prepareCallAgentInputJs() },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Execute Call Agent"),
       name: "Execute Call Agent",
       type: "n8n-nodes-base.executeWorkflow",
       typeVersion: 1.2,
@@ -335,7 +345,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Agent Output OK?"),
       name: "Agent Output OK?",
       type: "n8n-nodes-base.if",
       typeVersion: 2.2,
@@ -346,7 +356,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
           combinator: "and",
           conditions: [
             {
-              id: randomUUID(),
+              id: conditionId("Agent Output OK?", 0),
               leftValue: "={{ $json.error }}",
               rightValue: "",
               operator: { type: "string", operation: "notExists" },
@@ -357,7 +367,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Format Draft Comment"),
       name: "Format Draft Comment",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -365,7 +375,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { jsCode: formatDraftCommentJs() },
     },
     {
-      id: randomUUID(),
+      id: nodeId("POST Task Comment"),
       name: "POST Task Comment",
       type: "n8n-nodes-base.clickUp",
       typeVersion: 1,
@@ -383,7 +393,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Status → Review"),
       name: "Status → Review",
       type: "n8n-nodes-base.clickUp",
       typeVersion: 1,
@@ -396,7 +406,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Agent Parse Failure"),
       name: "Agent Parse Failure",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -404,7 +414,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { jsCode: agentParseFailureJs() },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Log Ingress Skipped"),
       name: "Log Ingress Skipped",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -412,7 +422,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { jsCode: logIngressSkippedJs(fieldMapping) },
     },
     {
-      id: randomUUID(),
+      id: nodeId("Log Duplicate Ingress"),
       name: "Log Duplicate Ingress",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
@@ -458,7 +468,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
     connections,
     active: false,
     settings: { executionOrder: "v1" },
-    versionId: randomUUID(),
+    versionId: nodeId("__version__"),
     meta: { templateCredsSetupCompleted: false, instanceId: "agentic-mkt-marketing-pipeline-export" },
     tags: [{ name: "marketing-pipeline" }],
   };
