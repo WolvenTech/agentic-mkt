@@ -8,15 +8,15 @@
   "properties": {
     "deliverable_markdown": {
       "type": "string",
-      "description": "Full LinkedIn post draft in markdown"
+      "description": "One valid deliverable in markdown: a blocker question, three angle options, or the selected final English LinkedIn post"
     },
     "resumo": {
       "type": "string",
-      "description": "2-3 sentence summary of the draft"
+      "description": "2-3 sentence summary of the returned blocker, angles, or final post"
     },
     "autochecagem": {
       "type": "string",
-      "description": "Bullet list validating draft against acceptance criteria"
+      "description": "Bullet list validating the output against the brief, evidence requirements, Wolven voice, and acceptance criteria"
     }
   },
   "additionalProperties": false

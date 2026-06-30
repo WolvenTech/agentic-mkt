@@ -32,6 +32,17 @@ const HARDCODED_CALL_AGENT_INPUT: CallAgentInput = {
   criterios_de_aceite: "- Mention the dashboard\n- CTA to sign up\n- Under 300 words",
 };
 
+const REVISION_TASK_DESCRIPTION = `# Original Brief
+Announce the new dashboard feature for marketing leads.
+
+# Revision Feedback (Comment Thread)
+[2026-06-22T10:00:00Z] Lead: Shorten the hook and include the customer quote.
+[2026-06-22T10:05:00Z] linkedin-writer: ## LinkedIn Draft
+Previous draft text.
+
+# Revision Instructions
+Incorporate all lead feedback above. This is automated revision round 1 of 2.`;
+
 const SAMPLE_VALID_LLM_OUTPUT = {
   deliverable_markdown: "## Hook\n\nWe shipped a new dashboard.",
   resumo: "Summary of the dashboard launch post.",
@@ -148,6 +159,120 @@ describe("buildStructuredLog", () => {
   });
 });
 
+describe("wolven-voice skill", () => {
+  const skill = readSkill("wolven-voice");
+
+  it("preserves source facts while rewriting in Wolven voice", () => {
+    for (const phrase of [
+      "Preserve all facts",
+      "names, numbers, promises, links, required CTAs",
+      "source's intent",
+      "Straightforward",
+      "Friendly",
+      "Imaginative",
+      "Confident",
+    ]) {
+      expect(skill).toContain(phrase);
+    }
+  });
+
+  it("documents forbidden corporate and Silicon Valley cliches", () => {
+    for (const phrase of ["corporate fluff", "Silicon Valley cliches", "leverage", "thought leader"]) {
+      expect(skill).toContain(phrase);
+    }
+  });
+
+  it("includes the final voice QA from the DOCX source", () => {
+    for (const phrase of [
+      "Can a busy VP state the point in one sentence?",
+      "human and direct",
+      "facts, claims, numbers, names, links, and CTAs",
+      "unsupported new claims",
+    ]) {
+      expect(skill).toContain(phrase);
+    }
+  });
+});
+
+describe("linkedin-format skill", () => {
+  const skill = readSkill("linkedin-format");
+
+  it("documents the C-level English LinkedIn audience and brief gates", () => {
+    for (const phrase of [
+      "C-level readers",
+      "Accept briefs in Portuguese or English",
+      "Always return the post in English",
+      "communication objective",
+      "central idea",
+      "evidence",
+    ]) {
+      expect(skill).toContain(phrase);
+    }
+  });
+
+  it("documents evidence blockers and no-invention rules", () => {
+    for (const phrase of [
+      "Treat missing evidence as a blocker",
+      "Never invent handles, metrics, studies, client names, results, or causal claims",
+      "What concrete evidence should carry this post",
+      "Do not research it independently",
+    ]) {
+      expect(skill).toContain(phrase);
+    }
+  });
+
+  it("documents the three-angle workflow and final-post mode", () => {
+    for (const phrase of [
+      "provide three short and distinct angles",
+      "Core claim",
+      "Evidence lens",
+      "Stop and ask the user to choose one",
+      "selected angle is present",
+      "direct final draft",
+    ]) {
+      expect(skill).toContain(phrase);
+    }
+  });
+
+  it("documents the three compatible output modes", () => {
+    for (const phrase of ["Blocker", "Angle options", "Final post", "deliverable_markdown"]) {
+      expect(skill).toContain(phrase);
+    }
+  });
+
+  it("includes LinkedIn final QA checks from the DOCX source", () => {
+    for (const phrase of [
+      "Objective is clear",
+      "one real, defensible idea",
+      "Evidence is accurate, specific, and traceable",
+      "No facts, results, or source details are invented",
+    ]) {
+      expect(skill).toContain(phrase);
+    }
+  });
+
+  it("documents revision mode and the embedded task_description sections", () => {
+    expect(skill).toContain("## Revision mode");
+    for (const marker of ["Original Brief", "Revision Feedback", "Revision Instructions"]) {
+      expect(skill).toContain(marker);
+    }
+  });
+
+  it("documents ADR-005 long-thread handling around the ~10 comment threshold", () => {
+    expect(skill).toContain("~10 comments");
+    expect(skill).toContain("summarize older comments");
+    expect(skill).toContain("latest lead feedback verbatim");
+  });
+
+  it("preserves the three-section AgentOutput contract during revision runs", () => {
+    for (const key of REQUIRED_OUTPUT_KEYS) {
+      expect(skill).toContain(key);
+    }
+    expect(skill).toContain("lead feedback");
+    expect(skill).toContain("Bypass the angle-selection gate");
+  });
+});
+
 describe("prompt assembly", () => {
   const agent = readAgentConfig();
   const skills: Record<string, string> = {
@@ -159,9 +284,11 @@ describe("prompt assembly", () => {
     const prompt = assembleSystemPrompt(agent, skills);
     expect(prompt).toContain("wolven-voice");
     expect(prompt).toContain("linkedin-format");
-    expect(prompt).toContain("Voice pillars");
-    expect(prompt).toContain("Post structure");
+    expect(prompt).toContain("Wolven voice");
+    expect(prompt).toContain("Create angles");
+    expect(prompt).toContain("Output modes");
     expect(prompt).toContain("deliverable_markdown");
+    expect(prompt).toContain("blocker question, three angle options, or the selected final English LinkedIn post");
   });
 
   it("user message includes task title, description, and critérios", () => {
@@ -169,6 +296,24 @@ describe("prompt assembly", () => {
     for (const field of ["task_title", "task_description", "criterios_de_aceite"] as const) {
       expect(message).toContain(HARDCODED_CALL_AGENT_INPUT[field].split("\n")[0]);
     }
+  });
+
+  it("keeps revision markdown in task_description while system prompt includes linkedin-format guidance", () => {
+    const revisionInput: CallAgentInput = {
+      ...HARDCODED_CALL_AGENT_INPUT,
+      task_description: REVISION_TASK_DESCRIPTION,
+    };
+
+    const systemPrompt = assembleSystemPrompt(agent, skills);
+    const userMessage = assembleUserMessage(revisionInput);
+
+    expect(systemPrompt).toContain("linkedin-format");
+    expect(systemPrompt).toContain("Revision mode");
+    expect(systemPrompt).toContain("~10 comments");
+    expect(userMessage).toContain("# Original Brief");
+    expect(userMessage).toContain("# Revision Feedback (Comment Thread)");
+    expect(userMessage).toContain("# Revision Instructions");
+    expect(userMessage).toContain("revision round 1 of 2");
   });
 
   it("pairSkillContentsFromFetch maps GitHub file responses back to Parse Agent Config skills by index", () => {
@@ -182,7 +327,7 @@ describe("prompt assembly", () => {
     ];
     const contents = pairSkillContentsFromFetch(parseItems, fetchItems);
     expect(Object.keys(contents).sort()).toEqual(["linkedin-format", "wolven-voice"]);
-    expect(assembleSystemPrompt(agent, contents)).toContain("Voice pillars");
+    expect(assembleSystemPrompt(agent, contents)).toContain("Wolven voice");
   });
 
   it("githubFetchPaths returns the agent config path and every skill path for linkedin-writer", () => {
