@@ -12,8 +12,8 @@ export interface FieldMapping {
   statuses: Record<string, string>;
 }
 
-/** Keys in `statuses` used by M1 automation: ingress → writing → review. */
-export const AUTOMATION_STATUS_KEYS = ["ready", "writing", "review"] as const;
+/** Keys in `statuses` used by automation ingress and workflow-owned status transitions. */
+export const AUTOMATION_STATUS_KEYS = ["ready", "needs_review", "writing", "review"] as const;
 
 export type AutomationStatusKey = (typeof AUTOMATION_STATUS_KEYS)[number];
 

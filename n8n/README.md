@@ -78,15 +78,17 @@ Import [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelin
 | ClickUp status (`field-mapping.json`) | n8n node label | When set |
 |----------------------------------------|----------------|----------|
 | `ready` (`statuses.ready`) | **Ready to Work?** (ingress only) | Lead moves task to ready — triggers webhook |
+| `needs review` (`statuses.needs_review`) | **Needs Review?** (ingress only) | Lead comments feedback, then moves task to needs review |
 | `writing` (`statuses.writing`) | **Status → In Progress** | Start of automated work |
 | `approval` (`statuses.review`) | **Status → Review** | After comment posts |
 
-**Execution transitions operators see in n8n:** one full run per `backlog → ready` ingress, plus short filtered runs for self-echo webhooks (`ready → writing`, `writing → approval`) when the workflow PATCHes status. Those filtered runs are expected — see [`clickup/webhook-contract.md`](../clickup/webhook-contract.md#self-echo-webhooks-expected-noise).
+**Execution transitions operators see in n8n:** one full run per `backlog → ready` first-draft ingress or `approval → needs review` revision ingress, plus short filtered runs for self-echo webhooks (`ready → writing`, `needs review → writing`, `writing → approval`) when the workflow PATCHes status. Those filtered runs are expected — see [`clickup/webhook-contract.md`](../clickup/webhook-contract.md#self-echo-webhooks-expected-noise).
 
 | Node | Purpose |
 |------|---------|
 | ClickUp Webhook | Public HTTPS ingress (`POST /webhook/marketing-pipeline-ready-to-work`) |
 | Ready to Work? | IF filter: entering `ready` (`history_items[0].field === "status"`) |
+| Needs Review? | IF filter: entering `needs review` after lead comment feedback |
 | GET ClickUp Task | Fetch title, description, and custom fields |
 | Extract Task Fields | Map `Critérios de Aceite` and `agent_id` via `clickup/field-mapping.json` IDs |
 | Status → In Progress | PATCH task status → `writing` before agent call |
@@ -125,6 +127,8 @@ Ensure `clickup/field-mapping.json` has real field IDs (run `pnpm clickup:sync` 
 6. In n8n **Executions**, confirm one full success run plus ~7 ms filtered runs for `ready → writing` and `writing → approval` self-echo (not duplicate pipeline runs).
 
 **Webhook replay test (no ClickUp):** use **Listen for test event** on the webhook node and POST [`clickup/fixtures/task-status-updated-ready-to-work.json`](../clickup/fixtures/task-status-updated-ready-to-work.json) to the test URL; confirm **Ready to Work?** true branch executes.
+
+**Revision replay test (no ClickUp):** POST [`clickup/fixtures/task-status-updated-needs-review.json`](../clickup/fixtures/task-status-updated-needs-review.json) to the test URL after adding a representative comment thread in ClickUp mocks; confirm the **Needs Review?** true branch executes.
 
 **Failure paths:**
 
@@ -167,7 +171,8 @@ Validated during M1/M2. An operator can re-import and activate both workflows us
 1. ClickUp → Integrations → Webhooks → Create webhook.
 2. Event: **Task Status Updated**; scope: Marketing Pipeline list.
 3. Endpoint: production URL from Step 2.
-4. Test: move a task to **ready** and confirm an execution appears in n8n within ~5 s.
+4. Test first-draft ingress: move a task to **ready** and confirm an execution appears in n8n within ~5 s.
+5. Test revision ingress after Phase 2 is deployed: leave feedback in comments, move the task from **approval** to **needs review**, and confirm a revision execution appears.
 
 ### Step 4 — Verify green run timing
 

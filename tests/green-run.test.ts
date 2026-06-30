@@ -7,11 +7,13 @@ import {
   DEFAULT_TEST_BRIEF,
   EVIDENCE_PATH,
   GREEN_RUN_CHECKLIST,
+  LEAD_FEEDBACK_COMMENT,
   PreflightReport,
   RUN_LOG_ROOT,
   buildEvidence,
   commentHasSections,
   executeGreenRun,
+  executeRevisionGreenRun,
   fieldMappingSynced,
   linkN8nExecutionsForTask,
   main,
@@ -66,6 +68,8 @@ describe("GREEN_RUN_CHECKLIST", () => {
       "final_status_review",
       "n8n_execution_success",
       "marketing_lead_usability",
+      "revision_draft_posted",
+      "revision_latency_under_60s",
     ];
     for (const step of required) {
       expect(GREEN_RUN_CHECKLIST).toContain(step);
@@ -90,6 +94,10 @@ describe("GREEN_RUN_CHECKLIST", () => {
 });
 
 describe("fieldMappingSynced", () => {
+  it("reports 0% coverage for an empty preflight report", () => {
+    expect(new PreflightReport().coveragePercent).toBe(0);
+  });
+
   it("fails when clickup_list_id is <TBD>", () => {
     const mapping: FieldMapping = {
       clickup_list_id: "<TBD>",
@@ -184,9 +192,8 @@ function fullFieldMapping(overrides: Partial<FieldMapping> = {}): FieldMapping {
     custom_fields: {
       criterios_de_aceite: { name: "Critérios de Aceite", type: "text", clickup_field_id: "cf1" },
       agent_id: { name: "agent_id", type: "short_text", clickup_field_id: "cf2", default: "linkedin-writer" },
-      revision_count: { name: "revision_count", type: "number", clickup_field_id: "cf3" },
     },
-    statuses: { backlog: "Backlog", ready: "Ready", writing: "Writing", review: "Approval" },
+    statuses: { backlog: "Backlog", ready: "Ready", needs_review: "Needs Review", writing: "Writing", review: "Approval" },
     ...overrides,
   };
 }
@@ -205,12 +212,12 @@ function stubClickUpAndN8nSuccess(): void {
       if (url.includes("api.clickup.com")) {
         if (url.includes("/field")) {
           return jsonResponse({
-            fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }],
+            fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }],
           });
         }
         return jsonResponse({
           name: "Linkedin Post Creator",
-          statuses: [{ status: "Ready" }, { status: "Writing" }, { status: "Approval" }],
+          statuses: [{ status: "Ready" }, { status: "Needs Review" }, { status: "Writing" }, { status: "Approval" }],
         });
       }
       return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: true }] });
@@ -283,7 +290,10 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
           if (url.includes("/field")) {
             return jsonResponse({ fields: [{ name: "agent_id" }] });
           }
-          return jsonResponse({ name: "Linkedin Post Creator", statuses: [{ status: "Ready" }, { status: "Writing" }, { status: "Approval" }] });
+          return jsonResponse({
+            name: "Linkedin Post Creator",
+            statuses: [{ status: "Ready" }, { status: "Needs Review" }, { status: "Writing" }, { status: "Approval" }],
+          });
         }
         return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: true }] });
       })
@@ -316,6 +326,73 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
     expect(statusesCheck?.detail).toContain("Writing");
   });
 
+  it("fails clickup_statuses_present when the live list is missing Needs Review", async () => {
+    const path = writeTempFieldMapping(fullFieldMapping());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("api.clickup.com")) {
+          if (url.includes("/field")) {
+            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
+          }
+          return jsonResponse({
+            name: "Linkedin Post Creator",
+            statuses: [{ status: "Ready" }, { status: "Writing" }, { status: "Approval" }],
+          });
+        }
+        return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: true }] });
+      })
+    );
+
+    const report = await runPreflight({ ...PREFLIGHT_ARGS, fieldMappingPath: path });
+    const statusesCheck = report.results.find((r) => r.step === "clickup_statuses_present");
+    expect(statusesCheck?.passed).toBe(false);
+    expect(statusesCheck?.detail).toContain("Needs Review");
+  });
+
+  it("passes clickup_statuses_present when all automation statuses including Needs Review are present", async () => {
+    const path = writeTempFieldMapping(fullFieldMapping());
+    stubClickUpAndN8nSuccess();
+
+    const report = await runPreflight({ ...PREFLIGHT_ARGS, fieldMappingPath: path });
+    const statusesCheck = report.results.find((r) => r.step === "clickup_statuses_present");
+    expect(statusesCheck?.passed).toBe(true);
+    expect(statusesCheck?.detail).toContain("Needs Review");
+  });
+
+  it("matches ClickUp statuses case-insensitively during preflight", async () => {
+    const path = writeTempFieldMapping(fullFieldMapping());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("api.clickup.com")) {
+          if (url.includes("/field")) {
+            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
+          }
+          return jsonResponse({
+            name: "Linkedin Post Creator",
+            statuses: [{ status: "ready" }, { status: "needs review" }, { status: "writing" }, { status: "approval" }],
+          });
+        }
+        return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: true }] });
+      })
+    );
+
+    const report = await runPreflight({ ...PREFLIGHT_ARGS, fieldMappingPath: path });
+    expect(report.results.find((r) => r.step === "clickup_statuses_present")?.passed).toBe(true);
+  });
+
+  it("fails clickup_statuses_present when field-mapping.json is missing needs_review", async () => {
+    const { needs_review: _needsReview, ...statuses } = fullFieldMapping().statuses;
+    const path = writeTempFieldMapping(fullFieldMapping({ statuses }));
+    stubClickUpAndN8nSuccess();
+
+    const report = await runPreflight({ ...PREFLIGHT_ARGS, fieldMappingPath: path });
+    const statusesCheck = report.results.find((r) => r.step === "clickup_statuses_present");
+    expect(statusesCheck?.passed).toBe(false);
+    expect(statusesCheck?.detail).toContain("needs_review");
+  });
+
   it("fails all three n8n checks with the same error detail when the n8n API is unreachable", async () => {
     const path = writeTempFieldMapping(fullFieldMapping());
     vi.stubGlobal(
@@ -325,7 +402,10 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
           if (url.includes("/field")) {
             return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
           }
-          return jsonResponse({ name: "Linkedin Post Creator", statuses: [{ status: "Ready" }, { status: "Writing" }, { status: "Approval" }] });
+          return jsonResponse({
+            name: "Linkedin Post Creator",
+            statuses: [{ status: "Ready" }, { status: "Needs Review" }, { status: "Writing" }, { status: "Approval" }],
+          });
         }
         return jsonResponse({ err: "Unauthorized" }, 401);
       })
@@ -346,7 +426,10 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
           if (url.includes("/field")) {
             return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
           }
-          return jsonResponse({ name: "Linkedin Post Creator", statuses: [{ status: "Ready" }, { status: "Writing" }, { status: "Approval" }] });
+          return jsonResponse({
+            name: "Linkedin Post Creator",
+            statuses: [{ status: "Ready" }, { status: "Needs Review" }, { status: "Writing" }, { status: "Approval" }],
+          });
         }
         return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: false }] });
       })
@@ -593,6 +676,180 @@ describe("executeGreenRun (mocked ClickUp)", () => {
   });
 });
 
+describe("executeRevisionGreenRun (mocked ClickUp)", () => {
+  function firstDraftComment(): string {
+    return formatClickupComment({ deliverable_markdown: "Draft v1", resumo: "Summary v1", autochecagem: "Checked v1" });
+  }
+
+  function revisedDraftComment(): string {
+    return formatClickupComment({ deliverable_markdown: "Draft v2", resumo: "Summary v2", autochecagem: "Checked v2" });
+  }
+
+  function stubRevisionFlow(): ReturnType<typeof vi.fn> {
+    let taskCallCount = 0;
+    let revisionTriggered = false;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST" && url.endsWith("/task")) {
+        return jsonResponse({ id: "86btest01", url: "https://app.clickup.com/t/86btest01" });
+      }
+      if (method === "POST" && url.includes("/field/")) {
+        return jsonResponse({});
+      }
+      if (method === "POST" && url.endsWith("/comment")) {
+        const body = init?.body ? JSON.parse(String(init.body)) : {};
+        if (body.comment_text === LEAD_FEEDBACK_COMMENT) {
+          revisionTriggered = true;
+        }
+        return jsonResponse({});
+      }
+      if (method === "PUT" && url.endsWith("/task/86btest01")) {
+        return jsonResponse({});
+      }
+      if (method === "GET" && url.endsWith("/task/86btest01")) {
+        taskCallCount += 1;
+        const statuses = ["Writing", "Approval", "Writing", "Approval"];
+        const status = statuses[Math.min(taskCallCount, statuses.length) - 1];
+        return jsonResponse({ status: { status } });
+      }
+      if (method === "GET" && url.endsWith("/comment")) {
+        if (!revisionTriggered) {
+          return jsonResponse({ comments: [{ comment_text: firstDraftComment() }] });
+        }
+        return jsonResponse({
+          comments: [
+            { comment_text: firstDraftComment() },
+            { comment_text: LEAD_FEEDBACK_COMMENT },
+            { comment_text: revisedDraftComment() },
+          ],
+        });
+      }
+      if (method === "DELETE" && url.endsWith("/task/86btest01")) {
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`unexpected request ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("walks Approval → Needs Review → Writing → Approval and posts a revised draft", async () => {
+    const fetchMock = stubRevisionFlow();
+
+    const result = await executeRevisionGreenRun("pk_test", fullFieldMapping(), {
+      sleep: async () => undefined,
+      pollIntervalMs: 0,
+    });
+
+    expect(result.verified).toBe(true);
+    expect(result.clickup_task_id).toBe("86btest01");
+    expect(result.final_status_approval).toBe(true);
+    expect(result.revision_draft_posted).toBe(true);
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "DELETE")).toBe(true);
+  });
+
+  it("detects Writing status within 5s of the Needs Review trigger", async () => {
+    stubRevisionFlow();
+
+    const result = await executeRevisionGreenRun("pk_test", fullFieldMapping(), {
+      sleep: async () => undefined,
+      pollIntervalMs: 0,
+    });
+
+    expect(result.revision_in_progress_within_5s).toBe(true);
+  });
+
+  it("passes comment_has_three_sections for the revised draft comment", async () => {
+    stubRevisionFlow();
+
+    const result = await executeRevisionGreenRun("pk_test", fullFieldMapping(), {
+      sleep: async () => undefined,
+      pollIntervalMs: 0,
+    });
+
+    expect(result.revision_draft_posted).toBe(true);
+    expect(result.revision_comment_sections_verified).toEqual([...COMMENT_SECTIONS]);
+    expect(commentHasSections(revisedDraftComment())).toBe(true);
+  });
+
+  it("meets the PRD revision latency target (p95 < 60s)", async () => {
+    stubRevisionFlow();
+
+    const result = await executeRevisionGreenRun("pk_test", fullFieldMapping(), {
+      sleep: async () => undefined,
+      pollIntervalMs: 0,
+    });
+
+    expect(result.revision_latency_under_60s).toBe(true);
+  });
+
+  it("throws when field-mapping.json is missing expected keys for the revision execute path", async () => {
+    const mapping = fullFieldMapping({ statuses: {} });
+    await expect(executeRevisionGreenRun("pk_test", mapping)).rejects.toThrow(/missing expected/);
+  });
+
+  it("reports verified=false and cleans up without attempting a revision when the first-draft phase never reaches Approval", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST" && url.endsWith("/task")) {
+        return jsonResponse({ id: "86btest01", url: "https://app.clickup.com/t/86btest01" });
+      }
+      if (method === "POST" && url.includes("/field/")) {
+        return jsonResponse({});
+      }
+      if (method === "PUT" && url.endsWith("/task/86btest01")) {
+        return jsonResponse({});
+      }
+      if (method === "GET" && url.endsWith("/task/86btest01")) {
+        return jsonResponse({ status: { status: "Writing" } });
+      }
+      if (method === "GET" && url.endsWith("/comment")) {
+        return jsonResponse({ comments: [] });
+      }
+      if (method === "DELETE" && url.endsWith("/task/86btest01")) {
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`unexpected request ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await executeRevisionGreenRun("pk_test", fullFieldMapping(), {
+      sleep: async () => undefined,
+      pollIntervalMs: 0,
+      deadlineMs: 5,
+    });
+
+    expect(result.verified).toBe(false);
+    expect(result.clickup_task_id).toBe("86btest01");
+    expect(result.revision_draft_posted).toBeUndefined();
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "DELETE")).toBe(true);
+    expect(fetchMock.mock.calls.some(([url, init]) => (init as RequestInit | undefined)?.method === "POST" && String(url).endsWith("/comment"))).toBe(
+      false
+    );
+  });
+});
+
+describe("buildEvidence — revision evidence", () => {
+  it("includes revision_round only when supplied", () => {
+    const report = new PreflightReport();
+    report.results.push({ step: "field_mapping_synced", passed: true, detail: "ok" });
+
+    const withoutRevision = buildEvidence(report, undefined, { SKIP_DOTENV: "1" });
+    expect(withoutRevision).not.toHaveProperty("revision_round");
+
+    const withRevision = buildEvidence(
+      report,
+      undefined,
+      { SKIP_DOTENV: "1" },
+      {
+        revisionRound: { verified: true, revision_draft_posted: true },
+      }
+    );
+    expect(withRevision.revision_round).toEqual({ verified: true, revision_draft_posted: true });
+    expect(withRevision).not.toHaveProperty("cap_reset");
+  });
+});
+
 describe("linkN8nExecutionsForTask (mocked n8n client)", () => {
   it("returns ingress execution id, success flag, and filtered count for the task", async () => {
     const windowStart = Date.parse("2026-06-22T12:00:00.000Z");
@@ -822,6 +1079,7 @@ describe("module boundary", () => {
     expect(typeof moduleExports.buildEvidence).toBe("function");
     expect(typeof moduleExports.writeRunEvidence).toBe("function");
     expect(typeof moduleExports.executeGreenRun).toBe("function");
+    expect(typeof moduleExports.executeRevisionGreenRun).toBe("function");
     expect(typeof moduleExports.linkN8nExecutionsForTask).toBe("function");
   });
 });

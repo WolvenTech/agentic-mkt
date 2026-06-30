@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildEvidence, runPreflight } from "../src/clickup/green-run-validation.js";
+import {
+  buildEvidence,
+  executeRevisionGreenRun,
+  runPreflight,
+} from "../src/clickup/green-run-validation.js";
+import { loadFieldMapping } from "../src/marketing-pipeline/logic.js";
 import { loadRepoDotenv } from "../src/load-env.js";
 
 function liveCredentials():
@@ -36,3 +41,22 @@ describe.skipIf(!credentials)("green-run preflight — live (requires CLICKUP_AP
     expect(["blocked", "ready", "passed"]).toContain(evidence.validation_status);
   });
 });
+
+describe.skipIf(!credentials)(
+  "green-run revision round — live (requires CLICKUP_API_TOKEN, N8N_API_KEY; n8n main workflow must be active)",
+  () => {
+    it(
+      "runs a full Approval → Needs Review → Approval revision cycle",
+      async () => {
+        const { token } = credentials!;
+        const mapping = loadFieldMapping();
+        const result = await executeRevisionGreenRun(token, mapping, { deadlineMs: 120_000 });
+
+        expect(result.verified).toBe(true);
+        expect(result.revision_draft_posted).toBe(true);
+        expect(result.revision_latency_under_60s).toBe(true);
+      },
+      150_000
+    );
+  }
+);

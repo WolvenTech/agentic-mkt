@@ -12,7 +12,7 @@ Ingress contract for the Marketing Pipeline n8n main workflow. Webhook registrat
 
 ClickUp may also emit `taskUpdated` for the same status change. Subscribe to **Task Status Updated** for M1 ingress.
 
-## Ingress filter
+## Ingress filters
 
 **TechSpec / workflow reference expression:**
 
@@ -28,18 +28,27 @@ history_items[].after.status.status == "Ready to Work"
 
 (Builder resolves the literal from `field-mapping.json` → `statuses.ready`; older exports may still show `"Ready to Work"`.)
 
-Only process webhooks where the task **enters** `ready` (live ClickUp status per [`field-mapping.json`](field-mapping.json) → `statuses.ready`). Ignore transitions from `ready` to other statuses, and ignore `history_items` where `field` is not `status`.
+First-draft ingress only processes webhooks where the task **enters** `ready` (live ClickUp status per [`field-mapping.json`](field-mapping.json) → `statuses.ready`). Revision ingress processes webhooks where the task **enters** `needs review` (`statuses.needs_review`) after the lead has left feedback in task comments. Ignore transitions from these statuses to other statuses, and ignore `history_items` where `field` is not `status`.
 
 Legacy TechSpec / list templates may use display names such as **Ready to Work**; the live Marketing Pipeline list uses lowercase `ready` in webhook payloads (see fixture below).
 
+Phase 2 adds a second IF node after `Ready to Work?`:
+
+```
+={{ $json.history_items[0].field === "status" && $json.history_items[0].after.status === "needs review" }}
+```
+
+The builder resolves the literal from `field-mapping.json` → `statuses.needs_review`; ingress matching normalizes case so ClickUp display-name casing does not matter.
+
 ## Self-echo webhooks (expected noise)
 
-ClickUp webhook registration exposes **Task Status Updated** for the list scope only — there is **no supported filter** to subscribe only when `after.status === ready`. After the workflow PATCHes status to `writing` then `approval`, ClickUp emits additional `taskStatusUpdated` events (`ready → writing`, `writing → approval`). These are **expected** and must **not** trigger a second pipeline run.
+ClickUp webhook registration exposes **Task Status Updated** for the list scope only — there is **no supported filter** to subscribe only when `after.status === ready` or `after.status === needs review`. After the workflow PATCHes status to `writing` then `approval`, ClickUp emits additional `taskStatusUpdated` events (`ready → writing`, `needs review → writing`, `writing → approval`). These are **expected** and must **not** trigger a second pipeline run.
 
 | Transition | Cause | Ingress outcome |
 |------------|-------|-----------------|
-| `ready → writing` | Workflow sets **Status → In Progress** | Filtered — not entering `ready` |
-| `writing → approval` | Workflow sets **Status → Review** | Filtered — not entering `ready` |
+| `ready → writing` | Workflow sets **Status → In Progress** on first draft | Filtered — not entering `ready` or `needs review` |
+| `needs review → writing` | Workflow sets **Status → In Progress** on revision | Filtered — not entering `ready` or `needs review` |
+| `writing → approval` | Workflow sets **Status → Review** after first draft or revision | Filtered — not entering `ready` or `needs review` |
 | `approval → backlog` | Operator cleanup / retest | Filtered |
 
 Filtered deliveries still create short n8n executions (~7 ms). Structured skip logging on the ingress branch (`ingress_skipped` with `reason`, `transition`, `task_id`) is the operator mitigation — search Executions for `ingress_skipped` instead of treating green ~7 ms runs as duplicate happy paths. Do not attempt to suppress self-echo at the ClickUp subscription level unless ClickUp adds status-scoped webhook filters.
@@ -61,6 +70,8 @@ Live status names come from [`field-mapping.json`](field-mapping.json). n8n node
 3. **Execute** Call Agent sub-workflow with `CallAgentInput` envelope
 4. **POST** `/task/{task_id}/comment` — formatted draft per [`../agents/harness/io-contract.md`](../agents/harness/io-contract.md)
 5. **PUT** `/task/{task_id}` — set status → `approval` (**Status → Review**)
+
+Revision ingress additionally fetches `/task/{task_id}/comment` before the agent call so the revised draft can incorporate lead feedback. The human trigger is always: leave comment feedback, then move **Approval → Needs Review**.
 
 On API or agent failure: log in n8n Executions; do not silently fail (TechSpec Integration Points).
 
@@ -99,7 +110,7 @@ Example `taskStatusUpdated` payload (adapted from [ClickUp task webhook payloads
 }
 ```
 
-Fixture copy for tests: [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json).
+Fixture copies for tests: [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) and [`fixtures/task-status-updated-needs-review.json`](fixtures/task-status-updated-needs-review.json).
 
 ### Fields the workflow reads
 
@@ -107,7 +118,7 @@ Fixture copy for tests: [`fixtures/task-status-updated-ready-to-work.json`](fixt
 |-----------|-----|
 | `task_id` | ClickUp task ID for subsequent API calls |
 | `history_items[0].field` | Must be `"status"` |
-| `history_items[0].after.status` | New status display name — ingress when entering `ready` (see `field-mapping.json`) |
+| `history_items[0].after.status` | New status display name — ingress when entering `ready` or `needs review` (see `field-mapping.json`) |
 | `history_items[0].parent_id` | List ID (verify against `field-mapping.json` → `clickup_list_id` in task_07) |
 | `webhook_id` | Logging; Phase 2 idempotency key with `history_items[0].id` |
 
@@ -121,12 +132,12 @@ Reviewed against ClickUp developer docs (2026-06):
 | TechSpec filter string | `history_items[].after.status.status` documents the workflow reference from TechSpec; n8n should use `after.status` per actual payload |
 | Schema variance | Some workspaces return `before`/`after` as plain strings for legacy statuses; Marketing Pipeline uses custom statuses — expect object form above |
 | Duplicate events | `taskCreated` also fires `taskStatusUpdated`; filter on entering `ready` avoids creation noise unless initial status is `ready` |
-| Self-echo | Workflow status PATCHes emit `ready → writing` and `writing → approval` webhooks; ingress filter correctly ignores them (see [Self-echo webhooks](#self-echo-webhooks-expected-noise)) |
+| Self-echo | Workflow status PATCHes emit `ready → writing`, `needs review → writing`, and `writing → approval` webhooks; ingress filters correctly ignore them (see [Self-echo webhooks](#self-echo-webhooks-expected-noise)) |
 | Subscription filtering | ClickUp list webhooks cannot scope to a single target status; self-echo filtering at n8n ingress is required |
 | Idempotency | None in M1 ([ADR-001](../.compozy/tasks/marketing-pipeline-clickup-n8n/adrs/adr-001.md)); duplicate deliveries may produce duplicate comments |
 
 ## Verification
 
-- **Unit:** `tests/clickup.test.ts` validates fixture against ingress filter logic
-- **Integration (task_07+):** Register webhook → move test task to Ready to Work → confirm n8n receives payload matching this contract
-- **Pre-registration:** Use ClickUp webhook test tool or replay [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) into n8n test webhook
+- **Unit:** `tests/clickup.test.ts` validates fixtures against ingress filter logic and payload shape
+- **Integration (task_07+):** Register webhook → move test task to Ready or Needs Review → confirm n8n receives payload matching this contract
+- **Pre-registration:** Use ClickUp webhook test tool or replay [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) and [`fixtures/task-status-updated-needs-review.json`](fixtures/task-status-updated-needs-review.json) into n8n test webhook

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ingressMatchesReadyToWork, loadFieldMapping } from "../src/marketing-pipeline/logic.js";
 import { MissingCustomFieldsError, main as syncMain, syncFieldMapping } from "../src/clickup/sync-field-mapping.js";
+import { automationStatusDisplayName } from "../src/types/field-mapping.js";
 import type { FieldMapping } from "../src/types/field-mapping.js";
 import { main as verifyMain, verify } from "../src/clickup/verify-api.js";
 
@@ -60,7 +61,7 @@ describe("syncFieldMapping", () => {
     expect(result.clickup_list_id).toBe("901234567");
     expect(result.custom_fields.criterios_de_aceite?.clickup_field_id).toBe("cf_criterios_001");
     expect(result.custom_fields.agent_id?.clickup_field_id).toBe("cf_agent_id_001");
-    expect(result.custom_fields.revision_count?.clickup_field_id).toBe("cf_revision_001");
+    expect(result.custom_fields).not.toHaveProperty("revision_count");
 
     const written = JSON.parse(readFileSync(tmpPath, "utf-8")) as FieldMapping;
     expect(written).toEqual(result);
@@ -142,7 +143,6 @@ function syncedFieldMapping(): FieldMapping {
     custom_fields: {
       criterios_de_aceite: { ...mapping.custom_fields.criterios_de_aceite!, clickup_field_id: "cf_criterios_001" },
       agent_id: { ...mapping.custom_fields.agent_id!, clickup_field_id: "cf_agent_id_001" },
-      revision_count: { ...mapping.custom_fields.revision_count!, clickup_field_id: "cf_revision_001" },
     },
   };
 }
@@ -175,7 +175,6 @@ describe("verify", () => {
     const fetchMock = stubVerifyFetch([
       { id: "cf_criterios_001", name: "Critérios de Aceite" },
       { id: "cf_agent_id_001", name: "agent_id" },
-      { id: "cf_revision_001", name: "revision_count" },
     ]);
 
     const taskId = await verify("pk_test_token", "901234567", { fieldMappingPath: tmpPath });
@@ -190,7 +189,6 @@ describe("verify", () => {
     const fetchMock = stubVerifyFetch([
       { id: "cf_criterios_001", name: "Critérios de Aceite" },
       { id: "cf_agent_id_001", name: "agent_id" },
-      { id: "cf_revision_001", name: "revision_count" },
     ]);
 
     await verify("pk_test_token", "901234567", { cleanup: false, fieldMappingPath: tmpPath });
@@ -201,12 +199,9 @@ describe("verify", () => {
 
   it("throws and still deletes the task when a custom field is missing from the GET response", async () => {
     const tmpPath = writeTempFieldMapping(syncedFieldMapping());
-    const fetchMock = stubVerifyFetch([
-      { id: "cf_criterios_001", name: "Critérios de Aceite" },
-      { id: "cf_agent_id_001", name: "agent_id" },
-    ]);
+    const fetchMock = stubVerifyFetch([{ id: "cf_criterios_001", name: "Critérios de Aceite" }]);
 
-    await expect(verify("pk_test_token", "901234567", { fieldMappingPath: tmpPath })).rejects.toThrow(/revision_count/);
+    await expect(verify("pk_test_token", "901234567", { fieldMappingPath: tmpPath })).rejects.toThrow(/agent_id/);
     const deleteCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit).method === "DELETE");
     expect(deleteCall).toBeDefined();
   });
@@ -216,7 +211,6 @@ describe("verify", () => {
     stubVerifyFetch([
       { id: "", name: "Critérios de Aceite" },
       { id: "cf_agent_id_001", name: "agent_id" },
-      { id: "cf_revision_001", name: "revision_count" },
     ]);
 
     await expect(verify("pk_test_token", "901234567", { fieldMappingPath: tmpPath })).rejects.toThrow(/has no id/);
@@ -239,7 +233,6 @@ describe("verify", () => {
             custom_fields: [
               { id: "cf_criterios_001", name: "Critérios de Aceite" },
               { id: "cf_agent_id_001", name: "agent_id" },
-              { id: "cf_revision_001", name: "revision_count" },
             ],
           });
         }
@@ -285,6 +278,24 @@ describe("webhook ingress + field-mapping structure (clickup.test.ts deliverable
   it("matches the Ready to Work filter for the webhook fixture", () => {
     const payload = loadFixture<Record<string, unknown>>("task-status-updated-ready-to-work.json");
     expect(ingressMatchesReadyToWork(payload as never, loadFieldMapping())).toBe(true);
+  });
+
+  it("loads the Needs Review status mapping for revision ingress", () => {
+    const mapping = loadFieldMapping();
+    expect(mapping.statuses.needs_review).toBe("needs review");
+    expect(automationStatusDisplayName(mapping, "needs_review")).toBe("needs review");
+  });
+
+  it("returns an empty display name for a missing automation status key", () => {
+    expect(automationStatusDisplayName({ clickup_list_id: "list", custom_fields: {}, statuses: {} }, "needs_review")).toBe("");
+  });
+
+  it("validates the Needs Review webhook fixture status transition", () => {
+    const payload = loadFixture<{
+      history_items?: Array<{ field?: unknown; after?: { status?: unknown } }>;
+    }>("task-status-updated-needs-review.json");
+    expect(payload.history_items?.[0]?.field).toBe("status");
+    expect(payload.history_items?.[0]?.after?.status).toBe("needs review");
   });
 
   it("validates clickup/field-mapping.json against the FieldMapping shape", () => {

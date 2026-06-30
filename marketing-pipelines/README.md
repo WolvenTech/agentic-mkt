@@ -42,8 +42,13 @@ Host credentials, GitHub PAT setup, and MCP stub: [`n8n/README.md`](../n8n/READM
 
 Record actuals in [`agents/harness/green-run-evidence.json`](../agents/harness/green-run-evidence.json) after a verified run.
 
+### Revision trigger
+
+Phase 2 revision ingress uses the same main workflow: the lead leaves feedback in the ClickUp task comments, then moves the task from **approval** to **needs review**. The workflow moves the task **needs review → writing → approval** while it produces the revised draft comment.
+
 ## M2 operational runbook
 
 1. After builder changes: `pnpm build:workflows` then `pnpm deploy:workflows` (or manual re-import from this folder).
 2. First-time setup: follow **Manual setup → Import order** above; credential details in [`n8n/README.md`](../n8n/README.md).
 3. Troubleshooting and I/O contracts: [`agents/harness/io-contract.md`](../agents/harness/io-contract.md).
+4. Revision runs are triggered by comment feedback plus **needs review** status; no separate n8n workflow is imported for revisions.

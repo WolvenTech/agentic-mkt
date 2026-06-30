@@ -41,9 +41,11 @@ export const GREEN_RUN_CHECKLIST = [
   "final_status_review",
   "n8n_execution_success",
   "marketing_lead_usability",
+  "revision_draft_posted",
+  "revision_latency_under_60s",
 ] as const;
 
-const REQUIRED_FIELDS = ["Critérios de Aceite", "agent_id", "revision_count"];
+const REQUIRED_FIELDS = ["Critérios de Aceite", "agent_id"];
 
 const RUNTIME_STEPS = [
   "test_task_brief_complete",
@@ -54,6 +56,8 @@ const RUNTIME_STEPS = [
   "n8n_execution_success",
   "marketing_lead_usability",
 ];
+
+export const LEAD_FEEDBACK_COMMENT = "Shorten the hook, add a customer quote, keep the CTA as is.";
 
 export const DEFAULT_TEST_BRIEF = {
   name: "[M1 green run] Launch post for Q3 product update",
@@ -187,8 +191,8 @@ async function clickupStatusesPresent(
   }
   try {
     const data = await clickupGet<{ statuses?: Array<{ status?: string }> }>(`/list/${listId}`, clientOptions);
-    const names = new Set((data.statuses ?? []).map((s) => s.status));
-    const missing = required.filter((name) => !names.has(name));
+    const names = new Set((data.statuses ?? []).map((s) => String(s.status ?? "").trim().toLowerCase()));
+    const missing = required.filter((name) => !names.has(String(name).trim().toLowerCase()));
     if (missing.length > 0) {
       return { step: "clickup_statuses_present", passed: false, detail: `Missing statuses on list: ${missing.join(", ")}` };
     }
@@ -572,6 +576,130 @@ export async function executeGreenRun(
   }
 }
 
+export interface RevisionGreenRunResult {
+  verified: boolean;
+  clickup_task_id?: string;
+  clickup_task_url?: string;
+  first_draft_latency_seconds?: number | null;
+  revision_status_path?: string[];
+  revision_in_progress_within_5s?: boolean;
+  revision_latency_seconds?: number | null;
+  revision_latency_under_60s?: boolean;
+  revision_draft_posted?: boolean;
+  revision_comment_sections_verified?: string[];
+  final_status_approval?: boolean;
+}
+
+/**
+ * Run the full Phase 2 revision-round green run: first draft (M1 happy path), lead feedback
+ * comment, Needs Review trigger, and the resulting revised draft back in Approval.
+ * Reuses `executeGreenRun` for the first-draft phase per PRD happy path.
+ */
+export async function executeRevisionGreenRun(
+  clickupToken: string,
+  mapping: FieldMapping,
+  options: ExecuteGreenRunOptions = {}
+): Promise<RevisionGreenRunResult> {
+  const env = options.env ?? process.env;
+  const clientOptions: ClickUpClientOptions = { token: clickupToken, ...options.clientOptions };
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const pollIntervalMs = options.pollIntervalMs ?? 2_000;
+  const deadlineMs = options.deadlineMs ?? 120_000;
+
+  const needsReviewStatus = automationStatusDisplayName(mapping, "needs_review");
+  const writingStatus = automationStatusDisplayName(mapping, "writing");
+  const reviewStatus = automationStatusDisplayName(mapping, "review");
+  if (!needsReviewStatus || !writingStatus || !reviewStatus) {
+    throw new Error("field-mapping.json is missing expected status keys for revision execute path");
+  }
+
+  const firstDraft = await executeGreenRun(clickupToken, mapping, {
+    ...options,
+    env: { ...env, GREEN_RUN_KEEP_TASK: "1" },
+  });
+
+  const taskId = firstDraft.clickup_task_id;
+  const keep = ["1", "true", "yes"].includes((env.GREEN_RUN_KEEP_TASK ?? "").toLowerCase());
+  const firstDraftSucceeded =
+    Boolean(taskId) && firstDraft.final_status_review === true && (firstDraft.comment_sections_verified?.length ?? 0) > 0;
+  if (!taskId || !firstDraftSucceeded) {
+    if (taskId && !keep) {
+      try {
+        await clickupDelete(`/task/${taskId}`, clientOptions);
+      } catch {
+        // best-effort cleanup — surfacing the original result matters more than a failed delete
+      }
+    }
+    return {
+      verified: false,
+      clickup_task_id: taskId,
+      clickup_task_url: firstDraft.clickup_task_url,
+      first_draft_latency_seconds: firstDraft.latency_seconds,
+    };
+  }
+
+  try {
+    await clickupPost(`/task/${taskId}/comment`, { comment_text: LEAD_FEEDBACK_COMMENT }, clientOptions);
+
+    const t1 = Date.now();
+    await clickupPut(`/task/${taskId}`, { status: needsReviewStatus }, clientOptions);
+
+    let writingAt: number | null = null;
+    let revisedCommentAt: number | null = null;
+    let approvalAt: number | null = null;
+    const deadline = t1 + deadlineMs;
+
+    while (Date.now() < deadline) {
+      const taskNow = await clickupGet<{ status?: { status?: string } }>(`/task/${taskId}`, clientOptions);
+      const status = taskNow.status?.status ?? "";
+      const now = Date.now();
+      if (status === writingStatus && writingAt === null) {
+        writingAt = now;
+      }
+
+      const commentsResp = await clickupGet<{ comments?: Array<{ comment_text?: string; text_content?: string }> }>(
+        `/task/${taskId}/comment`,
+        clientOptions
+      );
+      const draftComments = (commentsResp.comments ?? []).filter((c) => commentHasSections(c.comment_text ?? c.text_content ?? ""));
+      if (draftComments.length >= 2 && revisedCommentAt === null) {
+        revisedCommentAt = now;
+      }
+
+      if (status === reviewStatus && revisedCommentAt !== null) {
+        approvalAt = now;
+        break;
+      }
+      await sleep(pollIntervalMs);
+    }
+
+    const revisionLatencySeconds = round1(((revisedCommentAt ?? Date.now()) - t1) / 1000);
+    const writingLatencySeconds = writingAt !== null ? round1((writingAt - t1) / 1000) : null;
+
+    return {
+      verified: approvalAt !== null && revisedCommentAt !== null,
+      clickup_task_id: taskId,
+      clickup_task_url: firstDraft.clickup_task_url,
+      first_draft_latency_seconds: firstDraft.latency_seconds,
+      revision_status_path: [needsReviewStatus, writingStatus, reviewStatus],
+      revision_in_progress_within_5s: writingLatencySeconds !== null && writingLatencySeconds <= 5,
+      revision_latency_seconds: revisionLatencySeconds,
+      revision_latency_under_60s: revisionLatencySeconds <= 60,
+      revision_draft_posted: revisedCommentAt !== null,
+      revision_comment_sections_verified: revisedCommentAt !== null ? [...COMMENT_SECTIONS] : [],
+      final_status_approval: approvalAt !== null,
+    };
+  } finally {
+    if (!keep) {
+      try {
+        await clickupDelete(`/task/${taskId}`, clientOptions);
+      } catch {
+        // best-effort cleanup — surfacing the original result matters more than a failed delete
+      }
+    }
+  }
+}
+
 export interface EvidenceJson {
   recorded_at: string;
   session: string;
@@ -580,13 +708,19 @@ export interface EvidenceJson {
   main_workflow: MainWorkflowResult;
   call_agent_subworkflow: Record<string, unknown>;
   failure_observations: Record<string, string>;
+  revision_round?: RevisionGreenRunResult;
+}
+
+export interface BuildEvidenceOptions {
+  revisionRound?: RevisionGreenRunResult;
 }
 
 /** Assemble the full evidence JSON document from a preflight report and optional execute-path result. */
 export function buildEvidence(
   preflight: PreflightReport,
   mainWorkflow?: MainWorkflowResult,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  extra: BuildEvidenceOptions = {}
 ): EvidenceJson {
   const infraReady = preflight.coveragePercent >= 80 && preflight.blockers.length === 0;
   const validationStatus: EvidenceJson["validation_status"] = mainWorkflow?.verified
@@ -638,6 +772,7 @@ export function buildEvidence(
       missing_criterios_de_aceite: "Workflow still runs; draft autochecagem may be weak — brief gate is manual only in M1",
       duplicate_webhook: "Second delivery may post duplicate comment per ADR-001; no dedup in M1",
     },
+    ...(extra.revisionRound ? { revision_round: extra.revisionRound } : {}),
   };
 }
 
