@@ -198,6 +198,13 @@ describe("Marketing Pipeline topology", () => {
     ]);
   });
 
+  it("uses first() instead of paired item lookup on the final approval status update", () => {
+    const node = nodeByName(workflow, "Status → Review");
+    const params = node?.parameters as { id?: string };
+    expect(params.id).toBe("={{ $('Extract Task Fields').first().json.task_id }}");
+    expect(params.id).not.toContain(".item.json");
+  });
+
   it("does not contain old revision cap, restart, raw HTTP, or revision_count machinery", () => {
     for (const removedNode of [
       "Revision Cap OK?",

@@ -404,7 +404,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       credentials: CLICKUP_CREDENTIALS,
       parameters: {
         operation: "update",
-        id: "={{ $('Extract Task Fields').item.json.task_id }}",
+        id: "={{ $('Extract Task Fields').first().json.task_id }}",
         updateFields: { status: statusReview },
       },
     },
