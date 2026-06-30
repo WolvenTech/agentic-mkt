@@ -6,8 +6,8 @@
   "max_output_tokens": 1024,
   "skills": ["wolven-voice", "linkedin-format"],
   "output_schema": {
-    "deliverable_markdown": "Full LinkedIn post draft in markdown",
-    "resumo": "2-3 sentence summary of the draft",
-    "autochecagem": "Bullet list validating draft against acceptance criteria"
+    "deliverable_markdown": "One valid deliverable in markdown: a blocker question, three angle options, or the selected final English LinkedIn post",
+    "resumo": "2-3 sentence summary of the returned blocker, angles, or final post",
+    "autochecagem": "Bullet list validating the output against the brief, evidence requirements, Wolven voice, and acceptance criteria"
   }
 }
