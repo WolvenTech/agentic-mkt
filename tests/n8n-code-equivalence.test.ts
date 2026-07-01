@@ -2,6 +2,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assembleSystemPrompt,
+  pairSkillContentsFromFetch,
+  pairReferenceContentsFromFetch,
+} from "../src/call-agent/logic.js";
+import type { AgentConfig } from "../src/types/agent-config.js";
+import {
   buildCallAgentInput,
   buildRevisionTaskDescription,
   describeIngressSkipReason,
@@ -24,6 +30,7 @@ import {
   prepareRevisionCallAgentInputJs,
   setIngressModeJs,
 } from "../src/workflows/marketing-pipeline-n8n.js";
+import { assemblePromptJs, parseAgentConfigJs } from "../src/workflows/call-agent-n8n.js";
 
 const REPO_ROOT = resolve(__dirname, "..");
 const WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-ready-to-work.json");
@@ -207,5 +214,91 @@ describe("marketing pipeline n8n code equivalence", () => {
     expect(jsResult?.comment_text).toBe(
       formatClickupComment(agentOutput, { agentId: fields.agent_id, model: "gpt-4.1-mini" })
     );
+  });
+});
+
+describe("Call Agent n8n code equivalence", () => {
+  function githubFilePayload(text: string): { content: string; encoding: string } {
+    return { content: Buffer.from(text, "utf-8").toString("base64"), encoding: "base64" };
+  }
+
+  const stagedAgentConfig: AgentConfig = {
+    id: "investigate-agent",
+    provider: "openai",
+    model: "gpt-4.1-mini",
+    temperature: 0.7,
+    max_output_tokens: 1024,
+    skills: ["wolven-voice", "investigative-brief"],
+    references: ["agents/references/editorial-brief.md", "agents/references/example-brief.md"],
+    output_schema: {
+      deliverable_markdown: "Brief findings in markdown",
+      resumo: "Summary of findings",
+      autochecagem: "Self-check validation",
+    },
+  };
+
+  it("assemblePromptJs output structure matches local assembleSystemPrompt when processing staged config with references", () => {
+    const skillContents = {
+      "wolven-voice": "## Wolven Voice Skill\n\nPreserve all facts while rewriting in Wolven voice.",
+      "investigative-brief": "## Investigative Brief Skill\n\nCreate a research brief with angles and evidence.",
+    };
+
+    const referenceContents = {
+      "agents/references/editorial-brief.md": "## Editorial Brief Template\n\nStructure: angles, evidence, key findings.",
+      "agents/references/example-brief.md": "## Example Brief\n\nHere is an example of a well-structured brief.",
+    };
+
+    const localPrompt = assembleSystemPrompt(stagedAgentConfig, skillContents, referenceContents);
+
+    expect(localPrompt).toContain("# Agent Role");
+    expect(localPrompt).toContain("# Skills");
+    expect(localPrompt).toContain("# References");
+    expect(localPrompt).toContain("# Required Output Format");
+
+    for (const skill of stagedAgentConfig.skills) {
+      expect(localPrompt).toContain(skill);
+      expect(localPrompt).toContain(skillContents[skill]);
+    }
+
+    for (const reference of stagedAgentConfig.references) {
+      expect(localPrompt).toContain(reference);
+      expect(localPrompt).toContain(referenceContents[reference]);
+    }
+
+    for (const key of Object.keys(stagedAgentConfig.output_schema)) {
+      expect(localPrompt).toContain(key);
+    }
+  });
+
+  it("pairSkillContentsFromFetch and pairReferenceContentsFromFetch extract contents correctly for staged config", () => {
+    const skillParseItems = [
+      { skill: "wolven-voice" },
+      { skill: "investigative-brief" },
+    ];
+
+    const skillFetchItems = [
+      githubFilePayload("## Wolven Voice\n\nPreserve facts."),
+      githubFilePayload("## Investigative Brief\n\nResearch brief."),
+    ];
+
+    const skillContents = pairSkillContentsFromFetch(skillParseItems, skillFetchItems);
+
+    expect(skillContents["wolven-voice"]).toContain("Preserve facts");
+    expect(skillContents["investigative-brief"]).toContain("Research brief");
+
+    const refParseItems = [
+      { reference: "agents/references/editorial-brief.md" },
+      { reference: "agents/references/example-brief.md" },
+    ];
+
+    const refFetchItems = [
+      githubFilePayload("## Editorial Brief\n\nStructure and angles."),
+      githubFilePayload("## Example\n\nSample brief format."),
+    ];
+
+    const refContents = pairReferenceContentsFromFetch(refParseItems, refFetchItems);
+
+    expect(refContents["agents/references/editorial-brief.md"]).toContain("Structure and angles");
+    expect(refContents["agents/references/example-brief.md"]).toContain("Sample brief format");
   });
 });

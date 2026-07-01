@@ -287,8 +287,12 @@ export function pairReferenceContentsFromFetch(
   return referenceContents;
 }
 
-/** Build system prompt from agent config, inlined skills, and an output-schema example. */
-export function assembleSystemPrompt(agentConfig: AgentConfig, skillContents: Record<string, string>): string {
+/** Build system prompt from agent config, inlined skills, references, and an output-schema example. */
+export function assembleSystemPrompt(
+  agentConfig: AgentConfig,
+  skillContents: Record<string, string>,
+  referenceContents?: Record<string, string>
+): string {
   const lines: string[] = [
     "# Agent Role",
     `You are the \`${agentConfig.id}\` marketing worker agent.`,
@@ -299,6 +303,14 @@ export function assembleSystemPrompt(agentConfig: AgentConfig, skillContents: Re
   for (const skillName of agentConfig.skills) {
     const body = (skillContents[skillName] ?? "").trim();
     lines.push(`## Skill: ${skillName}`, body, "");
+  }
+
+  if (referenceContents && agentConfig.references && agentConfig.references.length > 0) {
+    lines.push("# References");
+    for (const referencePath of agentConfig.references) {
+      const body = (referenceContents[referencePath] ?? "").trim();
+      lines.push(`## Reference: ${referencePath}`, body, "");
+    }
   }
 
   const schema = agentConfig.output_schema;

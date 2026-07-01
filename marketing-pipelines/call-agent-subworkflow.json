@@ -98,12 +98,12 @@
         200
       ],
       "parameters": {
-        "jsCode": "const input = $('Store Input Context').first().json;\nconst github = $input.first().json;\nconst encoded = github.content;\nif (!encoded) {\n  return [{ json: { error: 'GitHub agent config fetch failed', raw_response: JSON.stringify(github) } }];\n}\nconst decoded = Buffer.from(String(encoded).replace(/\\n/g, ''), 'base64').toString('utf8');\nconst agentConfig = JSON.parse(decoded);\nconst skills = Array.isArray(agentConfig.skills) ? agentConfig.skills : [];\nreturn skills.map((skill) => ({\n  json: {\n    ...input,\n    agent_config: agentConfig,\n    skill,\n    skill_path: `agents/skills/${skill}.md`,\n  },\n}));"
+        "jsCode": "const input = $('Store Input Context').first().json;\nconst github = $input.first().json;\nconst encoded = github.content;\nif (!encoded) {\n  return [{ json: { error: 'GitHub agent config fetch failed', raw_response: JSON.stringify(github) } }];\n}\nconst decoded = Buffer.from(String(encoded).replace(/\\n/g, ''), 'base64').toString('utf8');\nconst agentConfig = JSON.parse(decoded);\nconst skills = Array.isArray(agentConfig.skills) ? agentConfig.skills : [];\nconst references = Array.isArray(agentConfig.references) ? agentConfig.references : [];\nconst items = [\n  ...skills.map((skill) => ({\n    json: {\n      ...input,\n      agent_config: agentConfig,\n      skill,\n      skill_path: `agents/skills/${skill}.md`,\n      path: `agents/skills/${skill}.md`,\n    },\n  })),\n  ...references.map((reference) => ({\n    json: {\n      ...input,\n      agent_config: agentConfig,\n      reference,\n      path: reference,\n    },\n  })),\n];\nreturn items;"
       }
     },
     {
-      "id": "7dec21d9-b2bf-1895-5ad3-a3491777a441",
-      "name": "Fetch Skill Markdown",
+      "id": "3a7972b3-ec16-c2ca-3d8c-43379865ffa7",
+      "name": "Fetch Agent Files",
       "type": "n8n-nodes-base.github",
       "typeVersion": 1.1,
       "position": [
@@ -132,13 +132,13 @@
           "mode": "name",
           "value": "agentic-mkt"
         },
-        "filePath": "={{ $json.skill_path }}",
+        "filePath": "={{ $json.path }}",
         "asBinaryProperty": false
       }
     },
     {
-      "id": "1f887ca8-5e01-2bc2-009e-6cb91d2eb6cc",
-      "name": "Merge Skill Fetch",
+      "id": "1710fc87-55f6-be4c-6928-41a685cada61",
+      "name": "Merge Agent Files Fetch",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
@@ -161,7 +161,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst base = items[0]?.json ?? {};\nconst agentConfig = base.agent_config;\nif (!agentConfig) {\n  return [{ json: { error: 'Missing agent_config after Merge Skill Fetch', raw_response: JSON.stringify(base) } }];\n}\nconst skillContents = {};\nfor (const item of items) {\n  const skill = item.json.skill;\n  const encoded = item.json.content;\n  if (!skill || !encoded) continue;\n  skillContents[skill] = Buffer.from(String(encoded).replace(/\\n/g, ''), 'base64').toString('utf8');\n}\nconst schema = agentConfig.output_schema ?? {};\nconst example = {\n  deliverable_markdown: schema.deliverable_markdown ?? 'Full LinkedIn post draft in markdown',\n  resumo: schema.resumo ?? '2-3 sentence summary of the draft',\n  autochecagem: schema.autochecagem ?? 'Bullet list validating draft against acceptance criteria',\n};\nconst skillBlocks = (agentConfig.skills ?? []).map((skill) => {\n  const body = (skillContents[skill] ?? '').trim();\n  return `## Skill: ${skill}\\n${body}`;\n}).join('\\n\\n');\nconst systemPrompt = [\n  '# Agent Role',\n  `You are the \\`${agentConfig.id}\\` marketing worker agent.`,\n  '',\n  '# Skills',\n  skillBlocks,\n  '',\n  '# Required Output Format',\n  'Respond with JSON only. Do not wrap the JSON in markdown code fences.',\n  'Required keys and semantics:',\n  JSON.stringify(example, null, 2),\n].join('\\n');\nconst userMessage = [\n  '# Task Title',\n  base.task_title ?? '',\n  '',\n  '# Task Description',\n  base.task_description ?? '',\n  '',\n  '# Critérios de Aceite',\n  base.criterios_de_aceite ?? '',\n].join('\\n');\nreturn [{\n  json: {\n    ...base,\n    agent_config: agentConfig,\n    skill_contents: skillContents,\n    system_prompt: systemPrompt,\n    user_message: userMessage,\n    temperature: agentConfig.temperature ?? 0.7,\n    max_output_tokens: agentConfig.max_output_tokens ?? 1024,\n    provider: agentConfig.provider ?? 'openai',\n    model: agentConfig.model ?? 'gpt-4.1-mini',\n  },\n}];"
+        "jsCode": "const items = $input.all();\nconst base = items[0]?.json ?? {};\nconst agentConfig = base.agent_config;\nif (!agentConfig) {\n  return [{ json: { error: 'Missing agent_config after Merge Agent Files Fetch', raw_response: JSON.stringify(base) } }];\n}\nconst skillContents = {};\nconst referenceContents = {};\nfor (const item of items) {\n  const skill = item.json.skill;\n  const reference = item.json.reference;\n  const encoded = item.json.content;\n  if (!encoded) continue;\n  const decoded = Buffer.from(String(encoded).replace(/\\n/g, ''), 'base64').toString('utf8');\n  if (skill) {\n    skillContents[skill] = decoded;\n  } else if (reference) {\n    referenceContents[reference] = decoded;\n  }\n}\nconst schema = agentConfig.output_schema ?? {};\nconst example = {\n  deliverable_markdown: schema.deliverable_markdown ?? 'Full LinkedIn post draft in markdown',\n  resumo: schema.resumo ?? '2-3 sentence summary of the draft',\n  autochecagem: schema.autochecagem ?? 'Bullet list validating draft against acceptance criteria',\n};\nconst skillBlocks = (agentConfig.skills ?? []).map((skill) => {\n  const body = (skillContents[skill] ?? '').trim();\n  return `## Skill: ${skill}\\n${body}`;\n}).join('\\n\\n');\nconst systemPromptLines = [\n  '# Agent Role',\n  `You are the \\`${agentConfig.id}\\` marketing worker agent.`,\n  '',\n  '# Skills',\n  skillBlocks,\n  '',\n];\nconst references = agentConfig.references ?? [];\nif (references.length > 0) {\n  const referenceBlocks = references.map((ref) => {\n    const body = (referenceContents[ref] ?? '').trim();\n    return `## Reference: ${ref}\\n${body}`;\n  }).join('\\n\\n');\n  systemPromptLines.push('# References', referenceBlocks, '');\n}\nsystemPromptLines.push(\n  '# Required Output Format',\n  'Respond with JSON only. Do not wrap the JSON in markdown code fences.',\n  'Required keys and semantics:',\n  JSON.stringify(example, null, 2),\n);\nconst systemPrompt = systemPromptLines.join('\\n');\nconst userMessage = [\n  '# Task Title',\n  base.task_title ?? '',\n  '',\n  '# Task Description',\n  base.task_description ?? '',\n  '',\n  '# Critérios de Aceite',\n  base.criterios_de_aceite ?? '',\n].join('\\n');\nreturn [{\n  json: {\n    ...base,\n    agent_config: agentConfig,\n    skill_contents: skillContents,\n    reference_contents: referenceContents,\n    system_prompt: systemPrompt,\n    user_message: userMessage,\n    temperature: agentConfig.temperature ?? 0.7,\n    max_output_tokens: agentConfig.max_output_tokens ?? 1024,\n    provider: agentConfig.provider ?? 'openai',\n    model: agentConfig.model ?? 'gpt-4.1-mini',\n  },\n}];"
       }
     },
     {
@@ -334,30 +334,30 @@
       "main": [
         [
           {
-            "node": "Fetch Skill Markdown",
+            "node": "Fetch Agent Files",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Merge Skill Fetch",
+            "node": "Merge Agent Files Fetch",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Fetch Skill Markdown": {
+    "Fetch Agent Files": {
       "main": [
         [
           {
-            "node": "Merge Skill Fetch",
+            "node": "Merge Agent Files Fetch",
             "type": "main",
             "index": 1
           }
         ]
       ]
     },
-    "Merge Skill Fetch": {
+    "Merge Agent Files Fetch": {
       "main": [
         [
           {

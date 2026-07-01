@@ -125,8 +125,8 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       parameters: { jsCode: parseAgentConfigJs() },
     },
     {
-      id: nodeId("Fetch Skill Markdown"),
-      name: "Fetch Skill Markdown",
+      id: nodeId("Fetch Agent Files"),
+      name: "Fetch Agent Files",
       type: "n8n-nodes-base.github",
       typeVersion: 1.1,
       position: [1200, 200],
@@ -139,13 +139,13 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
         operation: "get",
         owner: GITHUB_OWNER_PARAM,
         repository: GITHUB_REPOSITORY_PARAM,
-        filePath: "={{ $json.skill_path }}",
+        filePath: "={{ $json.path }}",
         asBinaryProperty: false,
       },
     },
     {
-      id: nodeId("Merge Skill Fetch"),
-      name: "Merge Skill Fetch",
+      id: nodeId("Merge Agent Files Fetch"),
+      name: "Merge Agent Files Fetch",
       type: "n8n-nodes-base.merge",
       typeVersion: 3.2,
       position: [1320, 200],
@@ -245,13 +245,13 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
     "Parse Agent Config": {
       main: [
         [
-          { node: "Fetch Skill Markdown", type: "main", index: 0 },
-          { node: "Merge Skill Fetch", type: "main", index: 0 },
+          { node: "Fetch Agent Files", type: "main", index: 0 },
+          { node: "Merge Agent Files Fetch", type: "main", index: 0 },
         ],
       ],
     },
-    "Fetch Skill Markdown": { main: [[{ node: "Merge Skill Fetch", type: "main", index: 1 }]] },
-    "Merge Skill Fetch": { main: [[{ node: "Assemble Prompt", type: "main", index: 0 }]] },
+    "Fetch Agent Files": { main: [[{ node: "Merge Agent Files Fetch", type: "main", index: 1 }]] },
+    "Merge Agent Files Fetch": { main: [[{ node: "Assemble Prompt", type: "main", index: 0 }]] },
     "Assemble Prompt": { main: [[{ node: "Route Provider", type: "main", index: 0 }]] },
     "Route Provider": {
       main: [

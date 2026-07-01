@@ -735,6 +735,144 @@ describe("prompt assembly", () => {
     expect(providerIsRouted("google")).toBe(true);
     expect(providerIsRouted("anthropic")).toBe(false);
   });
+
+  it("assembleSystemPrompt includes reference section when references are provided", () => {
+    const stagedAgent: typeof agent = {
+      id: "investigate-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["wolven-voice"],
+      references: ["agents/references/editorial-brief.md"],
+      output_schema: {
+        deliverable_markdown: "Brief findings in markdown",
+        resumo: "Summary of findings",
+        autochecagem: "Self-check validation",
+      },
+    };
+
+    const referenceContent = "## Editorial Brief Template\n\nThis is how to format a brief.";
+    const skillContent = readSkill("wolven-voice");
+    const skillContents = { "wolven-voice": skillContent };
+    const referenceContents = { "agents/references/editorial-brief.md": referenceContent };
+
+    const prompt = assembleSystemPrompt(stagedAgent, skillContents, referenceContents);
+
+    expect(prompt).toContain("# References");
+    expect(prompt).toContain("## Reference: agents/references/editorial-brief.md");
+    expect(prompt).toContain("Editorial Brief Template");
+    expect(prompt).toContain("# Skills");
+    expect(prompt).toContain("wolven-voice");
+    expect(prompt).toContain("Required Output Format");
+  });
+
+  it("assembleSystemPrompt omits reference section when no references are provided", () => {
+    const agent = readAgentConfig();
+    const skillContents = {
+      "wolven-voice": readSkill("wolven-voice"),
+      "linkedin-format": readSkill("linkedin-format"),
+    };
+
+    const prompt = assembleSystemPrompt(agent, skillContents);
+
+    expect(prompt).not.toContain("# References");
+    expect(prompt).toContain("# Skills");
+    expect(prompt).toContain("Required Output Format");
+  });
+
+  it("assembleSystemPrompt omits reference section when references array is empty", () => {
+    const stagedAgent: typeof agent = {
+      id: "test-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["wolven-voice"],
+      references: [],
+      output_schema: {
+        deliverable_markdown: "Example",
+        resumo: "Summary",
+        autochecagem: "Validation",
+      },
+    };
+
+    const skillContents = { "wolven-voice": readSkill("wolven-voice") };
+
+    const prompt = assembleSystemPrompt(stagedAgent, skillContents, {});
+
+    expect(prompt).not.toContain("# References");
+    expect(prompt).toContain("# Skills");
+  });
+
+  it("assembleSystemPrompt preserves required JSON-only output instructions with references", () => {
+    const stagedAgent: typeof agent = {
+      id: "investigate-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["wolven-voice"],
+      references: ["agents/references/editorial-brief.md"],
+      output_schema: {
+        deliverable_markdown: "Brief findings",
+        resumo: "Summary",
+        autochecagem: "Validation",
+      },
+    };
+
+    const skillContents = { "wolven-voice": readSkill("wolven-voice") };
+    const referenceContents = { "agents/references/editorial-brief.md": "Template" };
+
+    const prompt = assembleSystemPrompt(stagedAgent, skillContents, referenceContents);
+
+    expect(prompt).toContain("# Required Output Format");
+    expect(prompt).toContain("Respond with JSON only");
+    expect(prompt).toContain("Do not wrap the JSON in markdown code fences");
+    expect(prompt).toContain("deliverable_markdown");
+    expect(prompt).toContain("resumo");
+    expect(prompt).toContain("autochecagem");
+  });
+
+  it("assembleSystemPrompt includes multiple references in order", () => {
+    const stagedAgent: typeof agent = {
+      id: "multi-ref-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["wolven-voice"],
+      references: [
+        "agents/references/editorial-brief.md",
+        "agents/references/example-brief.md",
+        "agents/references/formatting-guide.md",
+      ],
+      output_schema: {
+        deliverable_markdown: "Example",
+        resumo: "Summary",
+        autochecagem: "Validation",
+      },
+    };
+
+    const skillContents = { "wolven-voice": readSkill("wolven-voice") };
+    const referenceContents = {
+      "agents/references/editorial-brief.md": "## Brief Template\n\nFirst reference content",
+      "agents/references/example-brief.md": "## Example\n\nSecond reference content",
+      "agents/references/formatting-guide.md": "## Format\n\nThird reference content",
+    };
+
+    const prompt = assembleSystemPrompt(stagedAgent, skillContents, referenceContents);
+
+    const refIndex = prompt.indexOf("# References");
+    const brief1Index = prompt.indexOf("editorial-brief.md");
+    const brief2Index = prompt.indexOf("example-brief.md");
+    const formatIndex = prompt.indexOf("formatting-guide.md");
+
+    expect(refIndex).toBeGreaterThan(0);
+    expect(brief1Index).toBeGreaterThan(refIndex);
+    expect(brief2Index).toBeGreaterThan(brief1Index);
+    expect(formatIndex).toBeGreaterThan(brief2Index);
+  });
 });
 
 describe("buildCallAgentWorkflow (sub-workflow topology)", () => {
@@ -761,12 +899,12 @@ describe("buildCallAgentWorkflow (sub-workflow topology)", () => {
     }
   });
 
-  it("github nodes fetch the agent config and skill markdown paths, with retry configured", () => {
+  it("github nodes fetch the agent config and skill/reference paths, with retry configured", () => {
     const githubNodes = workflow.nodes.filter((node) => node.type === "n8n-nodes-base.github");
     expect(githubNodes).toHaveLength(2);
     const filePaths = githubNodes.map((node) => String((node.parameters as { filePath?: string }).filePath ?? ""));
     expect(filePaths.join(" ")).toContain("agent_id");
-    expect(filePaths.join(" ")).toContain("skill_path");
+    expect(filePaths.join(" ")).toContain("path");
     for (const node of githubNodes) {
       expect(node.retryOnFail).toBe(true);
       expect(node.maxTries).toBe(2);
@@ -874,5 +1012,38 @@ describe("end-to-end prompt assembly + parse", () => {
         expect(simulated[key].trim().length).toBeGreaterThan(0);
       }
     }
+  });
+
+  it("assembles prompts with references for staged agent configs", () => {
+    const stagedAgent: typeof agent = {
+      id: "investigate-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["wolven-voice"],
+      references: ["agents/references/editorial-brief.md"],
+      output_schema: {
+        deliverable_markdown: "Brief findings",
+        resumo: "Summary",
+        autochecagem: "Validation",
+      },
+    };
+
+    const skillContent = readSkill("wolven-voice");
+    const referenceContent = "## Editorial Brief Template\n\nStructure a brief with angles, evidence, and key findings.";
+
+    const systemPrompt = assembleSystemPrompt(
+      stagedAgent,
+      { "wolven-voice": skillContent },
+      { "agents/references/editorial-brief.md": referenceContent }
+    );
+
+    expect(systemPrompt).toContain("# Agent Role");
+    expect(systemPrompt).toContain("# Skills");
+    expect(systemPrompt).toContain("# References");
+    expect(systemPrompt).toContain("# Required Output Format");
+    expect(systemPrompt).toContain("Editorial Brief Template");
+    expect(systemPrompt.length).toBeGreaterThan(300);
   });
 });
