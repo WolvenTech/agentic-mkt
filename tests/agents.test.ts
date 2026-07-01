@@ -156,6 +156,76 @@ describe("agent config", () => {
     expect(referenceContent).toMatch(/Angle Options/i);
   });
 
+  it("parses long-form-argument.json as a stage agent config with required keys", () => {
+    const longFormPath = resolve(REPO_ROOT, "agents", "long-form-argument.json");
+    expect(existsSync(longFormPath)).toBe(true);
+    const agent = JSON.parse(readFileSync(longFormPath, "utf-8")) as AgentConfig;
+    expect(agent.id).toBe("long-form-argument");
+    expect(agent.provider).toBe("openai");
+    expect(agent.model).toBe("gpt-4.1-mini");
+    expect(agent.skills).toContain("wolven-voice");
+    expect(agent.skills).toContain("long-form-argument");
+    expect(agent.references).toBeDefined();
+    expect(Array.isArray(agent.references)).toBe(true);
+    expect(agent.references).toContain("agents/references/argument-template.md");
+  });
+
+  it("resolves every skill in long-form-argument agent to a file", () => {
+    const longFormPath = resolve(REPO_ROOT, "agents", "long-form-argument.json");
+    const agent = JSON.parse(readFileSync(longFormPath, "utf-8")) as AgentConfig;
+    expect(Array.isArray(agent.skills)).toBe(true);
+    expect(agent.skills.length).toBeGreaterThan(0);
+    const missing = agent.skills.filter((skill) => !existsSync(resolve(SKILLS_DIR, `${skill}.md`)));
+    expect(missing).toEqual([]);
+  });
+
+  it("resolves every reference in long-form-argument agent to a file", () => {
+    const longFormPath = resolve(REPO_ROOT, "agents", "long-form-argument.json");
+    const agent = JSON.parse(readFileSync(longFormPath, "utf-8")) as AgentConfig;
+    if (agent.references && Array.isArray(agent.references)) {
+      const missing = agent.references.filter((ref) => !existsSync(resolve(REPO_ROOT, ref)));
+      expect(missing).toEqual([]);
+    }
+  });
+
+  it("verifies long-form-argument skill distinguishes channel-neutral argument from LinkedIn formatting", () => {
+    const skillPath = resolve(REPO_ROOT, "agents", "skills", "long-form-argument.md");
+    expect(existsSync(skillPath)).toBe(true);
+    const skillContent = readFileSync(skillPath, "utf-8");
+    expect(skillContent).toMatch(/channel-neutral/i);
+    expect(skillContent).toMatch(/no linkedin|formatting yet|not add linkedin/i);
+  });
+
+  it("verifies long-form-argument skill enforces evidence mapping", () => {
+    const skillPath = resolve(REPO_ROOT, "agents", "skills", "long-form-argument.md");
+    const skillContent = readFileSync(skillPath, "utf-8");
+    expect(skillContent).toMatch(/evidence.*map|map.*evidence|evidence mapping/i);
+  });
+
+  it("verifies long-form-argument skill preserves trade-offs and implications", () => {
+    const skillPath = resolve(REPO_ROOT, "agents", "skills", "long-form-argument.md");
+    const skillContent = readFileSync(skillPath, "utf-8");
+    expect(skillContent).toMatch(/trade-off|implications?|tensions?/i);
+  });
+
+  it("verifies long-form-argument skill includes blocker behavior for missing angle or evidence", () => {
+    const skillPath = resolve(REPO_ROOT, "agents", "skills", "long-form-argument.md");
+    const skillContent = readFileSync(skillPath, "utf-8");
+    expect(skillContent).toMatch(/blocker|missing.*angle|missing.*evidence/i);
+  });
+
+  it("verifies argument-template reference exists and includes expected sections", () => {
+    const referencePath = resolve(REPO_ROOT, "agents", "references", "argument-template.md");
+    expect(existsSync(referencePath)).toBe(true);
+    const referenceContent = readFileSync(referencePath, "utf-8");
+    expect(referenceContent).toMatch(/Central Claim/i);
+    expect(referenceContent).toMatch(/Reasoning/i);
+    expect(referenceContent).toMatch(/Evidence Mapping/i);
+    expect(referenceContent).toMatch(/Trade-Offs?/i);
+    expect(referenceContent).toMatch(/Implications?/i);
+    expect(referenceContent).toMatch(/Direction/i);
+  });
+
   it("validates that references, when present, must be strings", () => {
     function validateReferences(config: AgentConfig): boolean {
       if (!config.references) {
