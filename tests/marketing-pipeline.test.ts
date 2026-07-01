@@ -38,11 +38,13 @@ import {
   createDocIfNeededJs,
   extractLatestLeadFeedbackJs,
   extractTaskFieldsJs,
+  formatPointerCommentJs,
   getOrCreateStagePage,
   prepareStagedCallAgentInputJs,
   readCurrentPageJs,
   replacePageJs,
   selectPriorDocPageJs,
+  updateStatusToNextGateJs,
 } from "../src/workflows/marketing-pipeline-n8n.js";
 import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/marketing-pipeline/logic.js";
 import type { FieldMapping } from "../src/types/field-mapping.js";
@@ -1007,5 +1009,104 @@ describe("Marketing Pipeline stage routing", () => {
     expect(taskFieldsCode).toContain("investigative-brief");
     expect(taskFieldsCode).toContain("long-form-argument");
     expect(taskFieldsCode).toContain("linkedin-format");
+  });
+
+  it("staged success path reaches Status → Next Gate (investigate)", () => {
+    expect(workflowConnectionPath(workflow, "Update Status to Next Gate", "Status → Next Gate")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "POST Pointer Comment", "Update Status to Next Gate")).not.toBeNull();
+  });
+
+  it("staged success path replaces Doc page before posting comment", () => {
+    expect(workflowConnectionPath(workflow, "Format Pointer Comment", "Replace Doc Page")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Replace Doc Page", "POST Pointer Comment")).not.toBeNull();
+  });
+});
+
+describe("staged success output handling (task_17)", () => {
+  const mapping = fixtureFieldMapping();
+  const workflow = buildMarketingPipelineWorkflow(mapping);
+
+  it("formats pointer comment for staged success with [CQ-AI] prefix", () => {
+    const code = formatPointerCommentJs();
+    expect(code).toContain("[CQ-AI]");
+    expect(code).toContain("Execute Call Agent");
+    expect(code).toContain("Extract Task Fields");
+    expect(code).toContain("resumo");
+    expect(code).toContain("self_check");
+    expect(code).toContain("next_gate");
+  });
+
+  it("formats pointer comment to summarize what changed from artifact", () => {
+    const code = formatPointerCommentJs();
+    expect(code).toContain("artifact_markdown");
+    expect(code).toContain("firstLine");
+    expect(code).toContain("whatChanged");
+    expect(code).toContain("**What changed:**");
+  });
+
+  it("formats pointer comment with resumo and self-check summaries", () => {
+    const code = formatPointerCommentJs();
+    expect(code).toContain("**Summary:**");
+    expect(code).toContain("**Self-check:**");
+    expect(code).toContain("agentOutput.resumo");
+    expect(code).toContain("agentOutput.self_check");
+  });
+
+  it("formats pointer comment indicating next action (gate)", () => {
+    const code = formatPointerCommentJs();
+    expect(code).toContain("Moving to");
+    expect(code).toContain("agentOutput.next_gate");
+  });
+
+  it("updates task status to the stage's next_gate using dynamic value", () => {
+    const code = updateStatusToNextGateJs();
+    expect(code).toContain("Format Pointer Comment");
+    expect(code).toContain("next_gate");
+    expect(code).toContain("STATUS_MAP");
+    expect(code).toContain("brief review");
+    expect(code).toContain("content review");
+    expect(code).toContain("final review");
+  });
+
+  it("status update uses .first() for stable task identity reference", () => {
+    const code = updateStatusToNextGateJs();
+    expect(code).toContain("$('Extract Task Fields').first()");
+    expect(code).not.toContain("$input.all()");
+    expect(code).not.toContain(".map(");
+  });
+
+  it("status update maps next_gate to display status values", () => {
+    const code = updateStatusToNextGateJs();
+    expect(code).toContain("'brief review': 'Brief Review'");
+    expect(code).toContain("'content review': 'Content Review'");
+    expect(code).toContain("'final review': 'Final Review'");
+  });
+
+  it("status update throws on invalid next_gate values", () => {
+    const code = updateStatusToNextGateJs();
+    expect(code).toContain("throw new Error");
+    expect(code).toContain("Invalid next_gate");
+  });
+
+  it("routes Agent Output OK to Staged Success conditional", () => {
+    const agentOutputNode = nodeByName(workflow, "Agent Output OK?");
+    expect(agentOutputNode).toBeDefined();
+    const connections = workflow.connections["Agent Output OK?"]?.main ?? [];
+    expect(connections[0]?.[0]?.node).toBe("Staged Success?");
+  });
+
+  it("branches Staged Success to pointer path on success, draft path on fallback", () => {
+    const branches = workflow.connections["Staged Success?"]?.main ?? [];
+    expect(branches[0]?.[0]?.node).toBe("Format Pointer Comment");
+    expect(branches[1]?.[0]?.node).toBe("Format Draft Comment");
+  });
+
+  it("pointer path chains: Format -> Replace -> POST -> Update -> Set Status", () => {
+    const nodes = ["Format Pointer Comment", "Replace Doc Page", "POST Pointer Comment", "Update Status to Next Gate", "Status → Next Gate"];
+    for (let i = 0; i < nodes.length - 1; i += 1) {
+      const from = nodes[i];
+      const to = nodes[i + 1];
+      expect(workflowConnectionPath(workflow, from, to), `${from} -> ${to}`).not.toBeNull();
+    }
   });
 });

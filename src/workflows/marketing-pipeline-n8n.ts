@@ -821,3 +821,65 @@ export function routeWriteIfExpression(): string {
 export function routeFormatIfExpression(): string {
   return "={{ $json.stage === 'format' }}";
 }
+
+/** n8n Code node: Format Pointer Comment for successful staged outputs (task_17). */
+export function formatPointerCommentJs(): string {
+  return joinN8nJs([
+    "const agentOutput = $('Execute Call Agent').first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "",
+    "const artifact = (agentOutput.artifact_markdown ?? '').trim();",
+    "const firstLine = artifact.split('\\n')[0].replace(/^#+\\s*/, '').trim();",
+    "const whatChanged = firstLine || '(artifact updated)';",
+    "",
+    "const commentText = [",
+    "  '[CQ-AI] Staged artifact updated',",
+    "  '',",
+    "  `**What changed:** ${whatChanged}`,",
+    "  '',",
+    "  '**Summary:**',",
+    "  `${agentOutput.resumo ?? ''}`,",
+    "  '',",
+    "  '**Self-check:**',",
+    "  `${agentOutput.self_check ?? ''}`,",
+    "  '',",
+    "  `**Next:** Moving to ${agentOutput.next_gate ?? 'next review'}`,",
+    "].join('\\n');",
+    "",
+    "return [{",
+    "  json: {",
+    "    task_id: taskFields.task_id,",
+    "    comment_text: commentText,",
+    "    artifact_markdown: agentOutput.artifact_markdown,",
+    "    next_gate: agentOutput.next_gate,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Update task status to the stage's next_gate (task_17). */
+export function updateStatusToNextGateJs(): string {
+  return joinN8nJs([
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const commentData = $('Format Pointer Comment').first().json;",
+    "const nextGate = commentData.next_gate || '';",
+    "",
+    "const STATUS_MAP = {",
+    "  'brief review': 'Brief Review',",
+    "  'content review': 'Content Review',",
+    "  'final review': 'Final Review',",
+    "};",
+    "",
+    "const statusValue = STATUS_MAP[nextGate];",
+    "if (!statusValue) {",
+    "  throw new Error(`Invalid next_gate '${nextGate}'. Expected one of: brief review, content review, final review`);",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...commentData,",
+    "    status_to_set: statusValue,",
+    "  },",
+    "}];",
+  ]);
+}

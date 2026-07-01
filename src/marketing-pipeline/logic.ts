@@ -58,9 +58,12 @@ export const STAGED_INVESTIGATE_PATH_NODE_SEQUENCE = [
   "Prepare Staged Call Agent Input",
   "Execute Call Agent",
   "Agent Output OK?",
-  "Format Draft Comment",
-  "POST Task Comment",
-  "Status → Review",
+  "Staged Success?",
+  "Format Pointer Comment",
+  "Replace Doc Page",
+  "POST Pointer Comment",
+  "Update Status to Next Gate",
+  "Status → Next Gate",
 ] as const;
 
 /** Staged write ingress happy-path node order for topology validation. */
@@ -83,9 +86,12 @@ export const STAGED_WRITE_PATH_NODE_SEQUENCE = [
   "Prepare Staged Call Agent Input",
   "Execute Call Agent",
   "Agent Output OK?",
-  "Format Draft Comment",
-  "POST Task Comment",
-  "Status → Review",
+  "Staged Success?",
+  "Format Pointer Comment",
+  "Replace Doc Page",
+  "POST Pointer Comment",
+  "Update Status to Next Gate",
+  "Status → Next Gate",
 ] as const;
 
 /** Staged format ingress happy-path node order for topology validation. */
@@ -108,9 +114,12 @@ export const STAGED_FORMAT_PATH_NODE_SEQUENCE = [
   "Prepare Staged Call Agent Input",
   "Execute Call Agent",
   "Agent Output OK?",
-  "Format Draft Comment",
-  "POST Task Comment",
-  "Status → Review",
+  "Staged Success?",
+  "Format Pointer Comment",
+  "Replace Doc Page",
+  "POST Pointer Comment",
+  "Update Status to Next Gate",
+  "Status → Next Gate",
 ] as const;
 
 /** Revision happy-path node order for topology validation. */

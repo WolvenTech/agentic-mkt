@@ -865,6 +865,128 @@
       "parameters": {
         "jsCode": "const context = $input.first().json;\nconst before = String(context.transition_before ?? '').trim().toLowerCase();\nconst after = String(context.transition_after ?? '').trim().toLowerCase();\nconst transition = before || after ? `${before}->${after}` : '';\nconst record = {\n  event: 'ingress_skipped',\n  task_id: context.task_id,\n  webhook_id: context.webhook_id,\n  history_item_id: context.history_item_id,\n  transition,\n  reason: 'duplicate_history_item',\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
       }
+    },
+    {
+      "id": "3f3d0622-4bbb-9fad-5333-a79503e606d3",
+      "name": "Staged Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4320,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "440dc19e-cfff-3a2c-2463-f58d882f08a2",
+              "leftValue": "={{ $('Extract Task Fields').first().json.stage !== null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c6916463-debe-32e5-7e19-b8005938c070",
+      "name": "Format Pointer Comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\n\nconst artifact = (agentOutput.artifact_markdown ?? '').trim();\nconst firstLine = artifact.split('\\n')[0].replace(/^#+\\s*/, '').trim();\nconst whatChanged = firstLine || '(artifact updated)';\n\nconst commentText = [\n  '[CQ-AI] Staged artifact updated',\n  '',\n  `**What changed:** ${whatChanged}`,\n  '',\n  '**Summary:**',\n  `${agentOutput.resumo ?? ''}`,\n  '',\n  '**Self-check:**',\n  `${agentOutput.self_check ?? ''}`,\n  '',\n  `**Next:** Moving to ${agentOutput.next_gate ?? 'next review'}`,\n].join('\\n');\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    comment_text: commentText,\n    artifact_markdown: agentOutput.artifact_markdown,\n    next_gate: agentOutput.next_gate,\n  },\n}];"
+      }
+    },
+    {
+      "id": "a0d17bd9-f265-2eae-62df-f4dbf1db17f9",
+      "name": "Replace Doc Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4800,
+        100
+      ],
+      "parameters": {
+        "jsCode": "async function docsV3Request(method, path, token, body) {\n  const baseUrl = 'https://api.clickup.com';\n  const headers = {\n    'Authorization': token,\n    'Accept': 'application/json',\n  };\n  if (body) headers['Content-Type'] = 'application/json';\n  \n  try {\n    const response = await fetch(`${baseUrl}${path}`, {\n      method,\n      headers,\n      body: body ? JSON.stringify(body) : undefined,\n    });\n    \n    if (!response.ok) {\n      const text = await response.text().catch(() => '');\n      return {\n        success: false,\n        error: `HTTP ${response.status}${text ? ': ' + text.slice(0, 200) : ''}`,\n      };\n    }\n    \n    if (response.status === 204) return { success: true, data: undefined };\n    \n    const data = await response.json();\n    return { success: true, data };\n  } catch (err) {\n    return { success: false, error: String(err) };\n  }\n}\n\nasync function createClickUpDoc(workspaceId, listId, taskId, token) {\n  const path = `/api/v3/workspaces/${workspaceId}/docs`;\n  const body = {\n    name: `Editorial workspace for ${taskId}`,\n    parent: { id: listId, type: 6 },\n    visibility: 'PRIVATE',\n    create_page: true,\n  };\n  const result = await docsV3Request('POST', path, token, body);\n  if (!result.success) return result;\n  if (!result.data?.id) {\n    return { success: false, error: 'Doc created but response did not include id' };\n  }\n  return { success: true, data: result.data.id };\n}\n\nasync function listDocPages(workspaceId, docId, token) {\n  const path = `/api/v3/workspaces/${workspaceId}/docs/${docId}/pages`;\n  const result = await docsV3Request('GET', path, token);\n  if (!result.success) return result;\n  const pages = result.data?.pages ?? [];\n  return { success: true, data: pages };\n}\n\nasync function readPageContent(workspaceId, docId, pageId, token) {\n  const path = `/api/v3/workspaces/${workspaceId}/docs/${docId}/pages/${pageId}?content_format=text/md`;\n  const result = await docsV3Request('GET', path, token);\n  if (!result.success) return result;\n  if (result.data?.content === undefined) {\n    return { success: false, error: 'Page fetched but response did not include content' };\n  }\n  return { success: true, data: result.data.content };\n}\n\nasync function replacePage(workspaceId, docId, pageId, content, token) {\n  const path = `/api/v3/workspaces/${workspaceId}/docs/${docId}/pages/${pageId}`;\n  const body = {\n    content,\n    content_edit_mode: 'replace',\n    content_format: 'text/md',\n  };\n  const result = await docsV3Request('PUT', path, token, body);\n  return result;\n}\n\nasync function getOrCreatePageByName(workspaceId, docId, pageName, token) {\n  const listResult = await listDocPages(workspaceId, docId, token);\n  if (!listResult.success) return listResult;\n  \n  const pages = listResult.data ?? [];\n  const existing = pages.find((p) => p.name === pageName);\n  if (existing?.id) return { success: true, data: existing.id };\n  \n  const path = `/api/v3/workspaces/${workspaceId}/docs/${docId}/pages`;\n  const body = {\n    name: pageName,\n    content: `# ${pageName}\\n\\n*Initial placeholder content for ${pageName}.*`,\n    content_format: 'text/md',\n  };\n  const createResult = await docsV3Request('POST', path, token, body);\n  if (!createResult.success) return createResult;\n  if (!createResult.data?.id) {\n    return { success: false, error: `Page '${pageName}' created but response did not include id` };\n  }\n  return { success: true, data: createResult.data.id };\n}\n\nconst fields = $input.first().json;\nconst token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;\nif (!token) throw new Error('CLICKUP_API_TOKEN not set');\n\nconst workspaceId = fields.workspace_id;\nconst docId = fields.doc_id;\nconst pageId = fields.page_id;\nconst content = fields.artifact_markdown || '';\nif (!workspaceId || !docId || !pageId) {\n  throw new Error('workspace_id, doc_id, and page_id required');\n}\n\nconst result = await replacePage(workspaceId, docId, pageId, content, token);\nif (!result.success) {\n  throw new Error(`Page replacement failed: ${result.error}`);\n}\n\nreturn [{\n  json: {\n    ...fields,\n    page_replaced: true,\n    operation: 'page_replaced',\n  },\n}];"
+      }
+    },
+    {
+      "id": "a07784f3-91d4-b0f6-8b2b-5b9f5e8e5437",
+      "name": "POST Pointer Comment",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        5040,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "resource": "comment",
+        "operation": "create",
+        "commentOn": "task",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "commentText": "={{ $json.comment_text }}"
+      }
+    },
+    {
+      "id": "4277f30c-fa71-ec74-8323-0540f7ebb102",
+      "name": "Update Status to Next Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const taskFields = $('Extract Task Fields').first().json;\nconst commentData = $('Format Pointer Comment').first().json;\nconst nextGate = commentData.next_gate || '';\n\nconst STATUS_MAP = {\n  'brief review': 'Brief Review',\n  'content review': 'Content Review',\n  'final review': 'Final Review',\n};\n\nconst statusValue = STATUS_MAP[nextGate];\nif (!statusValue) {\n  throw new Error(`Invalid next_gate '${nextGate}'. Expected one of: brief review, content review, final review`);\n}\n\nreturn [{\n  json: {\n    ...commentData,\n    status_to_set: statusValue,\n  },\n}];"
+      }
+    },
+    {
+      "id": "3b2e80ef-50b4-a5f6-c4bb-1d751bd7d312",
+      "name": "Status → Next Gate",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        5520,
+        100
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "operation": "update",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "updateFields": {
+          "status": "={{ $json.status_to_set }}"
+        }
+      }
     }
   ],
   "connections": {
@@ -1284,7 +1406,7 @@
       "main": [
         [
           {
-            "node": "Format Draft Comment",
+            "node": "Staged Success?",
             "type": "main",
             "index": 0
           }
@@ -1292,6 +1414,68 @@
         [
           {
             "node": "Agent Parse Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Staged Success?": {
+      "main": [
+        [
+          {
+            "node": "Format Pointer Comment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Draft Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Pointer Comment": {
+      "main": [
+        [
+          {
+            "node": "Replace Doc Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Doc Page": {
+      "main": [
+        [
+          {
+            "node": "POST Pointer Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Pointer Comment": {
+      "main": [
+        [
+          {
+            "node": "Update Status to Next Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status to Next Gate": {
+      "main": [
+        [
+          {
+            "node": "Status → Next Gate",
             "type": "main",
             "index": 0
           }

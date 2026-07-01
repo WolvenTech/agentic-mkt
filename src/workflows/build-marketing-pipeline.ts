@@ -17,6 +17,7 @@ import {
   extractWebhookContextJs,
   formatDraftCommentJs,
   formatGuidanceCommentJs,
+  formatPointerCommentJs,
   logDuplicateIngressJs,
   logEmptyFeedbackGuidanceJs,
   logIngressSkippedJs,
@@ -25,12 +26,14 @@ import {
   prepareRevisionCallAgentInputJs,
   prepareStagedCallAgentInputJs,
   readCurrentPageJs,
+  replacePageJs,
   routeFormatIfExpression,
   routeInvestigateIfExpression,
   routeWriteIfExpression,
   setIngressModeJs,
   setNeedsReviewSkipTargetJs,
   stagedIngressIfExpression,
+  updateStatusToNextGateJs,
 } from "./marketing-pipeline-n8n.js";
 
 const CLICKUP_CREDENTIALS = {
@@ -601,6 +604,83 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       position: [1200, 520],
       parameters: { jsCode: logDuplicateIngressJs() },
     },
+    {
+      id: nodeId("Staged Success?"),
+      name: "Staged Success?",
+      type: "n8n-nodes-base.if",
+      typeVersion: 2.2,
+      position: [4320, 300],
+      parameters: {
+        conditions: {
+          options: { version: 2, leftValue: "", caseSensitive: true, typeValidation: "loose" },
+          combinator: "and",
+          conditions: [
+            {
+              id: conditionId("Staged Success?", 0),
+              leftValue: "={{ $('Extract Task Fields').first().json.stage !== null }}",
+              rightValue: "",
+              operator: { type: "boolean", operation: "true", singleValue: true },
+            },
+          ],
+        },
+        options: {},
+      },
+    },
+    {
+      id: nodeId("Format Pointer Comment"),
+      name: "Format Pointer Comment",
+      type: "n8n-nodes-base.code",
+      typeVersion: 2,
+      position: [4560, 100],
+      parameters: { jsCode: formatPointerCommentJs() },
+    },
+    {
+      id: nodeId("Replace Doc Page"),
+      name: "Replace Doc Page",
+      type: "n8n-nodes-base.code",
+      typeVersion: 2,
+      position: [4800, 100],
+      parameters: { jsCode: replacePageJs() },
+    },
+    {
+      id: nodeId("POST Pointer Comment"),
+      name: "POST Pointer Comment",
+      type: "n8n-nodes-base.clickUp",
+      typeVersion: 1,
+      position: [5040, 100],
+      retryOnFail: true,
+      maxTries: 2,
+      waitBetweenTries: 1000,
+      credentials: CLICKUP_CREDENTIALS,
+      parameters: {
+        resource: "comment",
+        operation: "create",
+        commentOn: "task",
+        id: "={{ $('Extract Task Fields').first().json.task_id }}",
+        commentText: "={{ $json.comment_text }}",
+      },
+    },
+    {
+      id: nodeId("Update Status to Next Gate"),
+      name: "Update Status to Next Gate",
+      type: "n8n-nodes-base.code",
+      typeVersion: 2,
+      position: [5280, 100],
+      parameters: { jsCode: updateStatusToNextGateJs() },
+    },
+    {
+      id: nodeId("Status → Next Gate"),
+      name: "Status → Next Gate",
+      type: "n8n-nodes-base.clickUp",
+      typeVersion: 1,
+      position: [5520, 100],
+      credentials: CLICKUP_CREDENTIALS,
+      parameters: {
+        operation: "update",
+        id: "={{ $('Extract Task Fields').first().json.task_id }}",
+        updateFields: { status: "={{ $json.status_to_set }}" },
+      },
+    },
   ];
 
   const connections: N8nWorkflowExport["connections"] = {
@@ -692,10 +772,20 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
     "Execute Call Agent": { main: [[{ node: "Agent Output OK?", type: "main", index: 0 }]] },
     "Agent Output OK?": {
       main: [
-        [{ node: "Format Draft Comment", type: "main", index: 0 }],
+        [{ node: "Staged Success?", type: "main", index: 0 }],
         [{ node: "Agent Parse Failure", type: "main", index: 0 }],
       ],
     },
+    "Staged Success?": {
+      main: [
+        [{ node: "Format Pointer Comment", type: "main", index: 0 }],
+        [{ node: "Format Draft Comment", type: "main", index: 0 }],
+      ],
+    },
+    "Format Pointer Comment": { main: [[{ node: "Replace Doc Page", type: "main", index: 0 }]] },
+    "Replace Doc Page": { main: [[{ node: "POST Pointer Comment", type: "main", index: 0 }]] },
+    "POST Pointer Comment": { main: [[{ node: "Update Status to Next Gate", type: "main", index: 0 }]] },
+    "Update Status to Next Gate": { main: [[{ node: "Status → Next Gate", type: "main", index: 0 }]] },
     "Format Draft Comment": { main: [[{ node: "POST Task Comment", type: "main", index: 0 }]] },
     "POST Task Comment": { main: [[{ node: "Status → Review", type: "main", index: 0 }]] },
     "Set Needs Review Skip Target": { main: [[{ node: "Log Ingress Skipped", type: "main", index: 0 }]] },
