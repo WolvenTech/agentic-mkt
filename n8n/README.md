@@ -1,8 +1,8 @@
-# n8n — Marketing Pipeline Orchestration
+# n8n — Staged Content Quality Pipeline Orchestration
 
 ## Purpose
 
-n8n host configuration, credentials runbook, and MCP stub for the marketing pipeline. Workflow JSON exports live in [`marketing-pipelines/`](../marketing-pipelines/README.md).
+n8n host configuration, credentials runbook, and MCP stub for the **staged content quality pipeline** — a three-stage editorial workflow (investigate, write, format) with human gates in between. Workflow JSON exports live in [`marketing-pipelines/`](../marketing-pipelines/README.md).
 
 ## Key files
 
@@ -41,61 +41,74 @@ Create a **fine-grained personal access token** scoped to this repository only:
 
 The Call Agent sub-workflow depends on this repo being pushed before isolation testing (task_06).
 
-## Call Agent sub-workflow (task_06)
+## Call Agent sub-workflow (multi-stage)
 
-Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) into `n8n.wolven.com.br` before the main workflow. This sub-workflow is a pure function: it accepts `CallAgentInput`, fetches agent config and skills from GitHub, invokes OpenAI, and returns `AgentOutput` or an error envelope — no ClickUp writes.
+Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) into `n8n.wolven.com.br` before the main workflow. This sub-workflow is a pure function: it accepts `StageInput` (stage name, task fields, prior Doc page, latest lead comment), fetches the appropriate agent config and reference/template files from GitHub, invokes OpenAI, and returns `StageAgentOutput` (artifact, resumo, self-check, next gate, optional blocker) or an error envelope — no ClickUp writes.
 
 | Node | Purpose |
 |------|---------|
-| When Executed by Another Workflow | Production entry (called by main workflow) |
-| Manual Trigger (Isolation Test) | Operator test path with hardcoded input |
-| Fetch Agent Config / Fetch Skill Markdown | GitHub PAT fetch (`retryOnFail`, max 2 tries) |
+| When Executed by Another Workflow | Production entry (called by main workflow with stage context) |
+| Manual Trigger (Isolation Test) | Operator test path with hardcoded input for a specific stage |
+| Fetch Agent Config / Fetch Reference Files | GitHub PAT fetch (`retryOnFail`, max 2 tries) — loads `agents/{agent_id}.json` and reference/template files per stage |
 | OpenAI Chat Model | `gpt-4.1-mini` with JSON output mode (default from [`src/call-agent/logic.ts`](../src/call-agent/logic.ts)) |
-| Parse Agent Output | Validates `deliverable_markdown`, `resumo`, `autochecagem`; logs `parse_success` |
+| Parse Agent Output | Validates `StageAgentOutput` structure (stage, artifact_markdown, resumo, self_check, next_gate, optional blocker_question); logs `parse_success` |
 
 After import, replace placeholder credential IDs (`GITHUB_CREDENTIAL_ID`, `OPENAI_CREDENTIAL_ID`) with your n8n credential IDs, or re-select credentials in the editor.
 
 ### Sub-workflow isolation test procedure
 
 1. Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) and configure **GitHub** (read-only PAT on `rafiti052/agentic-mkt`) and **OpenAI** credentials.
-2. Open the workflow and run **Manual Trigger (Isolation Test)** — this executes the **Hardcoded Test Input** node with `agent_id: linkedin-writer`.
-3. Confirm execution succeeds and **Parse Agent Output** returns JSON with all three keys: `deliverable_markdown`, `resumo`, `autochecagem` (non-empty strings).
-4. In the execution log for **Parse Agent Output**, verify structured log fields include `parse_success: true`, `agent_id`, `execution_id`, and `latency_ms`.
-5. **Parse-failure test:** temporarily disable **OpenAI Chat Model** JSON output (or inject malformed text in a scratch Code node before **Parse Agent Output**) and confirm the sub-workflow returns `{ "error": "...", "raw_response": "..." }` — not partial `AgentOutput`.
-6. Inspect **Assemble Prompt** execution data: both `wolven-voice` and `linkedin-format` skill bodies must appear in `system_prompt`.
-7. Re-export the workflow from n8n after credential binding and commit to `marketing-pipelines/call-agent-subworkflow.json` if the live graph differs from repo export.
+2. Open the workflow and run **Manual Trigger (Isolation Test)** — this executes the **Hardcoded Test Input** node with stage and agent settings.
+3. Confirm execution succeeds and **Parse Agent Output** returns JSON with all required keys: `stage`, `artifact_markdown`, `resumo`, `self_check`, `next_gate`, and optionally `blocker_question` (all non-empty strings).
+4. In the execution log for **Parse Agent Output**, verify structured log fields include `parse_success: true`, `stage`, `agent_id`, `execution_id`, and `latency_ms`.
+5. **Parse-failure test:** temporarily disable **OpenAI Chat Model** JSON output (or inject malformed text in a scratch Code node before **Parse Agent Output**) and confirm the sub-workflow returns `{ "error": "...", "raw_response": "..." }` — not partial `StageAgentOutput`.
+6. **Blocker test:** inspect the **Hardcoded Test Input** for a payload that should produce a blocker; confirm **Parse Agent Output** returns a non-empty `blocker_question` string.
+7. Inspect **Assemble Prompt** execution data: the stage-appropriate agent config, `wolven-voice` skill, and stage reference/template files must all appear in `system_prompt`.
+8. Re-export the workflow from n8n after credential binding and commit to `marketing-pipelines/call-agent-subworkflow.json` if the live graph differs from repo export.
 
 Alternative: pin the same hardcoded `CallAgentInput` on **When Executed by Another Workflow** (included in repo export `pinData`) and execute via **Test workflow** on that trigger.
 
-## Marketing Pipeline main workflow (task_07)
+## Marketing Pipeline main workflow (multi-stage staged workflow)
 
-Import [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelines/marketing-pipeline-main.json) after the Call Agent sub-workflow is imported and active. The main workflow is the sole ClickUp mutator for the happy path: webhook ingress → task fetch → status transitions → sub-workflow call → draft comment → Review.
+Import [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelines/marketing-pipeline-main.json) after the Call Agent sub-workflow is imported and active. The main workflow orchestrates three independent stages and manages human gates: webhook ingress → stage ingress filter → task fetch + Doc setup → sub-workflow call → Doc write + comment post → status advance (or blocker return).
+
+### Key workflow paths
+
+| Ingress path | Trigger | Stage | Next gate on success | Return gate on blocker |
+|--------------|---------|-------|----------------------|----------------------|
+| **Investigate** | Lead moves to **Investigate** | `investigate` agent | `brief_review` | `backlog` |
+| **Write** | Lead moves to **Write** | `write` agent | `content_review` | `brief_review` |
+| **Format** | Lead moves to **Format** | `format` agent | `final_review` | `content_review` |
 
 ### Live ClickUp status names vs n8n node labels
 
 [`clickup/field-mapping.json`](../clickup/field-mapping.json) is the source of truth for API status strings. n8n node names keep TechSpec labels so execution graphs stay readable.
 
-| ClickUp status (`field-mapping.json`) | n8n node label | When set |
-|----------------------------------------|----------------|----------|
-| `ready` (`statuses.ready`) | **Ready to Work?** (ingress only) | Lead moves task to ready — triggers webhook |
-| `needs review` (`statuses.needs_review`) | **Needs Review?** (ingress only) | Lead comments feedback, then moves task to needs review |
-| `writing` (`statuses.writing`) | **Status → In Progress** | Start of automated work |
-| `approval` (`statuses.review`) | **Status → Review** | After comment posts |
+| ClickUp status (`field-mapping.json`) | n8n node label | Trigger | Actor |
+|----------------------------------------|----------------|---------|-------|
+| `investigate` | **Investigate?** (ingress) | Lead moves task to Investigate | Lead |
+| `write` | **Write?** (ingress) | Lead moves task to Write | Lead |
+| `format` | **Format?** (ingress) | Lead moves task to Format | Lead |
+| `brief_review` | **→ Brief Review** | Investigate stage succeeds | n8n (auto-advance) |
+| `content_review` | **→ Content Review** | Write stage succeeds | n8n (auto-advance) |
+| `final_review` | **→ Final Review** | Format stage succeeds | n8n (auto-advance) |
+| Previous gate (on blocker) | **→ [Previous Gate]** | AI stage posts blocker | n8n (return) |
 
-**Execution transitions operators see in n8n:** one full run per `backlog → ready` first-draft ingress or `approval → needs review` revision ingress, plus short filtered runs for self-echo webhooks (`ready → writing`, `needs review → writing`, `writing → approval`) when the workflow PATCHes status. Those filtered runs are expected — see [`clickup/webhook-contract.md`](../clickup/webhook-contract.md#self-echo-webhooks-expected-noise).
+**Execution transitions operators see in n8n:** one full run per stage ingress, plus short filtered runs for self-echo webhooks when the workflow PATCHes status. Those filtered runs are expected — see [`clickup/webhook-contract.md`](../clickup/webhook-contract.md#self-echo-webhooks-expected-noise).
 
 | Node | Purpose |
 |------|---------|
-| ClickUp Webhook | Public HTTPS ingress (`POST /webhook/marketing-pipeline-ready-to-work`) |
-| Ready to Work? | IF filter: entering `ready` (`history_items[0].field === "status"`) |
-| Needs Review? | IF filter: entering `needs review` after lead comment feedback |
+| ClickUp Webhook | Public HTTPS ingress (`POST /webhook/...`) |
+| Investigate? / Write? / Format? | IF filters: entering a stage ingress status |
 | GET ClickUp Task | Fetch title, description, and custom fields |
-| Extract Task Fields | Map `Critérios de Aceite` and `agent_id` via `clickup/field-mapping.json` IDs |
-| Status → In Progress | PATCH task status → `writing` before agent call |
-| Execute Call Agent | Calls sub-workflow with `CallAgentInput` |
-| Format Draft Comment / POST Task Comment | TechSpec comment template with LinkedIn Draft, Resumo, Autochecagem |
-| Status → Review | PATCH status → `approval` after successful comment post |
-| Agent Parse Failure | Throws visible error; does not advance to Review |
+| Extract Task Fields | Map `Critérios de Aceite`, `Editorial Doc URL`, and stage metadata via `clickup/field-mapping.json` |
+| Create/Fetch Editorial Doc | Create list-scoped Doc if needed; store Doc URL in `Editorial Doc URL` custom field |
+| Fetch Doc Pages | Read prior stage page (if exists) to pass to agent as context |
+| Execute Call Agent | Calls sub-workflow with `StageInput` for the current stage |
+| Create/Replace Doc Page | Write the stage's artifact page to the Doc (`artifact_markdown`) |
+| Format Pointer Comment / POST Task Comment | Post summary comment: what changed, resumo, self-check, what's next |
+| Status → Next Gate | PATCH status to `next_gate` from stage output (or return to `previous_gate` on blocker) |
+| Agent Parse Failure | Throws visible error; does not post comment or advance status |
 
 After import, replace placeholder credential and workflow IDs:
 
@@ -119,21 +132,36 @@ Ensure `clickup/field-mapping.json` has real field IDs (run `pnpm clickup:sync` 
 
 ### Main workflow test procedure
 
+**Full staged workflow test (happy path):**
+
 1. Create a ClickUp task with title, description, and **Critérios de Aceite** populated.
-2. Move the task to **ready**.
-3. Within ~5 seconds, verify status changes to **writing** (n8n execution running; node **Status → In Progress**).
-4. Within ~60 seconds, verify a task comment appears with `## LinkedIn Draft`, `## Resumo`, and `## Autochecagem` sections and footer `_Generated by linkedin-writer (gpt-4.1-mini)_`.
-5. Verify task status is **approval** after the comment posts (node **Status → Review**).
-6. In n8n **Executions**, confirm one full success run plus ~7 ms filtered runs for `ready → writing` and `writing → approval` self-echo (not duplicate pipeline runs).
+2. Move the task to **Investigate**.
+3. Within ~60 seconds:
+   - A ClickUp Doc is created and the Doc URL appears in the **Editorial Doc URL** custom field.
+   - A page named "Brief" is created in the Doc with the investigation artifact.
+   - A pointer comment appears with the resumo and what's needed next.
+   - Status auto-advances to **Brief Review**.
+4. Review the brief in the Doc. Leave a comment selecting/refining the angle.
+5. Move the task to **Write**.
+6. Within ~60 seconds:
+   - A page named "Argument" is created in the Doc with the channel-neutral argument.
+   - A pointer comment appears with the resumo.
+   - Status auto-advances to **Content Review**.
+7. Review the argument in the Doc. Leave a comment approving or correcting it.
+8. Move the task to **Format**.
+9. Within ~60 seconds:
+   - A page named "Final Draft" is created in the Doc with the Wolven-voice LinkedIn post and self-check.
+   - A pointer comment appears with the resumo and self-check summary.
+   - Status auto-advances to **Final Review**.
+10. Review the final draft (target: under 10 minutes of editing), then move to **Publish** and **Closed**.
 
-**Webhook replay test (no ClickUp):** use **Listen for test event** on the webhook node and POST [`clickup/fixtures/task-status-updated-ready-to-work.json`](../clickup/fixtures/task-status-updated-ready-to-work.json) to the test URL; confirm **Ready to Work?** true branch executes.
-
-**Revision replay test (no ClickUp):** POST [`clickup/fixtures/task-status-updated-needs-review.json`](../clickup/fixtures/task-status-updated-needs-review.json) to the test URL after adding a representative comment thread in ClickUp mocks; confirm the **Needs Review?** true branch executes.
+**Webhook replay test (no ClickUp):** use **Listen for test event** on the webhook node and POST a sample webhook payload to the test URL; confirm the appropriate ingress filter (`Investigate?`, `Write?`, or `Format?`) executes.
 
 **Failure paths:**
 
-- **ClickUp API failure:** disable ClickUp credential temporarily; move task to ready; confirm execution shows error in n8n Executions (not silent).
-- **Agent parse failure:** use Call Agent isolation test to confirm error envelope; main workflow **Agent Parse Failure** node must throw and must not post comment or set approval.
+- **ClickUp API failure:** disable ClickUp credential temporarily; move task to a stage; confirm execution shows error in n8n Executions (not silent).
+- **Agent parse failure:** use Call Agent isolation test to confirm error envelope; main workflow **Agent Parse Failure** node must throw and must not post comment or advance status.
+- **Blocker test:** use Call Agent isolation test to confirm blocker output; main workflow must post blocker comment and return to previous gate (not advance to next gate).
 
 Re-export the workflow from n8n after credential binding and commit to `marketing-pipelines/marketing-pipeline-main.json` if the live graph differs from repo export.
 
@@ -174,17 +202,17 @@ Validated during M1/M2. An operator can re-import and activate both workflows us
 4. Test first-draft ingress: move a task to **ready** and confirm an execution appears in n8n within ~5 s.
 5. Test revision ingress after Phase 2 is deployed: leave feedback in comments, move the task from **approval** to **needs review**, and confirm a revision execution appears.
 
-### Step 4 — Verify green run timing
+### Step 4 — Verify stage timing
 
 Expected behavior documented in [`agents/harness/io-contract.md`](../agents/harness/io-contract.md#workflow-sequence-expectations):
 
-| Checkpoint | Target |
-|------------|--------|
-| ready → writing | ≤ 5 s |
-| writing → comment posted | ≤ 60 s total |
-| Final status | approval (`statuses.review`) |
+| Stage | Target |
+|-------|--------|
+| Investigate → Brief Review | ≤ 60 s |
+| Write → Content Review | ≤ 60 s |
+| Format → Final Review | ≤ 60 s |
 
-M1 target latency: **< 60 s** end-to-end (record actuals in [`green-run-evidence.json`](../agents/harness/green-run-evidence.json) after green run).
+Target latency: **≤ 60 s** per stage (record actuals in [`agents/harness/green-run-evidence.json`](../agents/harness/green-run-evidence.json) after validation).
 
 ### Troubleshooting
 

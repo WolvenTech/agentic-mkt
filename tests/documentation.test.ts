@@ -172,11 +172,11 @@ describe("reusable harness patterns", () => {
 });
 
 describe("domain READMEs", () => {
-  it("each domain README has an M2 operational runbook section", () => {
+  it("each domain README has an operational runbook section", () => {
     for (const [domain, path] of Object.entries(DOMAIN_READMES)) {
       const lower = loadText(path).toLowerCase();
-      const hasM2 = lower.includes("m2 operational runbook") || lower.includes("m2 section");
-      expect(hasM2, `${domain}/README.md missing M2 operational runbook section`).toBe(true);
+      const hasRunbook = lower.includes("operational runbook") || lower.includes("m2 operational runbook");
+      expect(hasRunbook, `${domain}/README.md missing operational runbook section`).toBe(true);
     }
   });
 
@@ -240,4 +240,139 @@ describe("no stale Python command references in committed READMEs", () => {
       expect(matches, `${label} still references: ${matches.join(", ")}`).toEqual([]);
     });
   }
+});
+
+describe("staged ClickUp workflow documentation (task_02)", () => {
+  const listSchema = loadText(resolve(REPO_ROOT, "clickup", "list-schema.md"));
+  const clickupReadme = loadText(DOMAIN_READMES.clickup);
+  const marketingPipelinesReadme = loadText(DOMAIN_READMES["marketing-pipelines"]);
+  const n8nReadme = loadText(DOMAIN_READMES.n8n);
+
+  describe("staged status names in documentation", () => {
+    const requiredStatuses = [
+      "backlog",
+      "investigate",
+      "brief review",
+      "brief_review",
+      "write",
+      "content review",
+      "content_review",
+      "format",
+      "final review",
+      "final_review",
+      "publish",
+      "closed",
+    ];
+
+    it("list-schema.md documents all staged status names", () => {
+      const lower = listSchema.toLowerCase();
+      for (const status of requiredStatuses) {
+        expect(lower, `list-schema.md should mention "${status}"`).toContain(status);
+      }
+    });
+
+    it("no longer describes ready/writing/approval as the current workflow in primary docs", () => {
+      // List schema should not describe ready/writing/approval as the flow
+      const schemaLower = listSchema.toLowerCase();
+      const hasPrimaryFlow = schemaLower.includes("primary workflow") &&
+        (schemaLower.includes("ready") || schemaLower.includes("writing") || schemaLower.includes("approval"));
+      expect(hasPrimaryFlow, "list-schema.md should not describe ready/writing/approval as primary").toBe(false);
+
+      // ClickUp README should not describe ready/writing/approval as the current workflow
+      const clickupLower = clickupReadme.toLowerCase();
+      const clickupHasOldFlow =
+        (clickupLower.includes("backlog → ready") || clickupLower.includes("ready → writing")) &&
+        !clickupLower.includes("backlog → investigate");
+      expect(clickupHasOldFlow, "clickup/README.md should not describe the old ready/writing flow").toBe(false);
+    });
+  });
+
+  describe("comment vs Doc responsibilities", () => {
+    it("list-schema.md explains that comments instruct and Doc stores artifacts", () => {
+      const lower = listSchema.toLowerCase();
+      expect(lower).toContain("comments instruct");
+      expect(lower).toContain("doc stores");
+      expect(lower).toContain("artifact");
+    });
+
+    it("clickup/README.md documents comment-vs-Doc guidance", () => {
+      const lower = clickupReadme.toLowerCase();
+      expect(lower).toContain("comments instruct");
+      expect(lower).toContain("doc");
+      expect(lower).toContain("artifact");
+      expect(lower).toContain("free-form");
+    });
+
+    it("marketing-pipelines/README.md references the artifact-first model", () => {
+      const lower = marketingPipelinesReadme.toLowerCase();
+      expect(lower).toContain("artifact");
+      expect(lower).toContain("doc");
+      expect(lower).toContain("comment");
+    });
+  });
+
+  describe("rework and blocker behavior", () => {
+    it("list-schema.md documents manual rework behavior (moving back re-runs only that stage)", () => {
+      const lower = listSchema.toLowerCase();
+      expect(lower).toContain("rework");
+      expect(lower).toContain("moving");
+      expect(lower).toContain("back");
+      expect(lower).toContain("stage");
+    });
+
+    it("list-schema.md documents blocker behavior and return to previous gate", () => {
+      const lower = listSchema.toLowerCase();
+      expect(lower).toContain("blocker");
+      expect(lower).toContain("previous");
+      expect(lower).toContain("gate");
+    });
+
+    it("clickup/README.md documents blocker flow in operational runbook", () => {
+      const lower = clickupReadme.toLowerCase();
+      expect(lower).toContain("blocker");
+      expect(lower).toContain("question");
+      expect(lower).toContain("comment");
+    });
+
+    it("clickup/README.md flags that downstream artifacts are preserved until manually re-run", () => {
+      const lower = clickupReadme.toLowerCase();
+      expect(lower).toContain("downstream");
+      expect(lower).toContain("preserved");
+      expect(lower).toContain("re-run");
+    });
+  });
+
+  describe("user can infer workflow behavior from docs", () => {
+    it("documents the complete trigger flow (how to start a stage)", () => {
+      const combined = `${listSchema}\n${clickupReadme}\n${marketingPipelinesReadme}`.toLowerCase();
+      expect(combined).toContain("move");
+      expect(combined).toContain("trigger");
+      expect(combined).toContain("stage");
+    });
+
+    it("documents approval flow (how stages advance)", () => {
+      const combined = `${listSchema}\n${clickupReadme}`.toLowerCase();
+      expect(combined).toContain("auto-advance");
+      expect(combined).toContain("advance");
+      expect(combined).toContain("brief review");
+      expect(combined).toContain("content review");
+      expect(combined).toContain("final review");
+    });
+
+    it("documents when and how to rework (moving back to earlier stages)", () => {
+      const combined = `${listSchema}\n${clickupReadme}`.toLowerCase();
+      expect(combined).toContain("move back");
+      expect(combined).toContain("investigate");
+      expect(combined).toContain("write");
+      expect(combined).toContain("format");
+    });
+
+    it("documents the ClickUp Doc as the artifact storage and where to find stage outputs", () => {
+      const combined = `${clickupReadme}\n${marketingPipelinesReadme}`.toLowerCase();
+      expect(combined).toContain("doc");
+      expect(combined).toContain("brief");
+      expect(combined).toContain("argument");
+      expect(combined).toContain("final draft");
+    });
+  });
 });

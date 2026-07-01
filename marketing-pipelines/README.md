@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Version-controlled n8n workflow JSON for the M1 ClickUp → agent → ClickUp marketing pipeline. Generated from TypeScript builders in `src/workflows/` — do not hand-edit unless re-exporting from n8n after credential binding.
+Version-controlled n8n workflow JSON for the **staged content quality pipeline** — a three-stage editorial workflow for Wolven LinkedIn posts. The workflow is triggered by ClickUp status changes, orchestrates three independent AI stages (investigate, write, format), writes artifacts to a ClickUp Doc per task, and posts pointer comments to keep the lead informed. Generated from TypeScript builders in `src/workflows/` — do not hand-edit unless re-exporting from n8n after credential binding.
 
 ## Key files
 
 | Path | Purpose |
 |------|---------|
-| `call-agent-subworkflow.json` | Sub-workflow: load agent config from GitHub, invoke OpenAI, parse `AgentOutput` |
-| `marketing-pipeline-main.json` | Main workflow: webhook ingress, status transitions, comment post |
+| `call-agent-subworkflow.json` | Sub-workflow: load agent config and references from GitHub, invoke OpenAI, parse typed stage output (`investigate` / `write` / `format`) |
+| `marketing-pipeline-main.json` | Main workflow: webhook ingress on `investigate/write/format`, stage ingress filtering, status advance to next human gate, Doc/comment creation, blocker handling |
 
-I/O contracts and troubleshooting: [`agents/harness/io-contract.md`](../agents/harness/io-contract.md).
+For workflow operation details: [`../clickup/README.md`](../clickup/README.md). I/O contracts and troubleshooting: [`agents/harness/io-contract.md`](../agents/harness/io-contract.md).
 
 ## Manual setup
 
@@ -26,29 +26,41 @@ Run `pnpm vendor:gate` before any live operation (see root [README](../README.md
 
 ### Import order (first-time setup)
 
-1. **Call Agent sub-workflow** — import `call-agent-subworkflow.json` into `n8n.wolven.com.br`. Bind **GitHub** (read-only PAT on `rafiti052/agentic-mkt`) and **OpenAI** credentials. Run **Manual Trigger (Isolation Test)**; confirm **Parse Agent Output** returns `deliverable_markdown`, `resumo`, and `autochecagem`. Leave **Inactive** (invoked by main workflow only).
+1. **Call Agent sub-workflow** — import `call-agent-subworkflow.json` into `n8n.wolven.com.br`. Bind **GitHub** (read-only PAT on `rafiti052/agentic-mkt`) and **OpenAI** credentials. Run **Manual Trigger (Isolation Test)**; confirm **Parse Agent Output** returns the stage contract fields for the selected agent/stage. Leave **Inactive** (invoked by main workflow only).
 2. **Marketing Pipeline main workflow** — import `marketing-pipeline-main.json`. Bind **ClickUp** credential; on **Execute Call Agent**, select the **Call Agent** sub-workflow. **Activate** the main workflow.
-3. **ClickUp webhook** — copy production URL from **ClickUp Webhook** node (`https://n8n.wolven.com.br/webhook/marketing-pipeline-ready-to-work`). Register in ClickUp: **Task Status Updated** on the Marketing Pipeline list.
+3. **ClickUp webhook** — copy production URL from **ClickUp Webhook** node. Register in ClickUp: **Task Status Updated** on the Marketing Pipeline list.
 
 Host credentials, GitHub PAT setup, and MCP stub: [`n8n/README.md`](../n8n/README.md).
 
-### Green run timing
+### Stage timing targets
 
-| Checkpoint | Target |
-|------------|--------|
-| ready → writing | ≤ 5 s |
-| writing → comment posted | ≤ 60 s total |
-| Final status | approval |
+Each stage should complete within the responsiveness the lead already experiences:
+
+| Stage | Target |
+|-------|--------|
+| Investigate → Brief Review | ≤ 60 s |
+| Write → Content Review | ≤ 60 s |
+| Format → Final Review | ≤ 60 s |
 
 Record actuals in [`agents/harness/green-run-evidence.json`](../agents/harness/green-run-evidence.json) after a verified run.
 
-### Revision trigger
+### Rework and approval
 
-Phase 2 revision ingress uses the same main workflow: the lead leaves feedback in the ClickUp task comments, then moves the task from **approval** to **needs review**. The workflow moves the task **needs review → writing → approval** while it produces the revised draft comment.
+- **Approval is movement forward:** moving a task from a human gate into an AI column triggers that stage.
+- **Rework re-runs only the selected stage:** moving a task back to an earlier AI column runs only that stage; downstream artifacts are preserved until manually re-run.
+- **Comments instruct; the Doc stores artifacts:** all human feedback flows through task comments; the Doc is the readable workspace.
 
-## M2 operational runbook
+## Operational runbook
 
-1. After builder changes: `pnpm build:workflows` then `pnpm deploy:workflows` (or manual re-import from this folder).
-2. First-time setup: follow **Manual setup → Import order** above; credential details in [`n8n/README.md`](../n8n/README.md).
-3. Troubleshooting and I/O contracts: [`agents/harness/io-contract.md`](../agents/harness/io-contract.md).
-4. Revision runs are triggered by comment feedback plus **needs review** status; no separate n8n workflow is imported for revisions.
+1. **First-time setup:** follow **Manual setup → Import order** above; credential details in [`n8n/README.md`](../n8n/README.md).
+2. **Workflow operation:** see [`../clickup/README.md`](../clickup/README.md) for the complete staged workflow, rework flow, and blocker handling.
+3. **After builder changes:** `pnpm build:workflows` then `pnpm deploy:workflows` (or manual re-import from this folder).
+4. **Troubleshooting and I/O contracts:** [`agents/harness/io-contract.md`](../agents/harness/io-contract.md).
+
+### Key workflow characteristics
+
+- **Three independent stages** — investigate, write, format — each runs in the Call Agent sub-workflow and returns typed output.
+- **One ClickUp Doc per task** — the workflow creates a Doc with one page per stage (Brief, Argument, Final Draft) and stores the Doc URL in the **Editorial Doc URL** custom field.
+- **Auto-advance to the next human gate** — when a stage succeeds, the workflow posts a pointer comment and moves status to the next human column.
+- **Blocker handling** — if a stage lacks material, it posts a blocker question and returns to the previous human column.
+- **Preservation of downstream artifacts** — re-running an earlier stage preserves later artifacts until they are re-run.
