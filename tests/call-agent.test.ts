@@ -11,11 +11,14 @@ import {
   extractOpenAIText,
   openaiModelId,
   githubFetchPaths,
+  isValidReferencePath,
   pairSkillContentsFromFetch,
+  pairReferenceContentsFromFetch,
   parseAgentOutput,
   parseStageOutput,
   providerIsOpenAI,
   providerIsRouted,
+  referencePath,
 } from "../src/call-agent/logic.js";
 import type { AgentConfig } from "../src/types/agent-config.js";
 import type { CallAgentInput } from "../src/types/call-agent-io.js";
@@ -511,6 +514,36 @@ describe("linkedin-format skill", () => {
   });
 });
 
+describe("reference path validation", () => {
+  it("isValidReferencePath accepts standard repo-relative paths", () => {
+    expect(isValidReferencePath("agents/references/editorial-brief.md")).toBe(true);
+    expect(isValidReferencePath("agents/references/example-brief.md")).toBe(true);
+    expect(isValidReferencePath("path/to/reference.md")).toBe(true);
+  });
+
+  it("isValidReferencePath rejects empty or whitespace-only paths", () => {
+    expect(isValidReferencePath("")).toBe(false);
+    expect(isValidReferencePath("   ")).toBe(false);
+    expect(isValidReferencePath(null as unknown as string)).toBe(false);
+    expect(isValidReferencePath(undefined as unknown as string)).toBe(false);
+  });
+
+  it("isValidReferencePath rejects paths with path traversal (..) patterns", () => {
+    expect(isValidReferencePath("../agents/references/brief.md")).toBe(false);
+    expect(isValidReferencePath("agents/../../../etc/passwd")).toBe(false);
+    expect(isValidReferencePath("agents/references/../../../etc/passwd")).toBe(false);
+  });
+
+  it("referencePath() throws on invalid paths", () => {
+    expect(() => referencePath("")).toThrow("Invalid reference path");
+    expect(() => referencePath("../evil.md")).toThrow("Invalid reference path");
+  });
+
+  it("referencePath() returns valid paths unchanged", () => {
+    expect(referencePath("agents/references/editorial-brief.md")).toBe("agents/references/editorial-brief.md");
+  });
+});
+
 describe("prompt assembly", () => {
   const agent = readAgentConfig();
   const skills: Record<string, string> = {
@@ -605,6 +638,80 @@ describe("prompt assembly", () => {
     expect(paths).toContain("agents/skills/wolven-voice.md");
     expect(paths).toContain("agents/skills/linkedin-format.md");
     expect(paths.length).toBe(3);
+  });
+
+  it("pairReferenceContentsFromFetch maps GitHub file responses back to references by index", () => {
+    const parseItems = [
+      { reference: "agents/references/editorial-brief.md" },
+      { reference: "agents/references/example-brief.md" },
+    ];
+    const briefContent = "## Editorial Brief\n\nThis is a sample brief template.";
+    const exampleContent = "## Example Brief\n\nAnother example for reference.";
+    const fetchItems = [
+      githubFilePayload(briefContent),
+      githubFilePayload(exampleContent),
+    ];
+    const contents = pairReferenceContentsFromFetch(parseItems, fetchItems);
+    expect(Object.keys(contents).sort()).toEqual([
+      "agents/references/editorial-brief.md",
+      "agents/references/example-brief.md",
+    ]);
+    expect(contents["agents/references/editorial-brief.md"]).toBe(briefContent);
+    expect(contents["agents/references/example-brief.md"]).toBe(exampleContent);
+  });
+
+  it("pairReferenceContentsFromFetch skips items without reference keys", () => {
+    const parseItems = [
+      { reference: "agents/references/brief.md" },
+      { other_field: "value" },
+    ];
+    const fetchItems = [
+      githubFilePayload("Content 1"),
+      githubFilePayload("Content 2"),
+    ];
+    const contents = pairReferenceContentsFromFetch(parseItems, fetchItems);
+    expect(Object.keys(contents)).toEqual(["agents/references/brief.md"]);
+  });
+
+  it("githubFetchPaths returns paths in order: config, skills, references", () => {
+    const stagedAgent: typeof agent = {
+      id: "investigate-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["wolven-voice", "investigative-brief"],
+      references: ["agents/references/editorial-brief.md", "agents/references/example-brief.md"],
+      output_schema: {
+        deliverable_markdown: "Example",
+        resumo: "Summary",
+        autochecagem: "Validation",
+      },
+    };
+    const paths = githubFetchPaths(stagedAgent);
+    expect(paths[0]).toBe("agents/investigate-agent.json");
+    expect(paths[1]).toBe("agents/skills/wolven-voice.md");
+    expect(paths[2]).toBe("agents/skills/investigative-brief.md");
+    expect(paths[3]).toBe("agents/references/editorial-brief.md");
+    expect(paths[4]).toBe("agents/references/example-brief.md");
+  });
+
+  it("githubFetchPaths throws when references contain invalid paths", () => {
+    const badAgent: typeof agent = {
+      id: "bad-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: [],
+      references: ["../evil.md"],
+      output_schema: {
+        deliverable_markdown: "Example",
+        resumo: "Summary",
+        autochecagem: "Validation",
+      },
+    };
+    expect(() => githubFetchPaths(badAgent)).toThrow("Invalid reference path");
   });
 
   it("decodeGithubFileContent round-trips base64-encoded file content", () => {

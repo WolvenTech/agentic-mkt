@@ -27,8 +27,26 @@ export function skillPath(skillName: string): string {
   return `agents/skills/${skillName}.md`;
 }
 
+/** Validate that a reference path is safe: not empty and no path traversal. */
+export function isValidReferencePath(referencePath: string): boolean {
+  if (!referencePath || typeof referencePath !== "string") {
+    return false;
+  }
+  const trimmed = referencePath.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+  if (trimmed.includes("..")) {
+    return false;
+  }
+  return true;
+}
+
 /** Build a GitHub fetch path for a reference file (already absolute or relative to repo root). */
 export function referencePath(referenceFile: string): string {
+  if (!isValidReferencePath(referenceFile)) {
+    throw new Error(`Invalid reference path: "${referenceFile}". References must be non-empty and not contain path traversal.`);
+  }
   return referenceFile;
 }
 
@@ -250,6 +268,23 @@ export function pairSkillContentsFromFetch(
     skillContents[skill] = decodeGithubFileContent(item as { content?: unknown });
   }
   return skillContents;
+}
+
+/** Pair Parse Agent Config reference items with GitHub file responses (preserves reference file paths). */
+export function pairReferenceContentsFromFetch(
+  parseItems: Array<{ reference?: string }>,
+  fetchItems: Array<{ content?: unknown }>
+): Record<string, string> {
+  const referenceContents: Record<string, string> = {};
+  const merged = mergeSkillFetchItems(parseItems, fetchItems);
+  for (const item of merged) {
+    const reference = item.reference;
+    if (typeof reference !== "string" || !reference) {
+      continue;
+    }
+    referenceContents[reference] = decodeGithubFileContent(item as { content?: unknown });
+  }
+  return referenceContents;
 }
 
 /** Build system prompt from agent config, inlined skills, and an output-schema example. */
