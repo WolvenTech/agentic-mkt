@@ -470,8 +470,59 @@ export function statusName(fieldMapping: FieldMapping, key: string): string {
   return String(fieldMapping.statuses?.[key] ?? "");
 }
 
+/**
+ * Resolve a stage status name from field mapping.
+ * Throws descriptive error if the status key is not in the mapping.
+ */
+export function stagedStatusName(fieldMapping: FieldMapping, statusKey: string): string {
+  const name = statusName(fieldMapping, statusKey);
+  if (!name) {
+    throw new Error(
+      `Missing status '${statusKey}' in field mapping. ` +
+      `Available statuses: ${Object.keys(fieldMapping.statuses ?? {}).join(", ")}`
+    );
+  }
+  return name;
+}
+
+/**
+ * Validate that a stage status key exists in the field mapping.
+ * Throws descriptive error if missing.
+ */
+export function validateStageStatus(fieldMapping: FieldMapping, statusKey: string): void {
+  const name = statusName(fieldMapping, statusKey);
+  if (!name) {
+    throw new Error(
+      `Missing staged status '${statusKey}' in field mapping. ` +
+      `Staged statuses required: investigate, brief_review, write, content_review, format, final_review. ` +
+      `Available: ${Object.keys(fieldMapping.statuses ?? {}).join(", ")}`
+    );
+  }
+}
+
 export function fieldId(fieldMapping: FieldMapping, key: string): string {
   return String(fieldMapping.custom_fields?.[key]?.clickup_field_id ?? "");
+}
+
+/**
+ * Validate that all required stage statuses are present in the field mapping.
+ * Throws descriptive error if any required status is missing.
+ */
+export function validateAllStageStatuses(fieldMapping: FieldMapping): void {
+  const requiredStatuses = ["investigate", "brief_review", "write", "content_review", "format", "final_review"];
+  const missing: string[] = [];
+  for (const statusKey of requiredStatuses) {
+    if (!statusName(fieldMapping, statusKey)) {
+      missing.push(statusKey);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing staged statuses in field mapping: ${missing.join(", ")}. ` +
+      `Required: ${requiredStatuses.join(", ")}. ` +
+      `Available: ${Object.keys(fieldMapping.statuses ?? {}).join(", ")}`
+    );
+  }
 }
 
 /** Return first node path from start to end following main connections, or null. */
