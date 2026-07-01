@@ -28,6 +28,7 @@ export function extractWebhookContextJs(): string {
     "    ingress_mode: String(raw.ingress_mode ?? payload.ingress_mode ?? 'first_draft'),",
     "    transition_before: statusValue(first.before),",
     "    transition_after: statusValue(first.after),",
+    "    stage: payload.stage || null,",
     "  },",
     "}];",
   ]);
@@ -61,15 +62,23 @@ export function extractTaskFieldsJs(fieldMapping: FieldMapping): string {
     `  default_agent_id: ${JSON.stringify(defaultAgentId)},`,
     "};",
     "",
+    "const STAGE_TO_AGENT = {",
+    "  investigate: 'investigative-brief',",
+    "  write: 'long-form-argument',",
+    "  format: 'linkedin-format',",
+    "};",
+    "",
     READ_CUSTOM_FIELD_JS,
     "",
     "const task = $input.first().json;",
     "const webhook = $('Extract Webhook Context').first().json;",
-    "const agentId = readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id;",
+    "const stage = webhook.stage || null;",
+    "const agentId = stage && STAGE_TO_AGENT[stage] ? STAGE_TO_AGENT[stage] : (readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id);",
     "",
     "return [{",
     "  json: {",
     "    task_id: String(task.id ?? webhook.task_id ?? ''),",
+    "    stage: stage,",
     "    agent_id: agentId,",
     "    task_title: String(task.name ?? ''),",
     "    task_description: String(task.description ?? task.text_content ?? ''),",
@@ -742,4 +751,73 @@ export function prepareStagedCallAgentInputJs(): string {
     "  },",
     "}];",
   ]);
+}
+
+/** n8n Code node: Extract stage from webhook and store in context for routing. */
+export function extractStageJs(fieldMapping: FieldMapping): string {
+  const investigateStatus = String(fieldMapping.statuses?.investigate ?? "investigate").trim().toLowerCase();
+  const writeStatus = String(fieldMapping.statuses?.write ?? "write").trim().toLowerCase();
+  const formatStatus = String(fieldMapping.statuses?.format ?? "format").trim().toLowerCase();
+
+  return joinN8nJs([
+    UNWRAP_WEBHOOK_PAYLOAD_JS,
+    "",
+    "const items = payload.history_items || [];",
+    "const item = items[0];",
+    "if (!item || item.field !== 'status') {",
+    "  return [{ json: { ...payload, stage: null } }];",
+    "}",
+    "",
+    "const after = item.after;",
+    "const status = (after !== null && typeof after === 'object') ? String(after.status ?? '').trim().toLowerCase() : String(after ?? '').trim().toLowerCase();",
+    "",
+    `const investigateMatch = status === ${JSON.stringify(investigateStatus)};`,
+    `const writeMatch = status === ${JSON.stringify(writeStatus)};`,
+    `const formatMatch = status === ${JSON.stringify(formatStatus)};`,
+    "",
+    "let stage = null;",
+    "if (investigateMatch) stage = 'investigate';",
+    "else if (writeMatch) stage = 'write';",
+    "else if (formatMatch) stage = 'format';",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...payload,",
+    "    stage: stage,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n IF node expression: check if payload has any staged status (investigate, write, or format). */
+export function stagedIngressIfExpression(fieldMapping: FieldMapping = {}): string {
+  const investigateStatus = String(fieldMapping.statuses?.investigate ?? "investigate").trim().toLowerCase();
+  const writeStatus = String(fieldMapping.statuses?.write ?? "write").trim().toLowerCase();
+  const formatStatus = String(fieldMapping.statuses?.format ?? "format").trim().toLowerCase();
+
+  return (
+    `={{ (() => { ` +
+    `const payload = $json.body && $json.body.history_items ? $json.body : $json; ` +
+    `const item = payload?.history_items?.[0]; ` +
+    `if (!item || item.field !== "status") return false; ` +
+    `const after = item.after; ` +
+    `const status = (after !== null && typeof after === "object") ? String(after.status ?? "").trim().toLowerCase() : String(after ?? "").trim().toLowerCase(); ` +
+    `return status === ${JSON.stringify(investigateStatus)} || status === ${JSON.stringify(writeStatus)} || status === ${JSON.stringify(formatStatus)}; ` +
+    `})() }}`
+  );
+}
+
+/** n8n IF node expression: check if stage is investigate. */
+export function routeInvestigateIfExpression(): string {
+  return "={{ $json.stage === 'investigate' }}";
+}
+
+/** n8n IF node expression: check if stage is write. */
+export function routeWriteIfExpression(): string {
+  return "={{ $json.stage === 'write' }}";
+}
+
+/** n8n IF node expression: check if stage is format. */
+export function routeFormatIfExpression(): string {
+  return "={{ $json.stage === 'format' }}";
 }

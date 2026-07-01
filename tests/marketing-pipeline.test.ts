@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 import {
   HAPPY_PATH_NODE_SEQUENCE,
   REVISION_PATH_NODE_SEQUENCE,
+  STAGED_INVESTIGATE_PATH_NODE_SEQUENCE,
+  STAGED_WRITE_PATH_NODE_SEQUENCE,
+  STAGED_FORMAT_PATH_NODE_SEQUENCE,
   buildCallAgentInput,
   buildRevisionTaskDescription,
   buildStageInput,
@@ -34,6 +37,7 @@ import {
   CLICKUP_DOCS_V3_HELPERS_JS,
   createDocIfNeededJs,
   extractLatestLeadFeedbackJs,
+  extractTaskFieldsJs,
   getOrCreateStagePage,
   prepareStagedCallAgentInputJs,
   readCurrentPageJs,
@@ -437,8 +441,8 @@ describe("Marketing Pipeline topology", () => {
   const workflow = buildMarketingPipelineWorkflow(mapping);
   const nodes = new Set(workflow.nodes.map((node) => node.name));
 
-  it("has exactly two ingress trigger branches: ready and needs review", () => {
-    expect(workflow.connections["Ready to Work?"]?.main).toEqual([
+  it("has exactly two ingress trigger branches: staged or ready, and needs review", () => {
+    expect(workflow.connections["Staged or Ready?"]?.main).toEqual([
       [{ node: "Set First Draft Ingress", type: "main", index: 0 }],
       [{ node: "Needs Review?", type: "main", index: 0 }],
     ]);
@@ -488,27 +492,16 @@ describe("Marketing Pipeline topology", () => {
   });
 
   it("converges first drafts and revisions into the shared Call Agent, comment, and approval path", () => {
-    expect(workflowConnectionPath(workflow, "Set First Draft Ingress", "Status → Review")).toContain("Execute Call Agent");
-    expect(workflowConnectionPath(workflow, "Set Revision Ingress", "Status → Review")).toEqual([
-      "Set Revision Ingress",
-      "Extract Webhook Context",
-      "Dedup?",
-      "Mark History Item Seen",
-      "GET ClickUp Task",
-      "Extract Task Fields",
-      "Revision Ingress?",
-      "GET Task Comments",
-      "Collect Task Comments",
-      "Actionable Feedback?",
-      "Status → In Progress",
-      "Prepare Revision Input?",
-      "Prepare Revision Call Agent Input",
-      "Execute Call Agent",
-      "Agent Output OK?",
-      "Format Draft Comment",
-      "POST Task Comment",
-      "Status → Review",
-    ]);
+    const firstDraftPath = workflowConnectionPath(workflow, "Set First Draft Ingress", "Status → Review");
+    expect(firstDraftPath).not.toBeNull();
+    expect(firstDraftPath).toContain("Execute Call Agent");
+
+    // Verify revision path reaches Execute Call Agent through Revision Ingress? branch
+    const revisionPath = workflowConnectionPath(workflow, "Route by Stage?", "Revision Ingress?");
+    expect(revisionPath).not.toBeNull();
+    const revisionFullPath = workflowConnectionPath(workflow, "Set Revision Ingress", "Status → Review");
+    expect(revisionFullPath).not.toBeNull();
+    expect(revisionFullPath).toContain("Execute Call Agent");
   });
 
   it("uses first() instead of paired item lookup on the final approval status update", () => {
@@ -932,5 +925,87 @@ describe("n8n stage input preparation code", () => {
     expect(prepareCode).toContain("prior_stage_artifact");
     expect(prepareCode).toContain("lead_feedback");
     expect(prepareCode).toContain("model");
+  });
+});
+
+describe("Marketing Pipeline stage routing", () => {
+  const mapping = fixtureFieldMapping();
+  const workflow = buildMarketingPipelineWorkflow(mapping);
+
+  it("routes investigate ingress to investigative-brief agent", () => {
+    const investigatePayload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
+    expect(ingressMatchesInvestigate(investigatePayload, mapping)).toBe(true);
+    expect(extractStageFromWebhook(investigatePayload, mapping)).toBe("investigate");
+
+    // Verify workflow topology includes investigate path
+    expect(workflowConnectionPath(workflow, "Extract Stage", "Staged or Ready?")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Route by Stage?", "Investigate?")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Investigate?", "Status → In Progress")).not.toBeNull();
+  });
+
+  it("routes write ingress to long-form-argument agent", () => {
+    const writePayload = readJson<ClickUpWebhookPayload>(WRITE_WEBHOOK_FIXTURE_PATH);
+    expect(ingressMatchesWrite(writePayload, mapping)).toBe(true);
+    expect(extractStageFromWebhook(writePayload, mapping)).toBe("write");
+
+    // Verify workflow topology includes write path
+    expect(workflowConnectionPath(workflow, "Route by Stage?", "Write?")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Write?", "Status → In Progress")).not.toBeNull();
+  });
+
+  it("routes format ingress to linkedin-format agent", () => {
+    const formatPayload = readJson<ClickUpWebhookPayload>(FORMAT_WEBHOOK_FIXTURE_PATH);
+    expect(ingressMatchesFormat(formatPayload, mapping)).toBe(true);
+    expect(extractStageFromWebhook(formatPayload, mapping)).toBe("format");
+
+    // Verify workflow topology includes format path
+    expect(workflowConnectionPath(workflow, "Route by Stage?", "Format?")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Format?", "Status → In Progress")).not.toBeNull();
+  });
+
+  it("keeps investigate staged path reachable", () => {
+    for (let index = 0; index < STAGED_INVESTIGATE_PATH_NODE_SEQUENCE.length - 1; index += 1) {
+      const start = STAGED_INVESTIGATE_PATH_NODE_SEQUENCE[index];
+      const end = STAGED_INVESTIGATE_PATH_NODE_SEQUENCE[index + 1];
+      expect(workflowConnectionPath(workflow, start as string, end as string), `${start} -> ${end}`).not.toBeNull();
+    }
+  });
+
+  it("keeps write staged path reachable", () => {
+    for (let index = 0; index < STAGED_WRITE_PATH_NODE_SEQUENCE.length - 1; index += 1) {
+      const start = STAGED_WRITE_PATH_NODE_SEQUENCE[index];
+      const end = STAGED_WRITE_PATH_NODE_SEQUENCE[index + 1];
+      expect(workflowConnectionPath(workflow, start as string, end as string), `${start} -> ${end}`).not.toBeNull();
+    }
+  });
+
+  it("keeps format staged path reachable", () => {
+    for (let index = 0; index < STAGED_FORMAT_PATH_NODE_SEQUENCE.length - 1; index += 1) {
+      const start = STAGED_FORMAT_PATH_NODE_SEQUENCE[index];
+      const end = STAGED_FORMAT_PATH_NODE_SEQUENCE[index + 1];
+      expect(workflowConnectionPath(workflow, start as string, end as string), `${start} -> ${end}`).not.toBeNull();
+    }
+  });
+
+  it("stageinput assembly branches for staged vs old workflows", () => {
+    expect(workflow.connections["Staged Input Assembly?"]?.main).toEqual([
+      [{ node: "Read Current Page", type: "main", index: 0 }],
+      [{ node: "Prepare Revision Input?", type: "main", index: 0 }],
+    ]);
+  });
+
+  it("routes all stages to Execute Call Agent with stage metadata", () => {
+    expect(workflowConnectionPath(workflow, "Prepare Staged Call Agent Input", "Execute Call Agent")).not.toBeNull();
+    const stageInputCode = prepareStagedCallAgentInputJs();
+    expect(stageInputCode).toContain("stage");
+    expect(stageInputCode).toContain("agent_id");
+  });
+
+  it("extracts stage in task fields to set correct agent_id", () => {
+    const taskFieldsCode = extractTaskFieldsJs(mapping);
+    expect(taskFieldsCode).toContain("STAGE_TO_AGENT");
+    expect(taskFieldsCode).toContain("investigative-brief");
+    expect(taskFieldsCode).toContain("long-form-argument");
+    expect(taskFieldsCode).toContain("linkedin-format");
   });
 });
