@@ -14,13 +14,16 @@ import {
   extractLatestLeadFeedback,
   extractStageFromWebhook,
   extractTaskFields,
+  formatBlockerComment,
   formatCommentThread,
+  getPreviousGateForStage,
   hasActionableFeedback,
   ingressMatchesFormat,
   ingressMatchesInvestigate,
   ingressMatchesNeedsReview,
   ingressMatchesReadyToWork,
   ingressMatchesWrite,
+  isBlockerOutput,
   loadFieldMapping,
   selectPriorDocPageName,
   stagedFormatIfExpression,
@@ -28,6 +31,7 @@ import {
   stagedWriteIfExpression,
   statusName,
   stagedStatusName,
+  stageDisplayName,
   validateStageStatus,
   validateAllStageStatuses,
   validateDocPointer,
@@ -36,8 +40,10 @@ import {
 import {
   CLICKUP_DOCS_V3_HELPERS_JS,
   createDocIfNeededJs,
+  detectBlockerJs,
   extractLatestLeadFeedbackJs,
   extractTaskFieldsJs,
+  formatBlockerCommentJs,
   formatPointerCommentJs,
   getOrCreateStagePage,
   prepareStagedCallAgentInputJs,
@@ -45,6 +51,7 @@ import {
   replacePageJs,
   selectPriorDocPageJs,
   updateStatusToNextGateJs,
+  updateStatusToPreviousGateJs,
 } from "../src/workflows/marketing-pipeline-n8n.js";
 import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/marketing-pipeline/logic.js";
 import type { FieldMapping } from "../src/types/field-mapping.js";
@@ -1095,9 +1102,9 @@ describe("staged success output handling (task_17)", () => {
     expect(connections[0]?.[0]?.node).toBe("Staged Success?");
   });
 
-  it("branches Staged Success to pointer path on success, draft path on fallback", () => {
+  it("branches Staged Success to blocker detection on success, draft path on fallback", () => {
     const branches = workflow.connections["Staged Success?"]?.main ?? [];
-    expect(branches[0]?.[0]?.node).toBe("Format Pointer Comment");
+    expect(branches[0]?.[0]?.node).toBe("Detect Blocker");
     expect(branches[1]?.[0]?.node).toBe("Format Draft Comment");
   });
 
@@ -1110,3 +1117,270 @@ describe("staged success output handling (task_17)", () => {
     }
   });
 });
+
+describe("blocker output handling (task_18)", () => {
+  const mapping = fixtureFieldMapping();
+  const workflow = buildMarketingPipelineWorkflow(mapping);
+
+  describe("blocker detection logic", () => {
+    it("detects blocker_question field in agent output", () => {
+      const blockerOutput = {
+        stage: "investigate",
+        artifact_markdown: "",
+        resumo: "",
+        self_check: "",
+        next_gate: "brief review",
+        blocker_question: "What is the target audience?",
+      };
+      expect(isBlockerOutput(blockerOutput)).toBe(true);
+    });
+
+    it("returns false when blocker_question is missing", () => {
+      const successOutput = {
+        stage: "investigate",
+        artifact_markdown: "Some content",
+        resumo: "Summary",
+        self_check: "Check passed",
+        next_gate: "brief review",
+      };
+      expect(isBlockerOutput(successOutput)).toBe(false);
+    });
+
+    it("returns false for empty blocker_question string", () => {
+      const emptyBlockerOutput = {
+        stage: "investigate",
+        blocker_question: "",
+      };
+      expect(isBlockerOutput(emptyBlockerOutput)).toBe(false);
+    });
+
+    it("returns false for null/undefined blocker_question", () => {
+      expect(isBlockerOutput({ blocker_question: null })).toBe(false);
+      expect(isBlockerOutput({ blocker_question: undefined })).toBe(false);
+    });
+  });
+
+  describe("blocker comment formatting", () => {
+    it("formats blocker comment with [CQ-BLOCKER] prefix", () => {
+      const comment = formatBlockerComment("What is the target audience?", "investigate");
+      expect(comment).toContain("[CQ-BLOCKER]");
+    });
+
+    it("includes blocker question in formatted comment", () => {
+      const question = "What is the target audience?";
+      const comment = formatBlockerComment(question, "investigate");
+      expect(comment).toContain(question);
+    });
+
+    it("includes stage display name in blocker comment", () => {
+      const comment = formatBlockerComment("Question?", "investigate");
+      expect(comment).toContain("investigation phase");
+    });
+
+    it("formats write stage as 'argument phase'", () => {
+      const comment = formatBlockerComment("Question?", "write");
+      expect(comment).toContain("argument phase");
+    });
+
+    it("formats format stage as 'formatting phase'", () => {
+      const comment = formatBlockerComment("Question?", "format");
+      expect(comment).toContain("formatting phase");
+    });
+
+    it("provides instruction to re-move task to stage", () => {
+      const comment = formatBlockerComment("Question?", "investigate");
+      expect(comment).toContain("move the task back to this stage");
+    });
+  });
+
+  describe("stage to previous gate mapping", () => {
+    it("maps investigate stage to backlog", () => {
+      expect(getPreviousGateForStage("investigate")).toBe("backlog");
+    });
+
+    it("maps write stage to brief review", () => {
+      expect(getPreviousGateForStage("write")).toBe("brief review");
+    });
+
+    it("maps format stage to content review", () => {
+      expect(getPreviousGateForStage("format")).toBe("content review");
+    });
+
+    it("returns null for unknown stage", () => {
+      expect(getPreviousGateForStage("unknown")).toBeNull();
+    });
+  });
+
+  describe("stage display names", () => {
+    it("displays investigate as 'investigation phase'", () => {
+      expect(stageDisplayName("investigate")).toBe("investigation phase");
+    });
+
+    it("displays write as 'argument phase'", () => {
+      expect(stageDisplayName("write")).toBe("argument phase");
+    });
+
+    it("displays format as 'formatting phase'", () => {
+      expect(stageDisplayName("format")).toBe("formatting phase");
+    });
+
+    it("returns stage name for unknown stage", () => {
+      expect(stageDisplayName("unknown")).toBe("unknown");
+    });
+  });
+
+  describe("n8n blocker code generation", () => {
+    it("generates detect blocker code that checks blocker_question field", () => {
+      const code = detectBlockerJs();
+      expect(code).toContain("blocker_question");
+      expect(code).toContain("has_blocker");
+      expect(code).toContain("Execute Call Agent");
+    });
+
+    it("generates blocker comment formatting code with [CQ-BLOCKER] prefix", () => {
+      const code = formatBlockerCommentJs();
+      expect(code).toContain("[CQ-BLOCKER]");
+      expect(code).toContain("blocker_question");
+      expect(code).toContain("STAGE_NAMES");
+    });
+
+    it("generates blocker comment code with stage context", () => {
+      const code = formatBlockerCommentJs();
+      expect(code).toContain("investigation phase");
+      expect(code).toContain("argument phase");
+      expect(code).toContain("formatting phase");
+    });
+
+    it("generates previous gate status update code", () => {
+      const code = updateStatusToPreviousGateJs();
+      expect(code).toContain("STAGE_TO_PREVIOUS_GATE");
+      expect(code).toContain("investigate");
+      expect(code).toContain("write");
+      expect(code).toContain("format");
+      expect(code).toContain("backlog");
+      expect(code).toContain("brief review");
+      expect(code).toContain("content review");
+    });
+
+    it("previous gate code maps to display status values", () => {
+      const code = updateStatusToPreviousGateJs();
+      expect(code).toContain("Backlog");
+      expect(code).toContain("Brief Review");
+      expect(code).toContain("Content Review");
+    });
+
+    it("previous gate code validates stage and gate values", () => {
+      const code = updateStatusToPreviousGateJs();
+      expect(code).toContain("throw new Error");
+      expect(code).toContain("Invalid stage");
+      expect(code).toContain("Invalid previous_gate");
+    });
+  });
+
+  describe("blocker workflow topology", () => {
+    it("has Detect Blocker node in workflow", () => {
+      const node = nodeByName(workflow, "Detect Blocker");
+      expect(node).toBeDefined();
+      expect(node?.type).toBe("n8n-nodes-base.code");
+    });
+
+    it("has Has Blocker IF node in workflow", () => {
+      const node = nodeByName(workflow, "Has Blocker?");
+      expect(node).toBeDefined();
+      expect(node?.type).toBe("n8n-nodes-base.if");
+    });
+
+    it("has Format Blocker Comment node in workflow", () => {
+      const node = nodeByName(workflow, "Format Blocker Comment");
+      expect(node).toBeDefined();
+      expect(node?.type).toBe("n8n-nodes-base.code");
+    });
+
+    it("has POST Blocker Comment node in workflow", () => {
+      const node = nodeByName(workflow, "POST Blocker Comment");
+      expect(node).toBeDefined();
+      expect(node?.type).toBe("n8n-nodes-base.clickUp");
+    });
+
+    it("has Update Status to Previous Gate node in workflow", () => {
+      const node = nodeByName(workflow, "Update Status to Previous Gate");
+      expect(node).toBeDefined();
+      expect(node?.type).toBe("n8n-nodes-base.code");
+    });
+
+    it("has Status → Previous Gate node in workflow", () => {
+      const node = nodeByName(workflow, "Status → Previous Gate");
+      expect(node).toBeDefined();
+      expect(node?.type).toBe("n8n-nodes-base.clickUp");
+    });
+
+    it("routes Staged Success to Detect Blocker for staged outputs", () => {
+      const branches = workflow.connections["Staged Success?"]?.main ?? [];
+      expect(branches[0]?.[0]?.node).toBe("Detect Blocker");
+    });
+
+    it("routes Detect Blocker to Has Blocker IF node", () => {
+      const connections = workflow.connections["Detect Blocker"]?.main ?? [];
+      expect(connections[0]?.[0]?.node).toBe("Has Blocker?");
+    });
+
+    it("routes Has Blocker true to Format Blocker Comment", () => {
+      const branches = workflow.connections["Has Blocker?"]?.main ?? [];
+      expect(branches[0]?.[0]?.node).toBe("Format Blocker Comment");
+    });
+
+    it("routes Has Blocker false to Format Pointer Comment", () => {
+      const branches = workflow.connections["Has Blocker?"]?.main ?? [];
+      expect(branches[1]?.[0]?.node).toBe("Format Pointer Comment");
+    });
+
+    it("blocker path chains: Detect -> Has Blocker -> Format -> POST -> Update -> Set Status", () => {
+      const nodes = [
+        "Detect Blocker",
+        "Has Blocker?",
+        "Format Blocker Comment",
+        "POST Blocker Comment",
+        "Update Status to Previous Gate",
+        "Status → Previous Gate",
+      ];
+      for (let i = 0; i < nodes.length - 1; i += 1) {
+        const from = nodes[i];
+        const to = nodes[i + 1];
+        expect(workflowConnectionPath(workflow, from, to), `${from} -> ${to}`).not.toBeNull();
+      }
+    });
+
+    it("blocker path does NOT include Replace Doc Page node", () => {
+      const path = workflowConnectionPath(workflow, "Format Blocker Comment", "Replace Doc Page");
+      expect(path).toBeNull();
+    });
+
+    it("blocker path returns to previous gate, not next gate", () => {
+      const blocker_path = workflowConnectionPath(
+        workflow,
+        "Update Status to Previous Gate",
+        "Status → Previous Gate"
+      );
+      const next_gate_path = workflowConnectionPath(
+        workflow,
+        "Update Status to Previous Gate",
+        "Status → Next Gate"
+      );
+      expect(blocker_path).not.toBeNull();
+      expect(next_gate_path).toBeNull();
+    });
+
+    it("pointer comment path is still available for non-blocker success cases", () => {
+      const path = workflowConnectionPath(workflow, "Format Pointer Comment", "Replace Doc Page");
+      expect(path).not.toBeNull();
+    });
+
+    it("Agent Output OK branches to Staged Success on success", () => {
+      const agentOutputNode = nodeByName(workflow, "Agent Output OK?");
+      expect(agentOutputNode).toBeDefined();
+      const connections = workflow.connections["Agent Output OK?"]?.main ?? [];
+      expect(connections[0]?.[0]?.node).toBe("Staged Success?");
+    });
+  });
+});
+

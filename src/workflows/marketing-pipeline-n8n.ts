@@ -883,3 +883,92 @@ export function updateStatusToNextGateJs(): string {
     "}];",
   ]);
 }
+
+/** n8n Code node: Detect blocker output (task_18). Checks for blocker_question field. */
+export function detectBlockerJs(): string {
+  return joinN8nJs([
+    "const agentOutput = $('Execute Call Agent').first().json;",
+    "const hasBlocker = Boolean(agentOutput.blocker_question);",
+    "return [{",
+    "  json: {",
+    "    ...agentOutput,",
+    "    has_blocker: hasBlocker,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Format Blocker Comment (task_18). */
+export function formatBlockerCommentJs(): string {
+  return joinN8nJs([
+    "const agentOutput = $('Execute Call Agent').first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const stage = taskFields.stage || 'unknown';",
+    "",
+    "const STAGE_NAMES = {",
+    "  investigate: 'investigation phase',",
+    "  write: 'argument phase',",
+    "  format: 'formatting phase',",
+    "};",
+    "",
+    "const stageName = STAGE_NAMES[stage] || stage;",
+    "",
+    "const commentText = [",
+    "  '[CQ-BLOCKER] Cannot proceed to next stage',",
+    "  '',",
+    "  `**Stage:** ${stageName}`,",
+    "  '',",
+    "  '**Question for you:**',",
+    "  `${agentOutput.blocker_question ?? ''}`,",
+    "  '',",
+    "  'Please provide the information requested above, then move the task back to this stage.',",
+    "].join('\\n');",
+    "",
+    "return [{",
+    "  json: {",
+    "    task_id: taskFields.task_id,",
+    "    comment_text: commentText,",
+    "    blocker_question: agentOutput.blocker_question,",
+    "    stage: taskFields.stage,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Update task status to the stage's previous_gate (task_18). */
+export function updateStatusToPreviousGateJs(): string {
+  return joinN8nJs([
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const stage = taskFields.stage || 'investigate';",
+    "",
+    "const STAGE_TO_PREVIOUS_GATE = {",
+    "  investigate: 'backlog',",
+    "  write: 'brief review',",
+    "  format: 'content review',",
+    "};",
+    "",
+    "const GATE_STATUS_MAP = {",
+    "  backlog: 'Backlog',",
+    "  'brief review': 'Brief Review',",
+    "  'content review': 'Content Review',",
+    "};",
+    "",
+    "const previousGate = STAGE_TO_PREVIOUS_GATE[stage];",
+    "if (!previousGate) {",
+    "  throw new Error(`Invalid stage '${stage}'. Expected one of: investigate, write, format`);",
+    "}",
+    "",
+    "const statusValue = GATE_STATUS_MAP[previousGate];",
+    "if (!statusValue) {",
+    "  throw new Error(`Invalid previous_gate '${previousGate}'. Expected one of: backlog, brief review, content review`);",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    task_id: taskFields.task_id,",
+    "    status_to_set: statusValue,",
+    "    previous_gate: previousGate,",
+    "  },",
+    "}];",
+  ]);
+}

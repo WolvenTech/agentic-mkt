@@ -901,6 +901,128 @@
       }
     },
     {
+      "id": "d923e3be-92b3-d7b6-b12b-53b5f20f607f",
+      "name": "Detect Blocker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        220
+      ],
+      "parameters": {
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst hasBlocker = Boolean(agentOutput.blocker_question);\nreturn [{\n  json: {\n    ...agentOutput,\n    has_blocker: hasBlocker,\n  },\n}];"
+      }
+    },
+    {
+      "id": "46d28c5f-c5a2-4db2-8cda-44be33edf42a",
+      "name": "Has Blocker?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4800,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "40a2f214-4cd9-8220-8408-463cf0436292",
+              "leftValue": "={{ $json.has_blocker === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "4fe6eb1c-1ea3-4507-6000-1571694a24fe",
+      "name": "Format Blocker Comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5040,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst stage = taskFields.stage || 'unknown';\n\nconst STAGE_NAMES = {\n  investigate: 'investigation phase',\n  write: 'argument phase',\n  format: 'formatting phase',\n};\n\nconst stageName = STAGE_NAMES[stage] || stage;\n\nconst commentText = [\n  '[CQ-BLOCKER] Cannot proceed to next stage',\n  '',\n  `**Stage:** ${stageName}`,\n  '',\n  '**Question for you:**',\n  `${agentOutput.blocker_question ?? ''}`,\n  '',\n  'Please provide the information requested above, then move the task back to this stage.',\n].join('\\n');\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    comment_text: commentText,\n    blocker_question: agentOutput.blocker_question,\n    stage: taskFields.stage,\n  },\n}];"
+      }
+    },
+    {
+      "id": "b88a68cc-233a-45c3-d88a-89cf15600441",
+      "name": "POST Blocker Comment",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        5280,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "resource": "comment",
+        "operation": "create",
+        "commentOn": "task",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "commentText": "={{ $json.comment_text }}"
+      }
+    },
+    {
+      "id": "3a72cbb7-70c7-d152-33e5-be6d1c6657e7",
+      "name": "Update Status to Previous Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5520,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const taskFields = $('Extract Task Fields').first().json;\nconst stage = taskFields.stage || 'investigate';\n\nconst STAGE_TO_PREVIOUS_GATE = {\n  investigate: 'backlog',\n  write: 'brief review',\n  format: 'content review',\n};\n\nconst GATE_STATUS_MAP = {\n  backlog: 'Backlog',\n  'brief review': 'Brief Review',\n  'content review': 'Content Review',\n};\n\nconst previousGate = STAGE_TO_PREVIOUS_GATE[stage];\nif (!previousGate) {\n  throw new Error(`Invalid stage '${stage}'. Expected one of: investigate, write, format`);\n}\n\nconst statusValue = GATE_STATUS_MAP[previousGate];\nif (!statusValue) {\n  throw new Error(`Invalid previous_gate '${previousGate}'. Expected one of: backlog, brief review, content review`);\n}\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    status_to_set: statusValue,\n    previous_gate: previousGate,\n  },\n}];"
+      }
+    },
+    {
+      "id": "9b050c7f-e51b-af82-b2bc-b0bed6d1ea5b",
+      "name": "Status → Previous Gate",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        5760,
+        300
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "operation": "update",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "updateFields": {
+          "status": "={{ $json.status_to_set }}"
+        }
+      }
+    },
+    {
       "id": "c6916463-debe-32e5-7e19-b8005938c070",
       "name": "Format Pointer Comment",
       "type": "n8n-nodes-base.code",
@@ -1424,7 +1546,7 @@
       "main": [
         [
           {
-            "node": "Format Pointer Comment",
+            "node": "Detect Blocker",
             "type": "main",
             "index": 0
           }
@@ -1432,6 +1554,68 @@
         [
           {
             "node": "Format Draft Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Blocker": {
+      "main": [
+        [
+          {
+            "node": "Has Blocker?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Blocker?": {
+      "main": [
+        [
+          {
+            "node": "Format Blocker Comment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Pointer Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Blocker Comment": {
+      "main": [
+        [
+          {
+            "node": "POST Blocker Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Blocker Comment": {
+      "main": [
+        [
+          {
+            "node": "Update Status to Previous Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status to Previous Gate": {
+      "main": [
+        [
+          {
+            "node": "Status → Previous Gate",
             "type": "main",
             "index": 0
           }

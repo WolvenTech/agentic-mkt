@@ -867,3 +867,42 @@ export function buildStageInput(
     model,
   };
 }
+
+/** Detect if a stage agent output contains a blocker_question (task_18). */
+export function isBlockerOutput(output: Record<string, unknown>): boolean {
+  return Boolean((output as any).blocker_question);
+}
+
+/** Get human-readable stage name for blocker comments. */
+export function stageDisplayName(stage: string): string {
+  const names: Record<string, string> = {
+    investigate: "investigation phase",
+    write: "argument phase",
+    format: "formatting phase",
+  };
+  return names[stage] || stage;
+}
+
+/** Format ClickUp blocker comment for editorial blockers (task_18). */
+export function formatBlockerComment(
+  blockerQuestion: string,
+  stage: string
+): string {
+  const stageName = stageDisplayName(stage);
+  return (
+    `[CQ-BLOCKER] Cannot proceed to next stage\n\n` +
+    `**Stage:** ${stageName}\n\n` +
+    `**Question for you:**\n${blockerQuestion}\n\n` +
+    `Please provide the information requested above, then move the task back to this stage.`
+  );
+}
+
+/** Map stage to its previous human gate (task_18). */
+export function getPreviousGateForStage(stage: string): string | null {
+  const gateMap: Record<string, string> = {
+    investigate: "backlog",
+    write: "brief review",
+    format: "content review",
+  };
+  return gateMap[stage] || null;
+}
