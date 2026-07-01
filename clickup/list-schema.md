@@ -13,17 +13,17 @@ Record the list ID in `field-mapping.json` → `clickup_list_id` after creation 
 
 ## Status flow
 
-Primary workflow (M1 automation covers **Ready → Writing → Approval** only):
+Primary workflow (M1 automation covers **Ready → Writing → Approval**):
 
 ```
 Backlog → Ready → Writing → Approval → Publish → Completed
 ```
 
-Reserved statuses (defined on the list; **not automated in V1**):
+Revision workflow (Phase 2): the marketing lead reviews the draft in **Approval**, leaves comment feedback, then moves the task to **Needs Review**. n8n moves it to **Writing** while the agent revises the draft, then returns it to **Approval**.
 
-| Status | V1 behavior |
-|--------|-------------|
-| *(none in current list)* | — |
+```
+Approval → comment feedback → Needs Review → Writing → Approval
+```
 
 ### Status reference
 
@@ -31,6 +31,7 @@ Reserved statuses (defined on the list; **not automated in V1**):
 |----------------------------|--------------|------|---------------|
 | `backlog` | Backlog | open | — |
 | `ready` | Ready | custom | **Webhook ingress** — triggers n8n main workflow |
+| `needs_review` | Needs Review | custom | **Revision ingress** — lead requests automated rewrite after commenting |
 | `writing` | Writing | custom | Set by n8n after webhook accepted |
 | `review` | Approval | custom | Set by n8n after draft comment posted |
 | `publish` | Publish | custom | Manual — marketing lead after draft OK |
@@ -44,7 +45,6 @@ Configure statuses on the list in the order above. Status **display names must m
 |----------------------------|--------------|------|---------|-------------------------|
 | `criterios_de_aceite` | Critérios de Aceite | Text | — | **Yes** |
 | `agent_id` | agent_id | Short text | `linkedin-writer` | No (defaults apply) |
-| `revision_count` | revision_count | Number | `0` | No (Phase 2 revision loop) |
 
 Custom fields must be created in the ClickUp UI — the public API cannot create new field definitions ([ClickUp custom fields API](https://developer.clickup.com/reference/getaccessiblecustomfields)).
 
@@ -62,8 +62,11 @@ Before moving a task to **Ready**, the marketing lead must ensure:
 
 | Transition | Actor |
 |------------|-------|
-| Any → Ready | Marketing lead (manual) |
+| Any → Ready | Marketing lead (manual first-draft trigger) |
 | Ready → Writing | n8n main workflow |
+| Writing → Approval | n8n main workflow |
+| Approval → Needs Review | Marketing lead (manual revision trigger after comment feedback) |
+| Needs Review → Writing | n8n main workflow |
 | Writing → Approval | n8n main workflow |
 | Approval → Publish → Completed | Marketing lead (manual) |
 

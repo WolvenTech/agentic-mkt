@@ -34,6 +34,25 @@ Example:
 }
 ```
 
+### Revision input embedding
+
+Phase 2 revision runs keep the same `CallAgentInput` fields. The main workflow embeds revision context into `task_description` instead of adding revision-specific input keys.
+
+Revision `task_description` format:
+
+```markdown
+# Original Brief
+{task_description from ClickUp}
+
+# Revision Feedback (Comment Thread)
+{formatted comments, oldest first}
+
+# Revision Instructions
+Incorporate the actionable lead feedback above. Produce a revised LinkedIn draft that preserves the original brief, acceptance criteria, and Wolven voice.
+```
+
+The Call Agent sub-workflow prompt assembly remains unchanged. The linkedin-writer skill detects revision mode from the revision section headers, incorporates lead feedback from the comment thread, and still returns the same three output fields.
+
 ## Output (`AgentOutput`)
 
 Required OpenAI response shape after the Code node parses JSON from the model response.
@@ -265,7 +284,7 @@ Actionable diagnostics for common M1 failure modes. Primary diagnostic surface: 
 3. Run `pnpm clickup:verify` and `pnpm test tests/clickup.test.ts`.
 4. In n8n **Extract Task Fields** Code node, confirm expressions reference `field-mapping.json` IDs, not hardcoded stale values.
 5. Re-import main workflow JSON after updating `field-mapping.json` if the builder embeds IDs at export time: `pnpm build:workflows`.
-6. Verify custom field **names** in ClickUp UI match exactly: `Critérios de Aceite` (with accent), `agent_id`, `revision_count`.
+6. Verify custom field **names** in ClickUp UI match exactly: `Critérios de Aceite` (with accent), `agent_id`.
 
 ## Reusable harness patterns
 

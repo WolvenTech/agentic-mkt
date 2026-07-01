@@ -53,16 +53,76 @@
       }
     },
     {
+      "id": "ff22d518-7417-a932-1037-e361c71764f0",
+      "name": "Needs Review?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        480
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c9566540-65f8-3303-5330-a26401f7db9d",
+              "leftValue": "={{ (() => { const payload = ($json.body && $json.body.history_items ? $json.body : $json); const item = payload?.history_items?.[0]; if (!item || item.field !== \"status\") return false; const after = item.after; const status = (after !== null && typeof after === \"object\") ? after.status : after; return String(status ?? \"\").trim().toLowerCase() === \"needs review\"; })() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "486b70b1-6ca9-fbe3-996f-0bff0356d1bc",
+      "name": "Set First Draft Ingress",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        220
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{\n  json: {\n    ...item,\n    ingress_mode: \"first_draft\",\n  },\n}];"
+      }
+    },
+    {
+      "id": "4e2ebfd1-55c2-e1a4-3bc5-0962ffc660ac",
+      "name": "Set Revision Ingress",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        480
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{\n  json: {\n    ...item,\n    ingress_mode: \"revision\",\n  },\n}];"
+      }
+    },
+    {
       "id": "5bd1a53b-6d3d-4238-2094-7d49b1303c20",
       "name": "Extract Webhook Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        480,
+        960,
         300
       ],
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst payload = (raw.body && raw.body.history_items) ? raw.body : raw;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\nreturn [{\n  json: {\n    task_id: String(payload.task_id ?? ''),\n    webhook_id: String(payload.webhook_id ?? ''),\n    history_item_id: String(first.id ?? ''),\n    list_id: String(first.parent_id ?? ''),\n    received_at_ms: Date.now(),\n  },\n}];"
+        "jsCode": "const raw = $input.first().json;\nconst payload = (raw.body && raw.body.history_items) ? raw.body : raw;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\nfunction statusValue(value) {\n  if (value !== null && typeof value === 'object') return String(value.status ?? '').trim().toLowerCase();\n  return String(value ?? '').trim().toLowerCase();\n}\nreturn [{\n  json: {\n    task_id: String(payload.task_id ?? ''),\n    webhook_id: String(payload.webhook_id ?? ''),\n    history_item_id: String(first.id ?? ''),\n    list_id: String(first.parent_id ?? ''),\n    received_at_ms: Date.now(),\n    ingress_mode: String(raw.ingress_mode ?? payload.ingress_mode ?? 'first_draft'),\n    transition_before: statusValue(first.before),\n    transition_after: statusValue(first.after),\n  },\n}];"
       }
     },
     {
@@ -71,7 +131,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        600,
+        1200,
         300
       ],
       "parameters": {
@@ -105,7 +165,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        720,
+        1440,
         300
       ],
       "parameters": {
@@ -118,7 +178,7 @@
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        840,
+        1680,
         300
       ],
       "credentials": {
@@ -138,11 +198,190 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1080,
+        1920,
         300
       ],
       "parameters": {
-        "jsCode": "const FIELD_IDS = {\n  criterios_de_aceite: \"bd2e7a51-3e9e-4d6a-9729-770fac44a504\",\n  agent_id: \"a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0\",\n  default_agent_id: \"linkedin-writer\",\n};\n\nfunction readCustomField(task, fieldId) {\n  if (!fieldId || fieldId === '<TBD>') return '';\n  const fields = task.custom_fields || [];\n  const match = fields.find((field) => String(field.id) === String(fieldId));\n  if (!match || match.value === null || match.value === undefined) return '';\n  if (typeof match.value === 'object') {\n    return String(match.value.value ?? match.value.name ?? match.value.label ?? '');\n  }\n  return String(match.value);\n}\n\nconst task = $input.first().json;\nconst webhook = $('Extract Webhook Context').first().json;\nconst agentId = readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id;\n\nreturn [{\n  json: {\n    task_id: String(task.id ?? webhook.task_id ?? ''),\n    agent_id: agentId,\n    task_title: String(task.name ?? ''),\n    task_description: String(task.description ?? task.text_content ?? ''),\n    criterios_de_aceite: readCustomField(task, FIELD_IDS.criterios_de_aceite),\n    model: \"gpt-4.1-mini\",\n  },\n}];"
+        "jsCode": "const FIELD_IDS = {\n  criterios_de_aceite: \"bd2e7a51-3e9e-4d6a-9729-770fac44a504\",\n  agent_id: \"a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0\",\n  default_agent_id: \"linkedin-writer\",\n};\n\nfunction readCustomField(task, fieldId) {\n  if (!fieldId || fieldId === '<TBD>') return '';\n  const fields = task.custom_fields || [];\n  const match = fields.find((field) => String(field.id) === String(fieldId));\n  if (!match || match.value === null || match.value === undefined) return '';\n  if (typeof match.value === 'object') {\n    return String(match.value.value ?? match.value.name ?? match.value.label ?? '');\n  }\n  return String(match.value);\n}\n\nconst task = $input.first().json;\nconst webhook = $('Extract Webhook Context').first().json;\nconst agentId = readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id;\n\nreturn [{\n  json: {\n    task_id: String(task.id ?? webhook.task_id ?? ''),\n    agent_id: agentId,\n    task_title: String(task.name ?? ''),\n    task_description: String(task.description ?? task.text_content ?? ''),\n    criterios_de_aceite: readCustomField(task, FIELD_IDS.criterios_de_aceite),\n    ingress_mode: String(webhook.ingress_mode ?? 'first_draft'),\n    model: \"gpt-4.1-mini\",\n  },\n}];"
+      }
+    },
+    {
+      "id": "e91ad722-bae1-839d-1f5d-92852bfe2239",
+      "name": "Revision Ingress?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "26bfaa96-d2ed-5dc0-e45f-f9d4b003600d",
+              "leftValue": "={{ $json.ingress_mode === 'revision' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d95bca44-2d71-1e3e-fb64-eb915790c07d",
+      "name": "GET Task Comments",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        480
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "resource": "comment",
+        "operation": "getAll",
+        "commentsOn": "task",
+        "id": "={{ $json.task_id }}",
+        "limit": 50
+      }
+    },
+    {
+      "id": "879e0924-1ba7-7789-41c6-a0d658776579",
+      "name": "Collect Task Comments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        480
+      ],
+      "parameters": {
+        "jsCode": "function normalizeComments(input) {\n  const values = Array.isArray(input) ? input : [input];\n  return values.flatMap((value) => {\n    if (Array.isArray(value)) return normalizeComments(value);\n    if (Array.isArray(value?.comments)) return value.comments;\n    if (Array.isArray(value?.json?.comments)) return value.json.comments;\n    if (value && typeof value === 'object' && 'comment_text' in value) return [value];\n    if (value?.json && typeof value.json === 'object' && 'comment_text' in value.json) return [value.json];\n    return [];\n  });\n}\n\nfunction commentBody(comment) {\n  return String(comment?.comment_text ?? '').trim();\n}\n\nfunction isAgentDraftComment(comment) {\n  const body = commentBody(comment);\n  return body.includes('## LinkedIn Draft') ||\n    body.includes('## Resumo') ||\n    body.includes('## Autochecagem') ||\n    /_Generated by [^)]+\\(.*\\)_/i.test(body);\n}\n\nfunction isSystemComment(comment) {\n  const username = String(comment?.user?.username ?? '').trim().toLowerCase();\n  if (!username) return true;\n  return username === 'system' || username.includes('clickup') || username.includes('automation');\n}\n\nfunction isActionableComment(comment) {\n  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment);\n}\n\nfunction actionableComments(comments) {\n  return comments.filter((comment) => isActionableComment(comment));\n}\n\nfunction hasActionableFeedback(comments) {\n  return actionableComments(comments).length > 0;\n}\n\nfunction commentTimestamp(comment) {\n  const date = comment?.date;\n  if (!date) return 0;\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return numeric;\n  const parsed = Date.parse(date);\n  return Number.isFinite(parsed) ? parsed : 0;\n}\n\nfunction formatCommentDate(date) {\n  if (!date) return '';\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return new Date(numeric).toISOString();\n  return String(date);\n}\n\nfunction formatCommentThread(comments) {\n  return [...comments]\n    .sort((left, right) => commentTimestamp(left) - commentTimestamp(right))\n    .map((comment) => {\n      const username = String(comment?.user?.username ?? 'Unknown').trim() || 'Unknown';\n      const date = formatCommentDate(comment?.date);\n      const suffix = date ? ` (${date})` : '';\n      return `- **${username}**${suffix}: ${commentBody(comment)}`;\n    })\n    .join('\\n');\n}\n\nconst fields = $('Extract Task Fields').first().json;\nconst comments = normalizeComments($input.all().map((item) => item.json));\nconst feedback = actionableComments(comments);\nreturn [{\n  json: {\n    task_id: fields.task_id,\n    comments,\n    feedback_comments: feedback,\n    comment_count: comments.length,\n    has_actionable_feedback: feedback.length > 0,\n  },\n}];"
+      }
+    },
+    {
+      "id": "01f5dfde-385f-5baf-db83-53712f357273",
+      "name": "Actionable Feedback?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2880,
+        480
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "7dab6b50-326c-4ad2-d11d-5b83e0a426d8",
+              "leftValue": "={{ $json.has_actionable_feedback === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "6281cdbd-66f2-0eb2-413d-bcc1b7fe6f67",
+      "name": "Log Empty Feedback Guidance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        660
+      ],
+      "parameters": {
+        "jsCode": "const fields = $('Extract Task Fields').first().json;\nconst record = {\n  event: 'empty_feedback_guidance',\n  task_id: fields.task_id,\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
+      }
+    },
+    {
+      "id": "d85ba409-d1d9-a3c9-7271-7c598022f688",
+      "name": "Format Empty Feedback Guidance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        660
+      ],
+      "parameters": {
+        "jsCode": "const fields = $('Extract Task Fields').first().json;\nconst commentText = [\n  '## Revision feedback needed',\n  '',\n  'I did not find actionable lead feedback in the comment thread, so I did not start an automated revision.',\n  '',\n  'Please add a comment with the specific changes needed, then move the task back to Needs Review.',\n].join('\\n');\nreturn [{ json: { task_id: fields.task_id, comment_text: commentText } }];"
+      }
+    },
+    {
+      "id": "8afe6c9d-d23f-9c49-8933-5474af801b37",
+      "name": "POST Empty Feedback Guidance",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        3600,
+        660
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "resource": "comment",
+        "operation": "create",
+        "commentOn": "task",
+        "id": "={{ $json.task_id }}",
+        "commentText": "={{ $json.comment_text }}"
+      }
+    },
+    {
+      "id": "3c784bf8-c645-68a8-dc8b-5348b9c20e65",
+      "name": "Empty Feedback → Approval",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        3840,
+        660
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "operation": "update",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "updateFields": {
+          "status": "approval"
+        }
       }
     },
     {
@@ -151,7 +390,7 @@
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        1320,
+        3120,
         300
       ],
       "credentials": {
@@ -162,10 +401,57 @@
       },
       "parameters": {
         "operation": "update",
-        "id": "={{ $json.task_id }}",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
         "updateFields": {
           "status": "writing"
         }
+      }
+    },
+    {
+      "id": "e047beaf-14eb-19fb-7a36-7ee0ffa5d633",
+      "name": "Prepare Revision Input?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3360,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "4dcc8a2a-3141-8af3-9b4b-c6fe18f7a3b5",
+              "leftValue": "={{ $('Extract Task Fields').first().json.ingress_mode === 'revision' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "694c50b2-95b8-4d17-d574-7c8036d5139b",
+      "name": "Prepare Revision Call Agent Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        420
+      ],
+      "parameters": {
+        "jsCode": "function normalizeComments(input) {\n  const values = Array.isArray(input) ? input : [input];\n  return values.flatMap((value) => {\n    if (Array.isArray(value)) return normalizeComments(value);\n    if (Array.isArray(value?.comments)) return value.comments;\n    if (Array.isArray(value?.json?.comments)) return value.json.comments;\n    if (value && typeof value === 'object' && 'comment_text' in value) return [value];\n    if (value?.json && typeof value.json === 'object' && 'comment_text' in value.json) return [value.json];\n    return [];\n  });\n}\n\nfunction commentBody(comment) {\n  return String(comment?.comment_text ?? '').trim();\n}\n\nfunction isAgentDraftComment(comment) {\n  const body = commentBody(comment);\n  return body.includes('## LinkedIn Draft') ||\n    body.includes('## Resumo') ||\n    body.includes('## Autochecagem') ||\n    /_Generated by [^)]+\\(.*\\)_/i.test(body);\n}\n\nfunction isSystemComment(comment) {\n  const username = String(comment?.user?.username ?? '').trim().toLowerCase();\n  if (!username) return true;\n  return username === 'system' || username.includes('clickup') || username.includes('automation');\n}\n\nfunction isActionableComment(comment) {\n  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment);\n}\n\nfunction actionableComments(comments) {\n  return comments.filter((comment) => isActionableComment(comment));\n}\n\nfunction hasActionableFeedback(comments) {\n  return actionableComments(comments).length > 0;\n}\n\nfunction commentTimestamp(comment) {\n  const date = comment?.date;\n  if (!date) return 0;\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return numeric;\n  const parsed = Date.parse(date);\n  return Number.isFinite(parsed) ? parsed : 0;\n}\n\nfunction formatCommentDate(date) {\n  if (!date) return '';\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return new Date(numeric).toISOString();\n  return String(date);\n}\n\nfunction formatCommentThread(comments) {\n  return [...comments]\n    .sort((left, right) => commentTimestamp(left) - commentTimestamp(right))\n    .map((comment) => {\n      const username = String(comment?.user?.username ?? 'Unknown').trim() || 'Unknown';\n      const date = formatCommentDate(comment?.date);\n      const suffix = date ? ` (${date})` : '';\n      return `- **${username}**${suffix}: ${commentBody(comment)}`;\n    })\n    .join('\\n');\n}\n\nfunction buildRevisionTaskDescription(brief, thread) {\n  return `# Original Brief\\n${String(brief ?? '').trim()}\\n\\n` +\n    `# Revision Feedback (Comment Thread)\\n${String(thread ?? '').trim()}\\n\\n` +\n    '# Revision Instructions\\n' +\n    'Incorporate the actionable lead feedback above. Produce a revised LinkedIn draft that preserves the original brief, acceptance criteria, and Wolven voice.';\n}\n\nconst fields = $('Extract Task Fields').first().json;\nconst collected = $('Collect Task Comments').first().json;\nconst comments = normalizeComments(collected.feedback_comments ?? collected.comments ?? []);\nconst thread = formatCommentThread(comments);\nconst taskDescription = buildRevisionTaskDescription(fields.task_description, thread);\n\nreturn [{\n  json: {\n    agent_id: fields.agent_id,\n    task_title: fields.task_title,\n    task_description: taskDescription,\n    criterios_de_aceite: fields.criterios_de_aceite,\n    task_id: fields.task_id,\n  },\n}];"
       }
     },
     {
@@ -174,8 +460,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1440,
-        300
+        3600,
+        180
       ],
       "parameters": {
         "jsCode": "const fields = $('Extract Task Fields').first().json;\nreturn [{\n  json: {\n    agent_id: fields.agent_id,\n    task_title: fields.task_title,\n    task_description: fields.task_description,\n    criterios_de_aceite: fields.criterios_de_aceite,\n    task_id: fields.task_id,\n  },\n}];"
@@ -187,7 +473,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        1680,
+        3840,
         300
       ],
       "parameters": {
@@ -207,7 +493,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1920,
+        4080,
         300
       ],
       "parameters": {
@@ -240,7 +526,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2160,
+        4320,
         220
       ],
       "parameters": {
@@ -253,7 +539,7 @@
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        2400,
+        4560,
         220
       ],
       "retryOnFail": true,
@@ -279,7 +565,7 @@
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        2640,
+        4800,
         220
       ],
       "credentials": {
@@ -290,7 +576,7 @@
       },
       "parameters": {
         "operation": "update",
-        "id": "={{ $('Extract Task Fields').item.json.task_id }}",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
         "updateFields": {
           "status": "approval"
         }
@@ -302,11 +588,24 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2160,
+        4320,
         420
       ],
       "parameters": {
         "jsCode": "const output = $input.first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconsole.log(JSON.stringify({\n  task_id: taskFields.task_id,\n  agent_id: taskFields.agent_id,\n  execution_id: $execution.id,\n  parse_success: false,\n  error: output.error ?? 'Agent returned error envelope',\n}));\nthrow new Error(`Call Agent failed: ${output.error ?? 'unknown error'}`);"
+      }
+    },
+    {
+      "id": "f7197921-41d6-b212-867a-ee2368ce9915",
+      "name": "Set Needs Review Skip Target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        660
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: { ...item, target_status_key: 'needs_review' } }];"
       }
     },
     {
@@ -315,11 +614,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        480,
-        500
+        960,
+        660
       ],
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst payload = (raw.body && raw.body.history_items) ? raw.body : raw;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\n\nfunction statusValue(value) {\n  if (value !== null && typeof value === 'object') return String(value.status ?? '').trim().toLowerCase();\n  return String(value ?? '').trim().toLowerCase();\n}\n\nconst before = statusValue(first.before);\nconst after = statusValue(first.after);\nconst transition = before || after ? `${before}->${after}` : '';\n\nlet reason = 'not_entering_ready';\nif (!items.length) reason = 'no_history_items';\nelse if (first.field !== 'status') reason = 'field_not_status';\n\nconst record = {\n  event: 'ingress_skipped',\n  task_id: String(payload.task_id ?? ''),\n  webhook_id: String(payload.webhook_id ?? ''),\n  history_item_id: String(first.id ?? ''),\n  transition,\n  reason,\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
+        "jsCode": "const raw = $input.first().json;\nconst payload = (raw.body && raw.body.history_items) ? raw.body : raw;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\nconst targetStatusKey = String(raw.target_status_key ?? 'ready');\n\nfunction statusValue(value) {\n  if (value !== null && typeof value === 'object') return String(value.status ?? '').trim().toLowerCase();\n  return String(value ?? '').trim().toLowerCase();\n}\n\nconst before = statusValue(first.before);\nconst after = statusValue(first.after);\nconst transition = before || after ? `${before}->${after}` : '';\n\nlet reason = targetStatusKey === 'needs_review' ? 'not_entering_needs_review' : 'not_entering_ready';\nif (!items.length) reason = 'no_history_items';\nelse if (first.field !== 'status') reason = 'field_not_status';\n\nconst record = {\n  event: 'ingress_skipped',\n  task_id: String(payload.task_id ?? ''),\n  webhook_id: String(payload.webhook_id ?? ''),\n  history_item_id: String(first.id ?? ''),\n  transition,\n  reason,\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
       }
     },
     {
@@ -328,11 +627,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        600,
-        500
+        1200,
+        520
       ],
       "parameters": {
-        "jsCode": "const context = $input.first().json;\nconst record = {\n  event: 'ingress_skipped',\n  task_id: context.task_id,\n  webhook_id: context.webhook_id,\n  history_item_id: context.history_item_id,\n  transition: '',\n  reason: 'duplicate_history_item',\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
+        "jsCode": "const context = $input.first().json;\nconst before = String(context.transition_before ?? '').trim().toLowerCase();\nconst after = String(context.transition_after ?? '').trim().toLowerCase();\nconst transition = before || after ? `${before}->${after}` : '';\nconst record = {\n  event: 'ingress_skipped',\n  task_id: context.task_id,\n  webhook_id: context.webhook_id,\n  history_item_id: context.history_item_id,\n  transition,\n  reason: 'duplicate_history_item',\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
       }
     }
   ],
@@ -352,14 +651,54 @@
       "main": [
         [
           {
-            "node": "Extract Webhook Context",
+            "node": "Set First Draft Ingress",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Log Ingress Skipped",
+            "node": "Needs Review?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Review?": {
+      "main": [
+        [
+          {
+            "node": "Set Revision Ingress",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Needs Review Skip Target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set First Draft Ingress": {
+      "main": [
+        [
+          {
+            "node": "Extract Webhook Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Revision Ingress": {
+      "main": [
+        [
+          {
+            "node": "Extract Webhook Context",
             "type": "main",
             "index": 0
           }
@@ -421,7 +760,98 @@
       "main": [
         [
           {
+            "node": "Revision Ingress?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revision Ingress?": {
+      "main": [
+        [
+          {
+            "node": "GET Task Comments",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Status → In Progress",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Task Comments": {
+      "main": [
+        [
+          {
+            "node": "Collect Task Comments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Task Comments": {
+      "main": [
+        [
+          {
+            "node": "Actionable Feedback?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actionable Feedback?": {
+      "main": [
+        [
+          {
+            "node": "Status → In Progress",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Empty Feedback Guidance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Empty Feedback Guidance": {
+      "main": [
+        [
+          {
+            "node": "Format Empty Feedback Guidance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Empty Feedback Guidance": {
+      "main": [
+        [
+          {
+            "node": "POST Empty Feedback Guidance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Empty Feedback Guidance": {
+      "main": [
+        [
+          {
+            "node": "Empty Feedback → Approval",
             "type": "main",
             "index": 0
           }
@@ -432,7 +862,36 @@
       "main": [
         [
           {
+            "node": "Prepare Revision Input?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Revision Input?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Revision Call Agent Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Prepare Call Agent Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Revision Call Agent Input": {
+      "main": [
+        [
+          {
+            "node": "Execute Call Agent",
             "type": "main",
             "index": 0
           }
@@ -495,6 +954,17 @@
         [
           {
             "node": "Status → Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Needs Review Skip Target": {
+      "main": [
+        [
+          {
+            "node": "Log Ingress Skipped",
             "type": "main",
             "index": 0
           }

@@ -12,7 +12,6 @@ export const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "clickup", "field-mapping.j
 const EXPECTED_FIELDS: Record<string, string> = {
   "Critérios de Aceite": "criterios_de_aceite",
   agent_id: "agent_id",
-  revision_count: "revision_count",
 };
 
 interface ListDetailResponse {

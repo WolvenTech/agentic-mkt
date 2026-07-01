@@ -12,17 +12,47 @@ export const DEFAULT_MODEL = "gpt-4.1-mini";
 
 export const COMMENT_SECTIONS = ["## LinkedIn Draft", "## Resumo", "## Autochecagem"] as const;
 
+export type IngressMode = "first_draft" | "revision" | "skip";
+
 /** Expected main-workflow node order (happy path) for topology validation (task_09). */
 export const HAPPY_PATH_NODE_SEQUENCE = [
   "ClickUp Webhook",
   "Ready to Work?",
+  "Set First Draft Ingress",
   "Extract Webhook Context",
   "Dedup?",
   "Mark History Item Seen",
   "GET ClickUp Task",
   "Extract Task Fields",
+  "Revision Ingress?",
   "Status → In Progress",
+  "Prepare Revision Input?",
   "Prepare Call Agent Input",
+  "Execute Call Agent",
+  "Agent Output OK?",
+  "Format Draft Comment",
+  "POST Task Comment",
+  "Status → Review",
+] as const;
+
+/** Revision happy-path node order for topology validation. */
+export const REVISION_PATH_NODE_SEQUENCE = [
+  "ClickUp Webhook",
+  "Ready to Work?",
+  "Needs Review?",
+  "Set Revision Ingress",
+  "Extract Webhook Context",
+  "Dedup?",
+  "Mark History Item Seen",
+  "GET ClickUp Task",
+  "Extract Task Fields",
+  "Revision Ingress?",
+  "GET Task Comments",
+  "Collect Task Comments",
+  "Actionable Feedback?",
+  "Status → In Progress",
+  "Prepare Revision Input?",
+  "Prepare Revision Call Agent Input",
   "Execute Call Agent",
   "Agent Output OK?",
   "Format Draft Comment",
@@ -78,12 +108,20 @@ export interface ClickUpTask {
   [key: string]: unknown;
 }
 
+export interface ClickUpComment {
+  id: string;
+  comment_text: string;
+  user?: { username?: string };
+  date?: string;
+}
+
 export interface TaskFields {
   task_id: string;
   task_title: string;
   task_description: string;
   criterios_de_aceite: string;
   agent_id: string;
+  ingress_mode?: IngressMode;
 }
 
 export interface AgentOutputLike {
@@ -148,7 +186,8 @@ export function formatIngressTransition(item: WebhookHistoryItem | undefined): s
 /** Derive ingress skip reason for payloads that fail `ingressMatchesReadyToWork`. */
 export function deriveIngressSkipReason(
   payload: ClickUpWebhookPayload,
-  fieldMapping: FieldMapping = loadFieldMapping()
+  fieldMapping: FieldMapping = loadFieldMapping(),
+  targetStatusKey: "ready" | "needs_review" = "ready"
 ): string {
   const event = unwrapWebhookPayload(payload);
   const items = event.history_items ?? [];
@@ -161,16 +200,17 @@ export function deriveIngressSkipReason(
   }
   const after = item.after;
   const status = after !== null && typeof after === "object" ? (after as Record<string, unknown>).status : after;
-  if (normalizeStatusValue(status) !== normalizeStatusValue(statusName(fieldMapping, "ready"))) {
-    return "not_entering_ready";
+  const reason = targetStatusKey === "needs_review" ? "not_entering_needs_review" : "not_entering_ready";
+  if (normalizeStatusValue(status) !== normalizeStatusValue(statusName(fieldMapping, targetStatusKey))) {
+    return reason;
   }
-  return "not_entering_ready";
+  return reason;
 }
 
 /** Build structured ingress skip record for filtered webhook executions. */
 export function describeIngressSkipReason(
   payload: ClickUpWebhookPayload,
-  options: { reason?: string; fieldMapping?: FieldMapping } = {}
+  options: { reason?: string; fieldMapping?: FieldMapping; targetStatusKey?: "ready" | "needs_review" } = {}
 ): IngressSkipRecord {
   const fieldMapping = options.fieldMapping ?? loadFieldMapping();
   const event = unwrapWebhookPayload(payload);
@@ -182,7 +222,7 @@ export function describeIngressSkipReason(
     webhook_id: String(event.webhook_id ?? ""),
     history_item_id: String(first?.id ?? ""),
     transition: formatIngressTransition(first),
-    reason: options.reason ?? deriveIngressSkipReason(payload, fieldMapping),
+    reason: options.reason ?? deriveIngressSkipReason(payload, fieldMapping, options.targetStatusKey ?? "ready"),
   };
 }
 
@@ -202,6 +242,22 @@ export function ingressMatchesReadyToWork(
   return normalizeStatusValue(status) === normalizeStatusValue(statusName(fieldMapping, "ready"));
 }
 
+/** Return true when webhook payload enters the Needs Review revision ingress status. */
+export function ingressMatchesNeedsReview(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): boolean {
+  const event = unwrapWebhookPayload(payload);
+  const items = event.history_items ?? [];
+  const item = items[0];
+  if (!item || item.field !== "status") {
+    return false;
+  }
+  const after = item.after;
+  const status = after !== null && typeof after === "object" ? (after as Record<string, unknown>).status : after;
+  return normalizeStatusValue(status) === normalizeStatusValue(statusName(fieldMapping, "needs_review"));
+}
+
 /** n8n IF node expression per clickup/webhook-contract.md. */
 export function webhookIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
   const readyStatus = normalizeStatusValue(statusName(fieldMapping, "ready"));
@@ -214,6 +270,22 @@ export function webhookIfExpression(fieldMapping: FieldMapping = loadFieldMappin
     `const after = item.after; ` +
     `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
     `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(readyStatus)}; ` +
+    `})() }}`
+  );
+}
+
+/** n8n IF node expression for Needs Review revision ingress. */
+export function needsReviewIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
+  const needsReviewStatus = normalizeStatusValue(statusName(fieldMapping, "needs_review"));
+  const root = webhookPayloadRootExpression();
+  return (
+    `={{ (() => { ` +
+    `const payload = ${root}; ` +
+    `const item = payload?.history_items?.[0]; ` +
+    `if (!item || item.field !== "status") return false; ` +
+    `const after = item.after; ` +
+    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
+    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(needsReviewStatus)}; ` +
     `})() }}`
   );
 }
@@ -286,6 +358,80 @@ export function buildCallAgentInput(taskFields: TaskFields): CallAgentInput {
     task_description: taskFields.task_description,
     criterios_de_aceite: taskFields.criterios_de_aceite,
   };
+}
+
+function commentBody(comment: ClickUpComment): string {
+  return String(comment.comment_text ?? "").trim();
+}
+
+function isAgentDraftComment(comment: ClickUpComment): boolean {
+  const body = commentBody(comment);
+  return (
+    body.includes("## LinkedIn Draft") ||
+    body.includes("## Resumo") ||
+    body.includes("## Autochecagem") ||
+    /_Generated by [^)]+\(.*\)_/i.test(body)
+  );
+}
+
+function isSystemComment(comment: ClickUpComment): boolean {
+  const username = String(comment.user?.username ?? "").trim().toLowerCase();
+  if (!username) {
+    return true;
+  }
+  return username === "system" || username.includes("clickup") || username.includes("automation");
+}
+
+/** Return true when at least one non-system, non-agent comment can guide a revision. */
+export function hasActionableFeedback(comments: ClickUpComment[]): boolean {
+  return comments.some((comment) => commentBody(comment) !== "" && !isSystemComment(comment) && !isAgentDraftComment(comment));
+}
+
+function commentTimestamp(comment: ClickUpComment): number {
+  const date = comment.date;
+  if (!date) {
+    return 0;
+  }
+  const numeric = Number(date);
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+  const parsed = Date.parse(date);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatCommentDate(date: string | undefined): string {
+  if (!date) {
+    return "";
+  }
+  const numeric = Number(date);
+  if (Number.isFinite(numeric)) {
+    return new Date(numeric).toISOString();
+  }
+  return date;
+}
+
+/** Format comments oldest-first for embedded revision context. */
+export function formatCommentThread(comments: ClickUpComment[]): string {
+  return [...comments]
+    .sort((left, right) => commentTimestamp(left) - commentTimestamp(right))
+    .map((comment) => {
+      const username = String(comment.user?.username ?? "Unknown").trim() || "Unknown";
+      const date = formatCommentDate(comment.date);
+      const suffix = date ? ` (${date})` : "";
+      return `- **${username}**${suffix}: ${commentBody(comment)}`;
+    })
+    .join("\n");
+}
+
+/** Embed revision context in task_description without changing CallAgentInput. */
+export function buildRevisionTaskDescription(brief: string, thread: string): string {
+  return (
+    `# Original Brief\n${brief.trim()}\n\n` +
+    `# Revision Feedback (Comment Thread)\n${thread.trim()}\n\n` +
+    "# Revision Instructions\n" +
+    "Incorporate the actionable lead feedback above. Produce a revised LinkedIn draft that preserves the original brief, acceptance criteria, and Wolven voice."
+  );
 }
 
 export function agentOutputHasError(agentOutput: Record<string, unknown>): boolean {

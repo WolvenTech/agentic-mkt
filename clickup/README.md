@@ -15,7 +15,8 @@ Schema, webhook contract, and field mapping for the Marketing Pipeline ClickUp l
 | `pnpm clickup:sync` | Pull field IDs from ClickUp API into `field-mapping.json` |
 | `pnpm clickup:verify` | Integration check — create test task and verify custom fields via GET |
 | `pnpm green-run` | M1 green run preflight + execution; writes `logs/green-run/<timestamp>/evidence.json` (see [`logs/README.md`](../logs/README.md)) |
-| [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) | Sample webhook payload for contract tests |
+| [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) | Sample first-draft webhook payload for contract tests |
+| [`fixtures/task-status-updated-needs-review.json`](fixtures/task-status-updated-needs-review.json) | Sample revision webhook payload for contract tests |
 
 ## Manual setup checklist
 
@@ -26,8 +27,7 @@ Complete these steps in ClickUp (workspace admin required). Custom fields **cann
 1. Open your ClickUp workspace (Wolven).
 2. Create a new List named **Marketing Pipeline** (Space/Folder of your choice — record the location for your team).
 3. Replace default statuses with the flow in [`list-schema.md`](list-schema.md):
-   - Backlog → Ready to Work → In Progress → Review → Approved → Done
-   - Add **Blocked** and **Needs Revision** (manual-only in V1)
+   - Backlog → Ready → Needs Review → Writing → Approval → Publish → Completed
 4. Copy the list ID from the URL (`.../v/li/{list_id}`) or list settings.
 
 ### 2. Add custom fields
@@ -38,7 +38,6 @@ On the Marketing Pipeline list, create:
 |------------|------|---------|
 | Critérios de Aceite | Text | — |
 | agent_id | Short text | `linkedin-writer` |
-| revision_count | Number | `0` |
 
 Names must match exactly (including `Critérios de Aceite` accent).
 
@@ -68,7 +67,7 @@ pnpm test
 
 ### 4. Brief gate (operational)
 
-Before moving any task to **Ready to Work**, ensure title, description, and **Critérios de Aceite** are filled ([PRD F2](../.compozy/tasks/marketing-pipeline-clickup-n8n/_prd.md)). V1 relies on manual discipline — no ClickUp automation blocks the transition.
+Before moving any task to **Ready**, ensure title, description, and **Critérios de Aceite** are filled ([PRD F2](../.compozy/tasks/marketing-pipeline-clickup-n8n/_prd.md)). V1 relies on manual discipline — no ClickUp automation blocks the transition.
 
 ### 5. Webhook registration (task_07)
 
@@ -119,7 +118,19 @@ Confirm `field-mapping.json` has no `<TBD>` values before n8n import.
 
 ### Brief gate (operator discipline)
 
-Before every **Ready to Work** move, confirm title, description, and **Critérios de Aceite** are populated. V1 has no ClickUp automation blocking empty briefs — see [Brief Gate Pattern](../agents/harness/io-contract.md#3-brief-gate-pattern).
+Before every **Ready** move, confirm title, description, and **Critérios de Aceite** are populated. V1 has no ClickUp automation blocking empty briefs — see [Brief Gate Pattern](../agents/harness/io-contract.md#3-brief-gate-pattern).
+
+### Revision trigger
+
+To request an automated rewrite, the marketing lead must leave actionable feedback in the task comment thread while the task is in **Approval**, then move the task to **Needs Review**. Phase 2 workflow ingress treats that comment + status transition as the revision trigger; expected self-echo transitions are **Needs Review → Writing** and **Writing → Approval**.
+
+### Revision green-run
+
+`pnpm green-run` validates the first-draft path. To validate one full revision round against the live ClickUp list and n8n deployment, call the exported helper directly (e.g. from a script or `tests/green-run.live.test.ts`):
+
+- `executeRevisionGreenRun(token, mapping)` — creates a task, runs the first-draft path, posts lead feedback, moves the task to **Needs Review**, and asserts: Writing observed within 5s, a revised three-section draft comment posted, and the task back in **Approval** within the 60s revision-latency target.
+
+The helper is covered by mocked tests in [`tests/green-run.test.ts`](../tests/green-run.test.ts) and surfaces its result through `buildEvidence(preflight, mainWorkflow, env, { revisionRound })` as the `revision_round` evidence field. `GREEN_RUN_CHECKLIST` in [`src/clickup/green-run-validation.ts`](../src/clickup/green-run-validation.ts) includes the revision-specific steps: `revision_draft_posted`, `revision_latency_under_60s`.
 
 ### Troubleshooting
 

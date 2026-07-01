@@ -12,17 +12,12 @@
       "type": "short_text",
       "default": "linkedin-writer",
       "clickup_field_id": "a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0"
-    },
-    "revision_count": {
-      "name": "revision_count",
-      "type": "number",
-      "default": 0,
-      "clickup_field_id": "3ad37d2d-9dcb-4f42-a01e-f98be4952d2a"
     }
   },
   "statuses": {
     "backlog": "backlog",
     "ready": "ready",
+    "needs_review": "needs review",
     "writing": "writing",
     "review": "approval",
     "publish": "publish",

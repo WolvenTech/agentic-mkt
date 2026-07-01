@@ -49,8 +49,7 @@ export async function verify(token: string, listId: string, options: VerifyOptio
 
   const criteriosId = fieldIds.get("Critérios de Aceite");
   const agentFieldId = fieldIds.get("agent_id");
-  const revisionFieldId = fieldIds.get("revision_count");
-  if (!criteriosId || !agentFieldId || !revisionFieldId) {
+  if (!criteriosId || !agentFieldId) {
     throw new Error("field-mapping.json is missing expected custom field names");
   }
 
@@ -68,7 +67,6 @@ export async function verify(token: string, listId: string, options: VerifyOptio
   try {
     await clickupPost(`/task/${taskId}/field/${criteriosId}`, { value: "Draft must mention Wolven brand voice." }, clientOptions);
     await clickupPost(`/task/${taskId}/field/${agentFieldId}`, { value: "linkedin-writer" }, clientOptions);
-    await clickupPost(`/task/${taskId}/field/${revisionFieldId}`, { value: 0 }, clientOptions);
 
     const fetched = await clickupGet<ClickUpTask>(`/task/${taskId}`, clientOptions);
     const byName = fieldsByName(fetched);
