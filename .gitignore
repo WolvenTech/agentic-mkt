@@ -22,6 +22,7 @@ coverage/
 
 # Editor and IDE
 .vscode/
+.claude/
 .cursor/
 .idea/
 *.swp
@@ -35,3 +36,9 @@ coverage/
 logs/**
 !logs/.gitkeep
 !logs/README.md
+
+# Agent/AI Assistant rules configurations
+.agents/
+.cursorrules
+.clauderules
+.codex/
