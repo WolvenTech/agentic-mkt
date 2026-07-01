@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -435,82 +435,93 @@ describe("wolven-voice skill", () => {
   });
 });
 
-describe("linkedin-format skill", () => {
+describe("linkedin-format skill (trimmed for Format stage)", () => {
   const skill = readSkill("linkedin-format");
 
-  it("documents the C-level English LinkedIn audience and brief gates", () => {
+  it("documents focus on final LinkedIn adaptation from approved argument", () => {
+    for (const phrase of [
+      "Adapt an approved channel-neutral argument",
+      "final LinkedIn post",
+      "final-stage channel adaptation",
+      "Format for LinkedIn",
+    ]) {
+      expect(skill).toContain(phrase);
+    }
+  });
+
+  it("documents C-level English LinkedIn audience and post structure", () => {
     for (const phrase of [
       "C-level readers",
-      "Accept briefs in Portuguese or English",
       "Always return the post in English",
-      "communication objective",
-      "central idea",
-      "evidence",
+      "LinkedIn",
+      "LinkedIn structure",
     ]) {
       expect(skill).toContain(phrase);
     }
   });
 
-  it("documents evidence blockers and no-invention rules", () => {
+  it("documents no-invention rules and evidence preservation from supplied argument", () => {
     for (const phrase of [
-      "Treat missing evidence as a blocker",
-      "Never invent handles, metrics, studies, client names, results, or causal claims",
-      "What concrete evidence should carry this post",
-      "Do not research it independently",
+      "Never invent",
+      "supplied data and claims from the argument only",
+      "Preserve all facts",
+      "Do not weaken or amplify",
     ]) {
       expect(skill).toContain(phrase);
     }
   });
 
-  it("documents the three-angle workflow and final-post mode", () => {
+  it("does not document the three-angle workflow (moved to investigative-brief)", () => {
+    expect(skill).not.toContain("provide three short and distinct angles");
+    expect(skill).not.toContain("Create angles");
+  });
+
+  it("does not document validation as a workflow step (moved to investigative-brief)", () => {
+    expect(skill).not.toContain("### 1. Validate");
+    expect(skill).not.toContain("Require a communication objective");
+    expect(skill).not.toContain("Require a central idea");
+    expect(skill).not.toContain("Treat missing evidence as a blocker");
+  });
+
+  it("documents Receive-Format-Polish workflow steps instead of bundled workflow", () => {
     for (const phrase of [
-      "provide three short and distinct angles",
-      "Core claim",
-      "Evidence lens",
-      "Stop and ask the user to choose one",
-      "selected angle is present",
-      "direct final draft",
+      "### 1. Receive the Argument",
+      "### 2. Format for LinkedIn",
+      "### 3. Apply Final Polish",
+      "approved channel-neutral argument",
     ]) {
       expect(skill).toContain(phrase);
     }
   });
 
-  it("documents the three compatible output modes", () => {
-    for (const phrase of ["Blocker", "Angle options", "Final post", "deliverable_markdown"]) {
+  it("includes LinkedIn structure and formatting guidance from template", () => {
+    for (const phrase of [
+      "Hook:",
+      "LinkedIn template",
+      "short paragraphs",
+      "white space",
+      "Core point",
+    ]) {
       expect(skill).toContain(phrase);
     }
   });
 
-  it("includes LinkedIn final QA checks from the DOCX source", () => {
+  it("documents output mode as final post or blocker only (not angle options)", () => {
+    expect(skill).toContain("artifact_markdown");
+    expect(skill).toContain("resumo");
+    expect(skill).toContain("self_check");
+    expect(skill).not.toContain("Angle options");
+  });
+
+  it("includes final QA checks with evidence traceability to argument", () => {
     for (const phrase of [
-      "Objective is clear",
-      "one real, defensible idea",
-      "Evidence is accurate, specific, and traceable",
+      "traceable to the supplied argument",
+      "argument is complete",
       "No facts, results, or source details are invented",
+      "LinkedIn structure",
     ]) {
       expect(skill).toContain(phrase);
     }
-  });
-
-  it("documents revision mode and the embedded task_description sections", () => {
-    expect(skill).toContain("## Revision mode");
-    for (const marker of ["Original Brief", "Revision Feedback", "Revision Instructions"]) {
-      expect(skill).toContain(marker);
-    }
-  });
-
-  it("documents ADR-005 long-thread handling around the ~10 comment threshold", () => {
-    expect(skill).toContain("~10 comments");
-    expect(skill).toContain("summarize older comments");
-    expect(skill).toContain("latest lead feedback verbatim");
-  });
-
-  it("preserves the three-section AgentOutput contract during revision runs", () => {
-    for (const key of REQUIRED_OUTPUT_KEYS) {
-      expect(skill).toContain(key);
-    }
-    expect(skill).toContain("lead feedback");
-    expect(skill).toContain("Bypass the angle-selection gate");
   });
 });
 
@@ -556,8 +567,8 @@ describe("prompt assembly", () => {
     expect(prompt).toContain("wolven-voice");
     expect(prompt).toContain("linkedin-format");
     expect(prompt).toContain("Wolven voice");
-    expect(prompt).toContain("Create angles");
-    expect(prompt).toContain("Output modes");
+    expect(prompt).toContain("Workflow");
+    expect(prompt).toContain("## Output");
     expect(prompt).toContain("deliverable_markdown");
     expect(prompt).toContain("blocker question, three angle options, or the selected final English LinkedIn post");
   });
@@ -1045,5 +1056,42 @@ describe("end-to-end prompt assembly + parse", () => {
     expect(systemPrompt).toContain("# Required Output Format");
     expect(systemPrompt).toContain("Editorial Brief Template");
     expect(systemPrompt.length).toBeGreaterThan(300);
+  });
+
+  it("assembles Format stage agent prompts with LinkedIn structure reference", () => {
+    const formatAgentPath = resolve(REPO_ROOT, "agents", "linkedin-format.json");
+    const formatAgent = JSON.parse(readFileSync(formatAgentPath, "utf-8")) as AgentConfig;
+
+    const skillContent = readSkill("wolven-voice");
+    const linkedinFormatSkill = readSkill("linkedin-format");
+    const linkedinStructureRef = readFileSync(resolve(REPO_ROOT, "agents", "references", "linkedin-structure.md"), "utf-8");
+
+    const systemPrompt = assembleSystemPrompt(
+      formatAgent,
+      { "wolven-voice": skillContent, "linkedin-format": linkedinFormatSkill },
+      { "agents/references/linkedin-structure.md": linkedinStructureRef }
+    );
+
+    expect(systemPrompt).toContain("# Agent Role");
+    expect(systemPrompt).toContain("# Skills");
+    expect(systemPrompt).toContain("# References");
+    expect(systemPrompt).toContain("LinkedIn Post Structure");
+    expect(systemPrompt).toContain("Hook");
+    expect(systemPrompt).toContain("Formatting Guidance");
+    expect(systemPrompt.length).toBeGreaterThan(400);
+  });
+
+  it("reads and verifies linkedin-format agent references resolve correctly", () => {
+    const formatAgentPath = resolve(REPO_ROOT, "agents", "linkedin-format.json");
+    const formatAgent = JSON.parse(readFileSync(formatAgentPath, "utf-8")) as AgentConfig;
+
+    expect(formatAgent.references).toBeDefined();
+    expect(Array.isArray(formatAgent.references)).toBe(true);
+    if (formatAgent.references) {
+      for (const ref of formatAgent.references) {
+        const fullPath = resolve(REPO_ROOT, ref);
+        expect(existsSync(fullPath)).toBe(true);
+      }
+    }
   });
 });

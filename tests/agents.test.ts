@@ -226,6 +226,79 @@ describe("agent config", () => {
     expect(referenceContent).toMatch(/Direction/i);
   });
 
+  it("parses linkedin-format.json as a stage agent config with Format stage output schema", () => {
+    const linkedinFormatPath = resolve(REPO_ROOT, "agents", "linkedin-format.json");
+    expect(existsSync(linkedinFormatPath)).toBe(true);
+    const agent = JSON.parse(readFileSync(linkedinFormatPath, "utf-8")) as AgentConfig;
+    expect(agent.id).toBe("linkedin-format");
+    expect(agent.provider).toBe("openai");
+    expect(agent.model).toBe("gpt-4.1-mini");
+    expect(agent.skills).toContain("wolven-voice");
+    expect(agent.skills).toContain("linkedin-format");
+    expect(agent.references).toBeDefined();
+    expect(Array.isArray(agent.references)).toBe(true);
+    expect(agent.references).toContain("agents/references/linkedin-structure.md");
+  });
+
+  it("verifies Format stage config has stage-aware output schema with artifact_markdown, self_check, and next_gate", () => {
+    const linkedinFormatPath = resolve(REPO_ROOT, "agents", "linkedin-format.json");
+    const agent = JSON.parse(readFileSync(linkedinFormatPath, "utf-8")) as AgentConfig;
+    expect(agent.output_schema).toHaveProperty("stage");
+    expect(agent.output_schema).toHaveProperty("artifact_markdown");
+    expect(agent.output_schema).toHaveProperty("resumo");
+    expect(agent.output_schema).toHaveProperty("self_check");
+    expect(agent.output_schema).toHaveProperty("next_gate");
+    expect(agent.output_schema.stage).toBe("format");
+    expect(agent.output_schema.next_gate).toBe("final review");
+  });
+
+  it("resolves every skill in linkedin-format agent to a file", () => {
+    const linkedinFormatPath = resolve(REPO_ROOT, "agents", "linkedin-format.json");
+    const agent = JSON.parse(readFileSync(linkedinFormatPath, "utf-8")) as AgentConfig;
+    expect(Array.isArray(agent.skills)).toBe(true);
+    expect(agent.skills.length).toBeGreaterThan(0);
+    const missing = agent.skills.filter((skill) => !existsSync(resolve(SKILLS_DIR, `${skill}.md`)));
+    expect(missing).toEqual([]);
+  });
+
+  it("resolves every reference in linkedin-format agent to a file", () => {
+    const linkedinFormatPath = resolve(REPO_ROOT, "agents", "linkedin-format.json");
+    const agent = JSON.parse(readFileSync(linkedinFormatPath, "utf-8")) as AgentConfig;
+    if (agent.references && Array.isArray(agent.references)) {
+      const missing = agent.references.filter((ref) => !existsSync(resolve(REPO_ROOT, ref)));
+      expect(missing).toEqual([]);
+    }
+  });
+
+  it("verifies linkedin-format skill focuses on final LinkedIn adaptation only", () => {
+    const skillPath = resolve(REPO_ROOT, "agents", "skills", "linkedin-format.md");
+    expect(existsSync(skillPath)).toBe(true);
+    const skillContent = readFileSync(skillPath, "utf-8");
+    expect(skillContent).toMatch(/LinkedIn Post Formatting|Adapt.*argument/i);
+    expect(skillContent).toMatch(/final-stage channel adaptation/i);
+    expect(skillContent).not.toMatch(/### 1\. Validate/);
+    expect(skillContent).not.toMatch(/Create angles/);
+  });
+
+  it("verifies linkedin-format skill preserves no-invention and evidence requirements", () => {
+    const skillPath = resolve(REPO_ROOT, "agents", "skills", "linkedin-format.md");
+    const skillContent = readFileSync(skillPath, "utf-8");
+    expect(skillContent).toMatch(/Never invent|no-invention|supplied data only/i);
+    expect(skillContent).toMatch(/evidence|traceable/i);
+  });
+
+  it("verifies linkedin-structure reference template exists and includes expected sections", () => {
+    const referencePath = resolve(REPO_ROOT, "agents", "references", "linkedin-structure.md");
+    expect(existsSync(referencePath)).toBe(true);
+    const referenceContent = readFileSync(referencePath, "utf-8");
+    expect(referenceContent).toMatch(/LinkedIn Post Structure|Hook/i);
+    expect(referenceContent).toMatch(/Context|Evidence/i);
+    expect(referenceContent).toMatch(/Core Point|Claim/i);
+    expect(referenceContent).toMatch(/Reasoning|Trade-Off/i);
+    expect(referenceContent).toMatch(/Implication|Direction/i);
+    expect(referenceContent).toMatch(/Formatting Guidance/i);
+  });
+
   it("validates that references, when present, must be strings", () => {
     function validateReferences(config: AgentConfig): boolean {
       if (!config.references) {
