@@ -1,0 +1,36 @@
+{
+  "event": "taskStatusUpdated",
+  "task_id": "86btest01",
+  "history_items": [
+    {
+      "id": "2800763136717140859",
+      "type": 1,
+      "date": "1642734751523",
+      "field": "status",
+      "parent_id": "901500000001",
+      "data": { "status_type": "custom" },
+      "source": null,
+      "user": {
+        "id": 183,
+        "username": "Marketing Lead",
+        "email": "lead@wolven.com.br",
+        "color": "#7b68ee",
+        "initials": "ML",
+        "profilePicture": null
+      },
+      "before": {
+        "status": "backlog",
+        "color": "#87909e",
+        "orderindex": 0,
+        "type": "open"
+      },
+      "after": {
+        "status": "investigate",
+        "color": "#a8d5ff",
+        "orderindex": 1,
+        "type": "custom"
+      }
+    }
+  ],
+  "webhook_id": "7fa3ec74-69a8-4530-a251-8a13730bd204"
+}

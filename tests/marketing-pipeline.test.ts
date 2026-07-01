@@ -7,14 +7,22 @@ import {
   buildCallAgentInput,
   buildRevisionTaskDescription,
   buildStageInput,
+  deriveStagedIngressSkipReason,
   extractLatestLeadFeedback,
+  extractStageFromWebhook,
   extractTaskFields,
   formatCommentThread,
   hasActionableFeedback,
+  ingressMatchesFormat,
+  ingressMatchesInvestigate,
   ingressMatchesNeedsReview,
   ingressMatchesReadyToWork,
+  ingressMatchesWrite,
   loadFieldMapping,
   selectPriorDocPageName,
+  stagedFormatIfExpression,
+  stagedInvestigateIfExpression,
+  stagedWriteIfExpression,
   statusName,
   stagedStatusName,
   validateStageStatus,
@@ -47,6 +55,9 @@ import { buildMarketingPipelineWorkflow } from "../src/workflows/build-marketing
 const REPO_ROOT = resolve(__dirname, "..");
 const READY_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-ready-to-work.json");
 const NEEDS_REVIEW_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-needs-review.json");
+const INVESTIGATE_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-investigate.json");
+const WRITE_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-write.json");
+const FORMAT_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-format.json");
 const TASK_GET_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-get-response.json");
 const TASK_COMMENTS_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-comments-response.json");
 
@@ -98,6 +109,158 @@ describe("marketing pipeline ingress logic", () => {
     after.status = statusName(mapping, "writing");
     expect(ingressMatchesReadyToWork(payload, mapping)).toBe(false);
     expect(ingressMatchesNeedsReview(payload, mapping)).toBe(false);
+  });
+
+  it("accepts staged status transitions: investigate, write, format", () => {
+    const mapping = fixtureFieldMapping();
+    const investigatePayload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
+    const writePayload = readJson<ClickUpWebhookPayload>(WRITE_WEBHOOK_FIXTURE_PATH);
+    const formatPayload = readJson<ClickUpWebhookPayload>(FORMAT_WEBHOOK_FIXTURE_PATH);
+
+    expect(ingressMatchesInvestigate(investigatePayload, mapping)).toBe(true);
+    expect(ingressMatchesWrite(investigatePayload, mapping)).toBe(false);
+    expect(ingressMatchesFormat(investigatePayload, mapping)).toBe(false);
+
+    expect(ingressMatchesInvestigate(writePayload, mapping)).toBe(false);
+    expect(ingressMatchesWrite(writePayload, mapping)).toBe(true);
+    expect(ingressMatchesFormat(writePayload, mapping)).toBe(false);
+
+    expect(ingressMatchesInvestigate(formatPayload, mapping)).toBe(false);
+    expect(ingressMatchesWrite(formatPayload, mapping)).toBe(false);
+    expect(ingressMatchesFormat(formatPayload, mapping)).toBe(true);
+  });
+
+  it("extracts stage name from webhook payload", () => {
+    const mapping = fixtureFieldMapping();
+    const investigatePayload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
+    const writePayload = readJson<ClickUpWebhookPayload>(WRITE_WEBHOOK_FIXTURE_PATH);
+    const formatPayload = readJson<ClickUpWebhookPayload>(FORMAT_WEBHOOK_FIXTURE_PATH);
+
+    expect(extractStageFromWebhook(investigatePayload, mapping)).toBe("investigate");
+    expect(extractStageFromWebhook(writePayload, mapping)).toBe("write");
+    expect(extractStageFromWebhook(formatPayload, mapping)).toBe("format");
+  });
+
+  it("rejects human gates as non-ingress when not entering staged status", () => {
+    const mapping = fixtureFieldMapping();
+    const payload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
+    const item = payload.history_items?.[0];
+    const after = item?.after as Record<string, unknown>;
+
+    // Entering brief review (human gate, not AI stage)
+    after.status = statusName(mapping, "brief_review");
+    expect(ingressMatchesInvestigate(payload, mapping)).toBe(false);
+    expect(ingressMatchesWrite(payload, mapping)).toBe(false);
+    expect(ingressMatchesFormat(payload, mapping)).toBe(false);
+    expect(extractStageFromWebhook(payload, mapping)).toBeNull();
+
+    // Entering content review (human gate, not AI stage)
+    after.status = statusName(mapping, "content_review");
+    expect(ingressMatchesInvestigate(payload, mapping)).toBe(false);
+    expect(ingressMatchesWrite(payload, mapping)).toBe(false);
+    expect(ingressMatchesFormat(payload, mapping)).toBe(false);
+    expect(extractStageFromWebhook(payload, mapping)).toBeNull();
+
+    // Entering final review (human gate, not AI stage)
+    after.status = statusName(mapping, "final_review");
+    expect(ingressMatchesInvestigate(payload, mapping)).toBe(false);
+    expect(ingressMatchesWrite(payload, mapping)).toBe(false);
+    expect(ingressMatchesFormat(payload, mapping)).toBe(false);
+    expect(extractStageFromWebhook(payload, mapping)).toBeNull();
+  });
+
+  it("rejects old ingress statuses when staged flow is active", () => {
+    const mapping = fixtureFieldMapping();
+    const payload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
+
+    // Old ready status should not match any staged ingress
+    expect(ingressMatchesInvestigate(payload, mapping)).toBe(false);
+    expect(ingressMatchesWrite(payload, mapping)).toBe(false);
+    expect(ingressMatchesFormat(payload, mapping)).toBe(false);
+    expect(extractStageFromWebhook(payload, mapping)).toBeNull();
+
+    // Old needs_review status should not match any staged ingress
+    const revisionPayload = readJson<ClickUpWebhookPayload>(NEEDS_REVIEW_WEBHOOK_FIXTURE_PATH);
+    expect(ingressMatchesInvestigate(revisionPayload, mapping)).toBe(false);
+    expect(ingressMatchesWrite(revisionPayload, mapping)).toBe(false);
+    expect(ingressMatchesFormat(revisionPayload, mapping)).toBe(false);
+    expect(extractStageFromWebhook(revisionPayload, mapping)).toBeNull();
+  });
+
+  it("returns null stage for non-status field changes", () => {
+    const mapping = fixtureFieldMapping();
+    const payload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
+    const item = payload.history_items?.[0];
+
+    if (item) {
+      item.field = "priority";
+    }
+
+    expect(extractStageFromWebhook(payload, mapping)).toBeNull();
+    expect(ingressMatchesInvestigate(payload, mapping)).toBe(false);
+    expect(ingressMatchesWrite(payload, mapping)).toBe(false);
+    expect(ingressMatchesFormat(payload, mapping)).toBe(false);
+  });
+
+  it("derives staged ingress skip reasons for non-matching payloads", () => {
+    const mapping = fixtureFieldMapping();
+    const payload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
+
+    // Non-status field should return skip reason
+    const item = payload.history_items?.[0];
+    if (item) {
+      item.field = "priority";
+    }
+    expect(deriveStagedIngressSkipReason(payload, mapping)).toBe("field_not_status");
+
+    // No history items should return skip reason
+    const emptyPayload: ClickUpWebhookPayload = {
+      task_id: "test",
+      history_items: [],
+      webhook_id: "test-webhook",
+    };
+    expect(deriveStagedIngressSkipReason(emptyPayload, mapping)).toBe("no_history_items");
+
+    // Entering old status (not staged) should return skip reason
+    const oldStatusPayload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
+    expect(deriveStagedIngressSkipReason(oldStatusPayload, mapping)).toBe("not_entering_staged_status");
+  });
+
+  it("handles payload with missing history item object", () => {
+    const mapping = fixtureFieldMapping();
+    const payload: ClickUpWebhookPayload = {
+      task_id: "test",
+      history_items: undefined,
+      webhook_id: "test-webhook",
+    };
+
+    expect(extractStageFromWebhook(payload, mapping)).toBeNull();
+    expect(ingressMatchesInvestigate(payload, mapping)).toBe(false);
+  });
+
+  it("handles after value as string status (not object)", () => {
+    const mapping = fixtureFieldMapping();
+    const payload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
+    const item = payload.history_items?.[0];
+
+    if (item) {
+      item.after = statusName(mapping, "investigate");
+    }
+
+    expect(extractStageFromWebhook(payload, mapping)).toBe("investigate");
+    expect(ingressMatchesInvestigate(payload, mapping)).toBe(true);
+  });
+
+  it("handles after value as null", () => {
+    const mapping = fixtureFieldMapping();
+    const payload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
+    const item = payload.history_items?.[0];
+
+    if (item) {
+      item.after = null;
+    }
+
+    expect(extractStageFromWebhook(payload, mapping)).toBeNull();
   });
 });
 
@@ -369,6 +532,43 @@ describe("Marketing Pipeline topology", () => {
     expect(JSON.stringify(workflow)).not.toContain("CLICKUP_API_TOKEN_ID");
     expect(JSON.stringify(workflow)).not.toContain("httpHeaderAuth");
     expect(JSON.stringify(workflow)).not.toContain("revision_count");
+  });
+});
+
+describe("staged ingress n8n IF expressions", () => {
+  const mapping = fixtureFieldMapping();
+
+  it("generates n8n IF expression for investigate stage ingress", () => {
+    const expression = stagedInvestigateIfExpression(mapping);
+
+    expect(expression).toContain("={{");
+    expect(expression).toContain("investigate");
+    expect(expression).toContain("history_items");
+    expect(expression).toContain("status");
+    expect(expression).not.toContain("write");
+    expect(expression).not.toContain("format");
+  });
+
+  it("generates n8n IF expression for write stage ingress", () => {
+    const expression = stagedWriteIfExpression(mapping);
+
+    expect(expression).toContain("={{");
+    expect(expression).toContain("write");
+    expect(expression).toContain("history_items");
+    expect(expression).toContain("status");
+    expect(expression).not.toContain("investigate");
+    expect(expression).not.toContain("format");
+  });
+
+  it("generates n8n IF expression for format stage ingress", () => {
+    const expression = stagedFormatIfExpression(mapping);
+
+    expect(expression).toContain("={{");
+    expect(expression).toContain("format");
+    expect(expression).toContain("history_items");
+    expect(expression).toContain("status");
+    expect(expression).not.toContain("investigate");
+    expect(expression).not.toContain("write");
   });
 });
 

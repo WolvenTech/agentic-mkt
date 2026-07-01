@@ -213,6 +213,29 @@ export function deriveIngressSkipReason(
   return reason;
 }
 
+/** Derive ingress skip reason for payloads that don't match any staged status. */
+export function deriveStagedIngressSkipReason(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): string {
+  const event = unwrapWebhookPayload(payload);
+  const items = event.history_items ?? [];
+  const item = items[0];
+  if (!item) {
+    return "no_history_items";
+  }
+  if (item.field !== "status") {
+    return "field_not_status";
+  }
+  const stage = extractStageFromWebhook(payload, fieldMapping);
+  if (stage) {
+    // This shouldn't happen if this function is called correctly
+    return "unexpected_stage_match";
+  }
+  // Not entering any staged status
+  return "not_entering_staged_status";
+}
+
 /** Build structured ingress skip record for filtered webhook executions. */
 export function describeIngressSkipReason(
   payload: ClickUpWebhookPayload,
@@ -292,6 +315,112 @@ export function needsReviewIfExpression(fieldMapping: FieldMapping = loadFieldMa
     `const after = item.after; ` +
     `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
     `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(needsReviewStatus)}; ` +
+    `})() }}`
+  );
+}
+
+/** Extract stage name from webhook status transition. Returns the stage if entering a staged status, null otherwise. */
+export function extractStageFromWebhook(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): string | null {
+  const event = unwrapWebhookPayload(payload);
+  const items = event.history_items ?? [];
+  const item = items[0];
+  if (!item || item.field !== "status") {
+    return null;
+  }
+  const after = item.after;
+  const status = after !== null && typeof after === "object" ? (after as Record<string, unknown>).status : after;
+  const normalizedStatus = normalizeStatusValue(status);
+
+  // Check each staged status
+  const investigateStatus = normalizeStatusValue(statusName(fieldMapping, "investigate"));
+  if (normalizedStatus === investigateStatus) {
+    return "investigate";
+  }
+
+  const writeStatus = normalizeStatusValue(statusName(fieldMapping, "write"));
+  if (normalizedStatus === writeStatus) {
+    return "write";
+  }
+
+  const formatStatus = normalizeStatusValue(statusName(fieldMapping, "format"));
+  if (normalizedStatus === formatStatus) {
+    return "format";
+  }
+
+  return null;
+}
+
+/** Return true when webhook payload enters the investigate stage. */
+export function ingressMatchesInvestigate(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): boolean {
+  return extractStageFromWebhook(payload, fieldMapping) === "investigate";
+}
+
+/** Return true when webhook payload enters the write stage. */
+export function ingressMatchesWrite(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): boolean {
+  return extractStageFromWebhook(payload, fieldMapping) === "write";
+}
+
+/** Return true when webhook payload enters the format stage. */
+export function ingressMatchesFormat(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): boolean {
+  return extractStageFromWebhook(payload, fieldMapping) === "format";
+}
+
+/** n8n IF node expression for investigate stage ingress. */
+export function stagedInvestigateIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
+  const investigateStatus = normalizeStatusValue(statusName(fieldMapping, "investigate"));
+  const root = webhookPayloadRootExpression();
+  return (
+    `={{ (() => { ` +
+    `const payload = ${root}; ` +
+    `const item = payload?.history_items?.[0]; ` +
+    `if (!item || item.field !== "status") return false; ` +
+    `const after = item.after; ` +
+    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
+    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(investigateStatus)}; ` +
+    `})() }}`
+  );
+}
+
+/** n8n IF node expression for write stage ingress. */
+export function stagedWriteIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
+  const writeStatus = normalizeStatusValue(statusName(fieldMapping, "write"));
+  const root = webhookPayloadRootExpression();
+  return (
+    `={{ (() => { ` +
+    `const payload = ${root}; ` +
+    `const item = payload?.history_items?.[0]; ` +
+    `if (!item || item.field !== "status") return false; ` +
+    `const after = item.after; ` +
+    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
+    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(writeStatus)}; ` +
+    `})() }}`
+  );
+}
+
+/** n8n IF node expression for format stage ingress. */
+export function stagedFormatIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
+  const formatStatus = normalizeStatusValue(statusName(fieldMapping, "format"));
+  const root = webhookPayloadRootExpression();
+  return (
+    `={{ (() => { ` +
+    `const payload = ${root}; ` +
+    `const item = payload?.history_items?.[0]; ` +
+    `if (!item || item.field !== "status") return false; ` +
+    `const after = item.after; ` +
+    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
+    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(formatStatus)}; ` +
     `})() }}`
   );
 }
