@@ -117,3 +117,105 @@ describe("pnpm test:live — gate enforcement", () => {
     expect(result.stdout + result.stderr).not.toContain("RUN  v");
   });
 });
+
+describe("scripts/content-quality-proof.ts — local mode", () => {
+  it("runs local proof checks without credentials and outputs JSON", () => {
+    const result = runScript(resolve(REPO_ROOT, "scripts/content-quality-proof.ts"), {
+      PATH: process.env.PATH ?? "",
+      SKIP_DOTENV: "1",
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBeDefined();
+
+    // Find the JSON object in the output (comes after the file path line)
+    const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
+    expect(jsonMatch).toBeTruthy();
+
+    if (jsonMatch) {
+      const output = JSON.parse(jsonMatch[0]);
+      expect(output).toHaveProperty("mode");
+      expect(output.mode).toBe("local");
+      expect(output).toHaveProperty("evidence");
+      expect(Array.isArray(output.evidence)).toBe(true);
+    }
+  });
+
+  it("produces evidence with local check results", () => {
+    const result = runScript(resolve(REPO_ROOT, "scripts/content-quality-proof.ts"), {
+      PATH: process.env.PATH ?? "",
+      SKIP_DOTENV: "1",
+    });
+
+    expect(result.status).toBe(0);
+    const output = result.stdout;
+    expect(output).toContain("LOCAL-STATUSES");
+    expect(output).toContain("LOCAL-PAGES");
+    expect(output).toContain("LOCAL-POINTER-FORMAT");
+    expect(output).toContain("LOCAL-BLOCKER-FORMAT");
+    expect(output).toContain("LOCAL-STAGES");
+    expect(output).toContain("LOCAL-GATES");
+  });
+
+  it("writes evidence to logs/content-quality-proof/ directory", () => {
+    const logDir = resolve(REPO_ROOT, "logs/content-quality-proof");
+    let before: Set<string>;
+    try {
+      before = new Set(readdirSync(logDir));
+    } catch {
+      before = new Set();
+    }
+
+    runScript(resolve(REPO_ROOT, "scripts/content-quality-proof.ts"), {
+      PATH: process.env.PATH ?? "",
+      SKIP_DOTENV: "1",
+    });
+
+    let after: Set<string>;
+    try {
+      after = new Set(readdirSync(logDir));
+    } catch {
+      after = new Set();
+    }
+
+    const newFiles = [...after].filter((file) => !before.has(file));
+
+    expect(newFiles.length).toBeGreaterThan(0);
+
+    // Verify output file structure
+    for (const file of newFiles) {
+      const filePath = resolve(logDir, file);
+      expect(existsSync(filePath)).toBe(true);
+
+      const content = readFileSync(filePath, "utf-8");
+      const parsed = JSON.parse(content);
+      expect(parsed).toHaveProperty("generated_at");
+      expect(parsed).toHaveProperty("mode");
+      expect(parsed).toHaveProperty("evidence");
+      expect(parsed).toHaveProperty("state");
+    }
+
+    // Clean up
+    for (const file of newFiles) {
+      const filePath = resolve(logDir, file);
+      rmSync(filePath, { force: true });
+    }
+  });
+
+  it("local proof accepts --local flag and produces local-mode output", () => {
+    const result = spawnSync(resolve(REPO_ROOT, "node_modules/.bin/tsx"), [resolve(REPO_ROOT, "scripts/content-quality-proof.ts"), "--local"], {
+      cwd: REPO_ROOT,
+      env: { PATH: process.env.PATH ?? "", SKIP_DOTENV: "1" },
+      encoding: "utf-8",
+    });
+
+    expect(result.status).toBe(0);
+    const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
+    expect(jsonMatch).toBeTruthy();
+
+    if (jsonMatch) {
+      const output = JSON.parse(jsonMatch[0]);
+      expect(output.mode).toBe("local");
+    }
+  });
+});

@@ -4,12 +4,13 @@ import { loadRepoDotenv, REPO_ROOT } from "../src/load-env.js";
 import { DEFAULT_MODEL, extractTaskFields, loadFieldMapping } from "../src/marketing-pipeline/logic.js";
 import { clickupGet, clickupPost, clickupPut, type ClickUpClientOptions } from "../src/clickup/client.js";
 import { createN8nClient } from "../src/n8n/client.js";
+import { runLocalProofChecks } from "../src/proof/local-proof.js";
 
 const V2_BASE = "https://api.clickup.com/api/v2";
 const V3_BASE = "https://api.clickup.com";
 const LOG_DIR = resolve(REPO_ROOT, "logs", "content-quality-proof");
 
-type EvidenceStatus = "pass" | "fail" | "blocked" | "observe";
+type EvidenceStatus = "pass" | "fail" | "blocked" | "observe" | "skip";
 
 interface EvidenceRow {
   id: string;
@@ -93,15 +94,52 @@ async function main(): Promise<void> {
   const n8nKey = (process.env.N8N_API_KEY ?? "").trim();
   const n8nUrl = (process.env.N8N_API_URL ?? "https://n8n.wolven.com.br").trim();
   const envListId = (process.env.CLICKUP_LIST_ID ?? "").trim();
-  if (!token || !envListId || !n8nKey) {
-    throw new Error("CLICKUP_API_TOKEN, CLICKUP_LIST_ID, and N8N_API_KEY are required");
+  const forceLocal = process.argv.includes("--local");
+  const hasLiveCredentials = token && envListId && n8nKey;
+
+  const rows: EvidenceRow[] = [];
+  const state: ProofState = { list_id: envListId || "N/A", page_ids: {}, n8n_recent_execution_ids: [] };
+
+  // Always run local proof checks first
+  const localProof = runLocalProofChecks();
+  for (const localRow of localProof.rows) {
+    row(rows, {
+      id: localRow.id,
+      status: localRow.status,
+      action: localRow.check,
+      observed: localRow.details,
+    });
   }
 
+  // If running in local-only mode or no credentials available, skip live checks
+  if (forceLocal || !hasLiveCredentials) {
+    mkdirSync(LOG_DIR, { recursive: true });
+    const outputPath = resolve(LOG_DIR, `${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+    writeFileSync(
+      outputPath,
+      `${JSON.stringify(
+        {
+          generated_at: nowIso(),
+          mode: forceLocal ? "local" : "local-fallback",
+          state,
+          evidence: rows,
+          note: "Local proof completed. Live proof requires CLICKUP_API_TOKEN, CLICKUP_LIST_ID, and N8N_API_KEY.",
+        },
+        null,
+        2
+      )}\n`
+    );
+    console.log(outputPath);
+    console.log(JSON.stringify({ mode: "local", state, evidence: rows }, null, 2));
+    return;
+  }
+
+  // LIVE PROOF SECTION: Requires ClickUp and n8n credentials
   const mapping = loadFieldMapping();
   const listId = String(mapping.clickup_list_id || envListId);
   const client: ClickUpClientOptions = { token, baseUrl: V2_BASE };
-  const rows: EvidenceRow[] = [];
-  const state: ProofState = { list_id: listId, page_ids: {}, n8n_recent_execution_ids: [] };
+  state.list_id = listId;
+
   const criteriosField = mapping.custom_fields.criterios_de_aceite;
   const agentField = mapping.custom_fields.agent_id;
   if (!criteriosField || !agentField) {
@@ -463,6 +501,7 @@ async function main(): Promise<void> {
     `${JSON.stringify(
       {
         generated_at: nowIso(),
+        mode: "live",
         state,
         evidence: rows,
         cleanup: "left in place for inspection",
@@ -472,7 +511,7 @@ async function main(): Promise<void> {
     )}\n`
   );
   console.log(outputPath);
-  console.log(JSON.stringify({ state, evidence: rows }, null, 2));
+  console.log(JSON.stringify({ mode: "live", state, evidence: rows }, null, 2));
 }
 
 main().catch((err) => {
