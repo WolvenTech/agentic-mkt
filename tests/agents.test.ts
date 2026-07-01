@@ -40,12 +40,44 @@ describe("agent config", () => {
     expect(missing).toEqual([]);
   });
 
+  it("parses investigative-brief.json as a stage agent config with required keys", () => {
+    const investigativePath = resolve(REPO_ROOT, "agents", "investigative-brief.json");
+    expect(existsSync(investigativePath)).toBe(true);
+    const agent = JSON.parse(readFileSync(investigativePath, "utf-8")) as AgentConfig;
+    expect(agent.id).toBe("investigative-brief");
+    expect(agent.provider).toBe("openai");
+    expect(agent.model).toBe("gpt-4.1-mini");
+    expect(agent.skills).toContain("wolven-voice");
+    expect(agent.skills).toContain("investigative-brief");
+    expect(agent.references).toBeDefined();
+    expect(Array.isArray(agent.references)).toBe(true);
+    expect(agent.references).toContain("agents/references/editorial-brief.md");
+  });
+
   it("resolves every skill to a file under agents/skills/", () => {
     const agent = readAgentConfig();
     expect(Array.isArray(agent.skills)).toBe(true);
     expect(agent.skills.length).toBeGreaterThan(0);
     const missing = agent.skills.filter((skill) => !existsSync(resolve(SKILLS_DIR, `${skill}.md`)));
     expect(missing).toEqual([]);
+  });
+
+  it("resolves every skill in investigative-brief agent to a file", () => {
+    const investigativePath = resolve(REPO_ROOT, "agents", "investigative-brief.json");
+    const agent = JSON.parse(readFileSync(investigativePath, "utf-8")) as AgentConfig;
+    expect(Array.isArray(agent.skills)).toBe(true);
+    expect(agent.skills.length).toBeGreaterThan(0);
+    const missing = agent.skills.filter((skill) => !existsSync(resolve(SKILLS_DIR, `${skill}.md`)));
+    expect(missing).toEqual([]);
+  });
+
+  it("resolves every reference in investigative-brief agent to a file", () => {
+    const investigativePath = resolve(REPO_ROOT, "agents", "investigative-brief.json");
+    const agent = JSON.parse(readFileSync(investigativePath, "utf-8")) as AgentConfig;
+    if (agent.references && Array.isArray(agent.references)) {
+      const missing = agent.references.filter((ref) => !existsSync(resolve(REPO_ROOT, ref)));
+      expect(missing).toEqual([]);
+    }
   });
 
   it("has an output_schema with exactly the AgentOutput keys", () => {
@@ -73,6 +105,25 @@ describe("agent config", () => {
     }
   });
 
+  it("verifies investigative-brief skill includes no autonomous web research constraint", () => {
+    const skillPath = resolve(REPO_ROOT, "agents", "skills", "investigative-brief.md");
+    expect(existsSync(skillPath)).toBe(true);
+    const skillContent = readFileSync(skillPath, "utf-8");
+    expect(skillContent).toMatch(/web research|autonomous|research independently/i);
+  });
+
+  it("verifies investigative-brief skill includes blocker question constraint", () => {
+    const skillPath = resolve(REPO_ROOT, "agents", "skills", "investigative-brief.md");
+    const skillContent = readFileSync(skillPath, "utf-8");
+    expect(skillContent).toMatch(/one.*blocker|highest-impact.*question|single.*blocker/i);
+  });
+
+  it("verifies investigative-brief skill requires supplied evidence only", () => {
+    const skillPath = resolve(REPO_ROOT, "agents", "skills", "investigative-brief.md");
+    const skillContent = readFileSync(skillPath, "utf-8");
+    expect(skillContent).toMatch(/supplied|evidence only|invent/i);
+  });
+
   it("accepts a staged config fixture with references array", () => {
     const stagedConfig: AgentConfig = {
       id: "investigate-agent",
@@ -92,6 +143,17 @@ describe("agent config", () => {
     expect(stagedConfig.references).toBeDefined();
     expect(Array.isArray(stagedConfig.references)).toBe(true);
     expect(stagedConfig.references?.[0]).toBe("agents/references/editorial-brief.md");
+  });
+
+  it("verifies editorial-brief reference template exists and includes expected sections", () => {
+    const referencePath = resolve(REPO_ROOT, "agents", "references", "editorial-brief.md");
+    expect(existsSync(referencePath)).toBe(true);
+    const referenceContent = readFileSync(referencePath, "utf-8");
+    expect(referenceContent).toMatch(/Communication Objective/i);
+    expect(referenceContent).toMatch(/Central Claim/i);
+    expect(referenceContent).toMatch(/Evidence Inventory/i);
+    expect(referenceContent).toMatch(/Identified Gaps/i);
+    expect(referenceContent).toMatch(/Angle Options/i);
   });
 
   it("validates that references, when present, must be strings", () => {

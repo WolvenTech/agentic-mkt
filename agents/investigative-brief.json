@@ -1,0 +1,17 @@
+{
+  "id": "investigative-brief",
+  "provider": "openai",
+  "model": "gpt-4.1-mini",
+  "temperature": 0.7,
+  "max_output_tokens": 1024,
+  "skills": ["wolven-voice", "investigative-brief"],
+  "references": ["agents/references/editorial-brief.md"],
+  "output_schema": {
+    "stage": "investigate",
+    "artifact_markdown": "The investigative brief: narrowed topic, central claim, evidence inventory, gaps, and angle options",
+    "resumo": "2-3 sentence summary of the brief, the identified gap, or the blocker question",
+    "self_check": "Bullet list validating the brief against evidence requirements, gap analysis, and Wolven positioning",
+    "next_gate": "brief review",
+    "blocker_question": "One highest-impact question when supplied material is too thin; omitted when brief is complete"
+  }
+}
