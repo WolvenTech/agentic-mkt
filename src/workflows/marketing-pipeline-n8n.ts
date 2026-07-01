@@ -51,11 +51,13 @@ export const READ_CUSTOM_FIELD_JS = [
 export function extractTaskFieldsJs(fieldMapping: FieldMapping): string {
   const criteriosId = fieldId(fieldMapping, "criterios_de_aceite");
   const agentFieldId = fieldId(fieldMapping, "agent_id");
+  const docUrlId = fieldId(fieldMapping, "editorial_doc_url");
   const defaultAgentId = String(fieldMapping.custom_fields.agent_id?.default ?? DEFAULT_AGENT_ID);
   return joinN8nJs([
     "const FIELD_IDS = {",
     `  criterios_de_aceite: ${JSON.stringify(criteriosId)},`,
     `  agent_id: ${JSON.stringify(agentFieldId)},`,
+    `  editorial_doc_url: ${JSON.stringify(docUrlId)},`,
     `  default_agent_id: ${JSON.stringify(defaultAgentId)},`,
     "};",
     "",
@@ -72,6 +74,7 @@ export function extractTaskFieldsJs(fieldMapping: FieldMapping): string {
     "    task_title: String(task.name ?? ''),",
     "    task_description: String(task.description ?? task.text_content ?? ''),",
     "    criterios_de_aceite: readCustomField(task, FIELD_IDS.criterios_de_aceite),",
+    "    editorial_doc_url: readCustomField(task, FIELD_IDS.editorial_doc_url),",
     "    ingress_mode: String(webhook.ingress_mode ?? 'first_draft'),",
     `    model: ${JSON.stringify(DEFAULT_MODEL)},`,
     "  },",

@@ -121,7 +121,13 @@ export interface TaskFields {
   task_description: string;
   criterios_de_aceite: string;
   agent_id: string;
+  editorial_doc_url: string;
   ingress_mode?: IngressMode;
+}
+
+export interface DocPointerValidation {
+  valid: boolean;
+  error?: string;
 }
 
 export interface AgentOutputLike {
@@ -334,6 +340,19 @@ export function extractCustomFieldValue(task: ClickUpTask, fieldId: string): str
   return "";
 }
 
+/** Validate ClickUp Doc pointer URL/ID for presence and format. */
+export function validateDocPointer(pointer: string): DocPointerValidation {
+  if (!pointer) {
+    return { valid: false, error: "missing_pointer" };
+  }
+  const isUrl = pointer.match(/^https?:\/\//) !== null;
+  const isDocId = pointer.match(/^[a-zA-Z0-9-]+$/) !== null;
+  if (!isUrl && !isDocId) {
+    return { valid: false, error: "malformed_pointer" };
+  }
+  return { valid: true };
+}
+
 /** Map ClickUp task response to CallAgentInput fields plus task_id. */
 export function extractTaskFields(task: ClickUpTask, fieldMapping: FieldMapping): TaskFields {
   const custom = fieldMapping.custom_fields ?? {};
@@ -341,12 +360,14 @@ export function extractTaskFields(task: ClickUpTask, fieldMapping: FieldMapping)
   const agentIdField = custom.agent_id;
   const agentIdValue = extractCustomFieldValue(task, String(agentIdField?.clickup_field_id ?? ""));
   const defaultAgent = String(agentIdField?.default ?? DEFAULT_AGENT_ID);
+  const docUrlId = String(custom.editorial_doc_url?.clickup_field_id ?? "");
   return {
     task_id: String(task.id ?? ""),
     task_title: String(task.name ?? ""),
     task_description: String(task.description ?? task.text_content ?? ""),
     criterios_de_aceite: extractCustomFieldValue(task, criteriosId),
     agent_id: agentIdValue.trim() || defaultAgent,
+    editorial_doc_url: extractCustomFieldValue(task, docUrlId),
   };
 }
 

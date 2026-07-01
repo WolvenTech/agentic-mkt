@@ -16,6 +16,7 @@ import {
   stagedStatusName,
   validateStageStatus,
   validateAllStageStatuses,
+  validateDocPointer,
   workflowConnectionPath,
 } from "../src/marketing-pipeline/logic.js";
 import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/marketing-pipeline/logic.js";
@@ -44,6 +45,7 @@ function fixtureFieldMapping(): FieldMapping {
   const mapping = loadFieldMapping();
   mapping.custom_fields.criterios_de_aceite!.clickup_field_id = "cf_criterios_001";
   mapping.custom_fields.agent_id!.clickup_field_id = "cf_agent_id_001";
+  mapping.custom_fields.editorial_doc_url!.clickup_field_id = "cf_editorial_doc_url_001";
   return mapping;
 }
 
@@ -127,6 +129,92 @@ describe("task and revision input shaping", () => {
 
     comments.push({ id: "4", comment_text: "Make the hook sharper.", user: { username: "Lead" } });
     expect(hasActionableFeedback(comments)).toBe(true);
+  });
+});
+
+describe("Doc pointer extraction and validation", () => {
+  it("extracts editorial_doc_url from custom fields when present", () => {
+    const mapping = fixtureFieldMapping();
+    const task = readJson<ClickUpTask>(TASK_GET_FIXTURE_PATH);
+    const fields = extractTaskFields(task, mapping);
+
+    expect(fields.editorial_doc_url).toBe("https://doc.clickup.com/p/h/a1b2c3d4e5f6g7h8");
+    expect(fields).toHaveProperty("editorial_doc_url");
+  });
+
+  it("returns empty pointer when field ID is missing or placeholder", () => {
+    const mapping = fixtureFieldMapping();
+    mapping.custom_fields.editorial_doc_url!.clickup_field_id = "<TBD>";
+    const task = readJson<ClickUpTask>(TASK_GET_FIXTURE_PATH);
+    const fields = extractTaskFields(task, mapping);
+
+    expect(fields.editorial_doc_url).toBe("");
+  });
+
+  it("returns empty pointer when custom field value is null or undefined", () => {
+    const mapping = fixtureFieldMapping();
+    const task = readJson<ClickUpTask>(TASK_GET_FIXTURE_PATH);
+    const customFields = task.custom_fields ?? [];
+    const docField = customFields.find((f) => f.id === "cf_editorial_doc_url_001");
+    if (docField) {
+      docField.value = null;
+    }
+    const fields = extractTaskFields(task, mapping);
+
+    expect(fields.editorial_doc_url).toBe("");
+  });
+
+  it("validates Doc pointer URLs starting with https", () => {
+    const result = validateDocPointer("https://doc.clickup.com/p/h/a1b2c3d4e5f6g7h8");
+    expect(result.valid).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("validates Doc pointer URLs starting with http", () => {
+    const result = validateDocPointer("http://doc.clickup.com/p/h/a1b2c3d4e5f6g7h8");
+    expect(result.valid).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("validates Doc pointer IDs containing alphanumeric and dash characters", () => {
+    const result = validateDocPointer("a1b2c3d4-e5f6-g7h8");
+    expect(result.valid).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("rejects missing pointer with missing_pointer error", () => {
+    const result = validateDocPointer("");
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("missing_pointer");
+  });
+
+  it("rejects malformed pointer with malformed_pointer error", () => {
+    const result = validateDocPointer("not a valid pointer!");
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("malformed_pointer");
+  });
+
+  it("tolerates empty pointer for initial task creation before Doc exists", () => {
+    const mapping = fixtureFieldMapping();
+    const task: ClickUpTask = {
+      id: "task123",
+      name: "New task without Doc",
+      description: "Description",
+      custom_fields: [
+        {
+          id: "cf_editorial_doc_url_001",
+          name: "Editorial Doc URL",
+          type: "url",
+          value: "",
+        },
+      ],
+    };
+    const fields = extractTaskFields(task, mapping);
+
+    expect(fields.editorial_doc_url).toBe("");
+    const validation = validateDocPointer(fields.editorial_doc_url);
+    expect(validation.valid).toBe(false);
+    expect(validation.error).toBe("missing_pointer");
   });
 });
 

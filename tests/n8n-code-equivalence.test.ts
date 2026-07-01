@@ -45,6 +45,7 @@ function fixtureFieldMapping() {
   const mapping = loadFieldMapping();
   mapping.custom_fields.criterios_de_aceite!.clickup_field_id = "cf_criterios_001";
   mapping.custom_fields.agent_id!.clickup_field_id = "cf_agent_id_001";
+  mapping.custom_fields.editorial_doc_url!.clickup_field_id = "cf_editorial_doc_url_001";
   return mapping;
 }
 
@@ -116,6 +117,7 @@ describe("marketing pipeline n8n code equivalence", () => {
       task_title: tsFields.task_title,
       task_description: tsFields.task_description,
       criterios_de_aceite: tsFields.criterios_de_aceite,
+      editorial_doc_url: tsFields.editorial_doc_url,
       ingress_mode: "first_draft",
       model: "gpt-4.1-mini",
     });
