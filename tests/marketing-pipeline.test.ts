@@ -19,6 +19,13 @@ import {
   validateDocPointer,
   workflowConnectionPath,
 } from "../src/marketing-pipeline/logic.js";
+import {
+  CLICKUP_DOCS_V3_HELPERS_JS,
+  createDocIfNeededJs,
+  getOrCreateStagePage,
+  readCurrentPageJs,
+  replacePageJs,
+} from "../src/workflows/marketing-pipeline-n8n.js";
 import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/marketing-pipeline/logic.js";
 import type { FieldMapping } from "../src/types/field-mapping.js";
 import {
@@ -479,5 +486,79 @@ describe("stage definitions and status mapping", () => {
       expect(stagedef?.previous_gate).toBe(gate);
       expect(stagedef?.next_gate).toBe(next);
     }
+  });
+});
+
+describe("n8n Doc and page helper code generation", () => {
+  it("generates Doc creation code with proper error handling", () => {
+    const code = createDocIfNeededJs();
+
+    // Verify the code includes key patterns
+    expect(code).toContain("createClickUpDoc");
+    expect(code).toContain("editorial_doc_url");
+    expect(code).toContain("doc_id");
+    expect(code).toContain("doc_created");
+    expect(code).toContain("CLICKUP_API_TOKEN");
+    expect(code).toContain("workspace_id");
+    expect(code).toContain("list_id");
+  });
+
+  it("generates stage page creation code", () => {
+    const code = getOrCreateStagePage("investigate", "Brief");
+
+    expect(code).toContain("getOrCreatePageByName");
+    expect(code).toContain("page_id");
+    expect(code).toContain("Brief");
+    expect(code).toContain("investigate");
+    expect(code).toContain("CLICKUP_API_TOKEN");
+  });
+
+  it("generates page read code", () => {
+    const code = readCurrentPageJs();
+
+    expect(code).toContain("readPageContent");
+    expect(code).toContain("page_content");
+    expect(code).toContain("workspace_id");
+    expect(code).toContain("doc_id");
+    expect(code).toContain("page_id");
+  });
+
+  it("generates page replacement code with replace mode", () => {
+    const code = replacePageJs();
+
+    expect(code).toContain("replacePage");
+    expect(code).toContain("artifact_markdown");
+    expect(code).toContain("page_replaced");
+    expect(code).toContain("content_edit_mode");
+    expect(code).toContain("CLICKUP_API_TOKEN");
+  });
+
+  it("generated code references proper stage page names from stage definitions", () => {
+    // Verify each stage generates correct page name
+    const stagesAndPages = [
+      { stage: INVESTIGATE_STAGE.stage, pageName: INVESTIGATE_STAGE.page_name },
+      { stage: WRITE_STAGE.stage, pageName: WRITE_STAGE.page_name },
+      { stage: FORMAT_STAGE.stage, pageName: FORMAT_STAGE.page_name },
+    ];
+
+    for (const { stage, pageName } of stagesAndPages) {
+      const code = getOrCreateStagePage(stage, pageName);
+      expect(code).toContain(pageName);
+      expect(code).toContain(stage);
+    }
+  });
+
+  it("CLICKUP_DOCS_V3_HELPERS_JS is properly structured for n8n", () => {
+    // Verify the helper functions are defined
+    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function docsV3Request");
+    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function createClickUpDoc");
+    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function listDocPages");
+    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function readPageContent");
+    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function replacePage");
+    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function getOrCreatePageByName");
+
+    // Verify error handling patterns
+    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("success: false");
+    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("success: true");
   });
 });
