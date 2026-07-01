@@ -2,8 +2,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  HAPPY_PATH_NODE_SEQUENCE,
-  REVISION_PATH_NODE_SEQUENCE,
   STAGED_INVESTIGATE_PATH_NODE_SEQUENCE,
   STAGED_WRITE_PATH_NODE_SEQUENCE,
   STAGED_FORMAT_PATH_NODE_SEQUENCE,
@@ -461,17 +459,14 @@ describe("Marketing Pipeline topology", () => {
     ]);
   });
 
-  it("keeps first-draft and revision happy paths reachable", () => {
-    for (let index = 0; index < HAPPY_PATH_NODE_SEQUENCE.length - 1; index += 1) {
-      const start = HAPPY_PATH_NODE_SEQUENCE[index];
-      const end = HAPPY_PATH_NODE_SEQUENCE[index + 1];
-      expect(workflowConnectionPath(workflow, start as string, end as string), `${start} -> ${end}`).not.toBeNull();
-    }
-    for (let index = 0; index < REVISION_PATH_NODE_SEQUENCE.length - 1; index += 1) {
-      const start = REVISION_PATH_NODE_SEQUENCE[index];
-      const end = REVISION_PATH_NODE_SEQUENCE[index + 1];
-      expect(workflowConnectionPath(workflow, start as string, end as string), `${start} -> ${end}`).not.toBeNull();
-    }
+  it("removes old ready/revision single-agent workflow from production path", () => {
+    // Old workflow would have had a single Execute Call Agent convergence path
+    // Verify we don't have the old revision-count infrastructure
+    const nodes = new Set(workflow.nodes.map((node) => node.name));
+    expect(nodes.has("Revision Cap OK?")).toBe(false);
+    expect(nodes.has("Increment Revision Count")).toBe(false);
+    expect(nodes.has("Reset Revision Count")).toBe(false);
+    // Old ready/writing/approval flow was replaced by staged routing
   });
 
   it("fetches review comments through the built-in ClickUp comment getAll operation", () => {
@@ -972,28 +967,34 @@ describe("Marketing Pipeline stage routing", () => {
     expect(workflowConnectionPath(workflow, "Format?", "Status → In Progress")).not.toBeNull();
   });
 
-  it("keeps investigate staged path reachable", () => {
+  it("investigate happy path reaches Execute Call Agent and next gate (brief review)", () => {
     for (let index = 0; index < STAGED_INVESTIGATE_PATH_NODE_SEQUENCE.length - 1; index += 1) {
       const start = STAGED_INVESTIGATE_PATH_NODE_SEQUENCE[index];
       const end = STAGED_INVESTIGATE_PATH_NODE_SEQUENCE[index + 1];
       expect(workflowConnectionPath(workflow, start as string, end as string), `${start} -> ${end}`).not.toBeNull();
     }
+    expect(workflowConnectionPath(workflow, "Prepare Staged Call Agent Input", "Execute Call Agent")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Execute Call Agent", "Status → Next Gate")).not.toBeNull();
   });
 
-  it("keeps write staged path reachable", () => {
+  it("write happy path reaches Execute Call Agent and next gate (content review)", () => {
     for (let index = 0; index < STAGED_WRITE_PATH_NODE_SEQUENCE.length - 1; index += 1) {
       const start = STAGED_WRITE_PATH_NODE_SEQUENCE[index];
       const end = STAGED_WRITE_PATH_NODE_SEQUENCE[index + 1];
       expect(workflowConnectionPath(workflow, start as string, end as string), `${start} -> ${end}`).not.toBeNull();
     }
+    expect(workflowConnectionPath(workflow, "Prepare Staged Call Agent Input", "Execute Call Agent")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Execute Call Agent", "Status → Next Gate")).not.toBeNull();
   });
 
-  it("keeps format staged path reachable", () => {
+  it("format happy path reaches Execute Call Agent and next gate (final review)", () => {
     for (let index = 0; index < STAGED_FORMAT_PATH_NODE_SEQUENCE.length - 1; index += 1) {
       const start = STAGED_FORMAT_PATH_NODE_SEQUENCE[index];
       const end = STAGED_FORMAT_PATH_NODE_SEQUENCE[index + 1];
       expect(workflowConnectionPath(workflow, start as string, end as string), `${start} -> ${end}`).not.toBeNull();
     }
+    expect(workflowConnectionPath(workflow, "Prepare Staged Call Agent Input", "Execute Call Agent")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Execute Call Agent", "Status → Next Gate")).not.toBeNull();
   });
 
   it("stageinput assembly branches for staged vs old workflows", () => {
@@ -1380,6 +1381,44 @@ describe("blocker output handling (task_18)", () => {
       expect(agentOutputNode).toBeDefined();
       const connections = workflow.connections["Agent Output OK?"]?.main ?? [];
       expect(connections[0]?.[0]?.node).toBe("Staged Success?");
+    });
+
+    it("investigate blocker path returns to backlog (previous gate)", () => {
+      const code = updateStatusToPreviousGateJs();
+      expect(code).toContain("investigate");
+      expect(code).toContain("backlog");
+      expect(code).toContain("Backlog");
+      // Verify the mapping exists in the generated code
+      expect(code).toContain("investigate");
+    });
+
+    it("write blocker path returns to brief review (previous gate)", () => {
+      const code = updateStatusToPreviousGateJs();
+      expect(code).toContain("write");
+      expect(code).toContain("brief review");
+      expect(code).toContain("Brief Review");
+    });
+
+    it("format blocker path returns to content review (previous gate)", () => {
+      const code = updateStatusToPreviousGateJs();
+      expect(code).toContain("format");
+      expect(code).toContain("content review");
+      expect(code).toContain("Content Review");
+    });
+
+    it("blocker topology reaches blocker comment then previous-gate status update for all stages", () => {
+      const blocker_comment_path = workflowConnectionPath(
+        workflow,
+        "Format Blocker Comment",
+        "POST Blocker Comment"
+      );
+      const status_update_path = workflowConnectionPath(
+        workflow,
+        "POST Blocker Comment",
+        "Update Status to Previous Gate"
+      );
+      expect(blocker_comment_path).not.toBeNull();
+      expect(status_update_path).not.toBeNull();
     });
   });
 });
