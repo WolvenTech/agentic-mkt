@@ -5,6 +5,17 @@ export interface CallAgentInput {
   criterios_de_aceite: string;
 }
 
+export interface StageInput {
+  agent_id: string;
+  stage: "investigate" | "write" | "format";
+  task_title: string;
+  task_description: string;
+  criterios_de_aceite: string;
+  prior_stage_artifact?: string;
+  lead_feedback?: string;
+  model: string;
+}
+
 export interface AgentOutput {
   deliverable_markdown: string;
   resumo: string;

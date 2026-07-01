@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CallAgentInput } from "../types/call-agent-io.js";
+import type { CallAgentInput, StageInput } from "../types/call-agent-io.js";
 import type { FieldMapping } from "../types/field-mapping.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -403,9 +403,26 @@ function isSystemComment(comment: ClickUpComment): boolean {
   return username === "system" || username.includes("clickup") || username.includes("automation");
 }
 
-/** Return true when at least one non-system, non-agent comment can guide a revision. */
+function isCqPointerComment(comment: ClickUpComment): boolean {
+  const body = commentBody(comment);
+  return body.startsWith("[CQ-AI]");
+}
+
+function isCqBlockerComment(comment: ClickUpComment): boolean {
+  const body = commentBody(comment);
+  return body.startsWith("[CQ-BLOCKER]");
+}
+
+/** Return true when at least one non-system, non-agent, non-AI-pointer, non-blocker comment can guide a revision. */
 export function hasActionableFeedback(comments: ClickUpComment[]): boolean {
-  return comments.some((comment) => commentBody(comment) !== "" && !isSystemComment(comment) && !isAgentDraftComment(comment));
+  return comments.some(
+    (comment) =>
+      commentBody(comment) !== "" &&
+      !isSystemComment(comment) &&
+      !isAgentDraftComment(comment) &&
+      !isCqPointerComment(comment) &&
+      !isCqBlockerComment(comment)
+  );
 }
 
 function commentTimestamp(comment: ClickUpComment): number {
@@ -584,4 +601,50 @@ export function workflowConnectionPath(
     return null;
   }
   return walk(start, new Set());
+}
+
+/** Extract latest actionable lead feedback comment from thread. Filters out pointer comments and agent drafts. */
+export function extractLatestLeadFeedback(comments: ClickUpComment[]): string {
+  const actionable = comments.filter(
+    (comment) =>
+      commentBody(comment) !== "" &&
+      !isSystemComment(comment) &&
+      !isAgentDraftComment(comment) &&
+      !isCqPointerComment(comment) &&
+      !isCqBlockerComment(comment)
+  );
+  if (actionable.length === 0) {
+    return "";
+  }
+  const sorted = [...actionable].sort((left, right) => commentTimestamp(left) - commentTimestamp(right));
+  const latest = sorted[sorted.length - 1];
+  return latest ? commentBody(latest) : "";
+}
+
+/** Select prior stage Doc page name based on current stage. */
+export function selectPriorDocPageName(stage: string): string | null {
+  if (stage === "write") return "Brief";
+  if (stage === "format") return "Argument";
+  return null;
+}
+
+/** Build StageInput envelope from task fields, Doc content, and comments. */
+export function buildStageInput(
+  taskFields: TaskFields,
+  stage: string,
+  priorDocContent: string = "",
+  comments: ClickUpComment[] = [],
+  model: string = DEFAULT_MODEL
+): StageInput {
+  const feedback = extractLatestLeadFeedback(comments);
+  return {
+    agent_id: taskFields.agent_id,
+    stage: stage as "investigate" | "write" | "format",
+    task_title: taskFields.task_title,
+    task_description: taskFields.task_description,
+    criterios_de_aceite: taskFields.criterios_de_aceite,
+    prior_stage_artifact: priorDocContent || undefined,
+    lead_feedback: feedback || undefined,
+    model,
+  };
 }

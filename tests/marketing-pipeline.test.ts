@@ -6,12 +6,15 @@ import {
   REVISION_PATH_NODE_SEQUENCE,
   buildCallAgentInput,
   buildRevisionTaskDescription,
+  buildStageInput,
+  extractLatestLeadFeedback,
   extractTaskFields,
   formatCommentThread,
   hasActionableFeedback,
   ingressMatchesNeedsReview,
   ingressMatchesReadyToWork,
   loadFieldMapping,
+  selectPriorDocPageName,
   statusName,
   stagedStatusName,
   validateStageStatus,
@@ -22,9 +25,12 @@ import {
 import {
   CLICKUP_DOCS_V3_HELPERS_JS,
   createDocIfNeededJs,
+  extractLatestLeadFeedbackJs,
   getOrCreateStagePage,
+  prepareStagedCallAgentInputJs,
   readCurrentPageJs,
   replacePageJs,
+  selectPriorDocPageJs,
 } from "../src/workflows/marketing-pipeline-n8n.js";
 import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/marketing-pipeline/logic.js";
 import type { FieldMapping } from "../src/types/field-mapping.js";
@@ -136,6 +142,44 @@ describe("task and revision input shaping", () => {
 
     comments.push({ id: "4", comment_text: "Make the hook sharper.", user: { username: "Lead" } });
     expect(hasActionableFeedback(comments)).toBe(true);
+  });
+
+  it("excludes [CQ-AI] pointer comments from actionable feedback", () => {
+    const comments: ClickUpComment[] = [
+      { id: "1", comment_text: "[CQ-AI] Updated Brief section with new angle", user: { username: "system" } },
+      { id: "2", comment_text: "Make the hook sharper.", user: { username: "Lead" } },
+    ];
+    expect(hasActionableFeedback(comments)).toBe(true);
+
+    const onlyPointerComment: ClickUpComment[] = [
+      { id: "1", comment_text: "[CQ-AI] Stage completed", user: { username: "system" } },
+    ];
+    expect(hasActionableFeedback(onlyPointerComment)).toBe(false);
+  });
+
+  it("excludes [CQ-BLOCKER] blocker comments from actionable feedback", () => {
+    const comments: ClickUpComment[] = [
+      { id: "1", comment_text: "[CQ-BLOCKER] Unable to generate due to missing criteria", user: { username: "system" } },
+      { id: "2", comment_text: "Please clarify the target audience.", user: { username: "Lead" } },
+    ];
+    expect(hasActionableFeedback(comments)).toBe(true);
+
+    const onlyBlockerComment: ClickUpComment[] = [
+      { id: "1", comment_text: "[CQ-BLOCKER] Missing required field", user: { username: "system" } },
+    ];
+    expect(hasActionableFeedback(onlyBlockerComment)).toBe(false);
+  });
+
+  it("selects latest human comment over older ones, excluding AI pointers and blockers", () => {
+    const comments: ClickUpComment[] = [
+      { id: "1", comment_text: "First feedback", user: { username: "Lead" }, date: "1000" },
+      { id: "2", comment_text: "[CQ-AI] Brief updated", user: { username: "system" }, date: "2000" },
+      { id: "3", comment_text: "Second feedback", user: { username: "Lead" }, date: "3000" },
+      { id: "4", comment_text: "[CQ-BLOCKER] Blocked", user: { username: "system" }, date: "4000" },
+      { id: "5", comment_text: "Third feedback (latest)", user: { username: "Lead" }, date: "5000" },
+    ];
+    const feedback = extractLatestLeadFeedback(comments);
+    expect(feedback).toBe("Third feedback (latest)");
   });
 });
 
@@ -560,5 +604,133 @@ describe("n8n Doc and page helper code generation", () => {
     // Verify error handling patterns
     expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("success: false");
     expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("success: true");
+  });
+});
+
+describe("stage input assembly", () => {
+  const mapping = fixtureFieldMapping();
+  const task = readJson<ClickUpTask>(TASK_GET_FIXTURE_PATH);
+  const taskFields = extractTaskFields(task, mapping);
+  const comments = readJson<{ comments: ClickUpComment[] }>(TASK_COMMENTS_FIXTURE_PATH).comments;
+
+  it("investigate input does not require prior stage artifact", () => {
+    const input = buildStageInput(taskFields, "investigate", "", comments);
+
+    expect(input.agent_id).toBe(taskFields.agent_id);
+    expect(input.stage).toBe("investigate");
+    expect(input.task_title).toBe(taskFields.task_title);
+    expect(input.task_description).toBe(taskFields.task_description);
+    expect(input.criterios_de_aceite).toBe(taskFields.criterios_de_aceite);
+    expect(input.prior_stage_artifact).toBeUndefined();
+    expect(input.model).toBeDefined();
+  });
+
+  it("write input includes brief page markdown and lead feedback", () => {
+    const briefMarkdown = "# Brief\n\nThis is the investigative brief.";
+    const input = buildStageInput(taskFields, "write", briefMarkdown, comments);
+
+    expect(input.stage).toBe("write");
+    expect(input.prior_stage_artifact).toBe(briefMarkdown);
+    expect(input.lead_feedback).toBeDefined();
+  });
+
+  it("format input includes argument page markdown and feedback", () => {
+    const argumentMarkdown = "# Argument\n\nThis is the long-form argument.";
+    const input = buildStageInput(taskFields, "format", argumentMarkdown, comments);
+
+    expect(input.stage).toBe("format");
+    expect(input.prior_stage_artifact).toBe(argumentMarkdown);
+    expect(input.lead_feedback).toBeDefined();
+  });
+
+  it("represents empty feedback without throwing", () => {
+    const input = buildStageInput(taskFields, "investigate", "", []);
+
+    expect(input.lead_feedback).toBeUndefined();
+    expect(() => buildStageInput(taskFields, "write", "", [])).not.toThrow();
+  });
+
+  it("extracts latest actionable lead feedback from comment thread", () => {
+    const feedback = extractLatestLeadFeedback(comments);
+    expect(feedback).toBeDefined();
+    expect(feedback).toContain("Shorten the hook");
+  });
+
+  it("ignores empty, agent draft, and system comments when extracting feedback", () => {
+    const mixedComments: ClickUpComment[] = [
+      { id: "1", comment_text: "", user: { username: "Lead" } },
+      { id: "2", comment_text: "## LinkedIn Draft\n\nBody", user: { username: "Bot" } },
+      { id: "3", comment_text: "Status changed", user: { username: "ClickUp" } },
+      { id: "4", comment_text: "Add more detail", user: { username: "Lead" } },
+    ];
+
+    const feedback = extractLatestLeadFeedback(mixedComments);
+    expect(feedback).toBe("Add more detail");
+  });
+
+  it("returns empty string when no actionable feedback exists", () => {
+    const systemOnlyComments: ClickUpComment[] = [
+      { id: "1", comment_text: "Status changed", user: { username: "ClickUp" } },
+      { id: "2", comment_text: "", user: { username: "Lead" } },
+    ];
+
+    const feedback = extractLatestLeadFeedback(systemOnlyComments);
+    expect(feedback).toBe("");
+  });
+
+  it("selectPriorDocPageName returns correct page for each stage", () => {
+    expect(selectPriorDocPageName("investigate")).toBeNull();
+    expect(selectPriorDocPageName("write")).toBe("Brief");
+    expect(selectPriorDocPageName("format")).toBe("Argument");
+  });
+
+  it("selectPriorDocPageName returns null for unknown stage", () => {
+    expect(selectPriorDocPageName("unknown")).toBeNull();
+  });
+});
+
+describe("n8n stage input preparation code", () => {
+  it("generates select prior doc page code", () => {
+    const code = selectPriorDocPageJs();
+
+    expect(code).toContain("prior_page_name");
+    expect(code).toContain("stage");
+    expect(code).toContain("Brief");
+    expect(code).toContain("Argument");
+  });
+
+  it("generates extract latest lead feedback code", () => {
+    const code = extractLatestLeadFeedbackJs();
+
+    expect(code).toContain("lead_feedback");
+    expect(code).toContain("isActionableComment");
+    expect(code).toContain("commentTimestamp");
+    expect(code).toContain("Collect Task Comments");
+  });
+
+  it("generates prepare staged call agent input code", () => {
+    const code = prepareStagedCallAgentInputJs();
+
+    expect(code).toContain("stage");
+    expect(code).toContain("prior_stage_artifact");
+    expect(code).toContain("lead_feedback");
+    expect(code).toContain("model");
+    expect(code).toContain("Extract Task Fields");
+    expect(code).toContain("Read Current Page");
+    expect(code).toContain("Extract Latest Lead Feedback");
+  });
+
+  it("n8n code matches TypeScript stage input structure", () => {
+    const prepareCode = prepareStagedCallAgentInputJs();
+
+    // Verify all StageInput fields are present in generated code
+    expect(prepareCode).toContain("agent_id");
+    expect(prepareCode).toContain("stage");
+    expect(prepareCode).toContain("task_title");
+    expect(prepareCode).toContain("task_description");
+    expect(prepareCode).toContain("criterios_de_aceite");
+    expect(prepareCode).toContain("prior_stage_artifact");
+    expect(prepareCode).toContain("lead_feedback");
+    expect(prepareCode).toContain("model");
   });
 });

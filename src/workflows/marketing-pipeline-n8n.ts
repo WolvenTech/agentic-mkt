@@ -127,8 +127,19 @@ export const REVISION_COMMENT_HELPERS_JS = [
   "  return username === 'system' || username.includes('clickup') || username.includes('automation');",
   "}",
   "",
+  "function isCqPointerComment(comment) {",
+  "  const body = commentBody(comment);",
+  "  return body.startsWith('[CQ-AI]');",
+  "}",
+  "",
+  "function isCqBlockerComment(comment) {",
+  "  const body = commentBody(comment);",
+  "  return body.startsWith('[CQ-BLOCKER]');",
+  "}",
+  "",
   "function isActionableComment(comment) {",
-  "  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment);",
+  "  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment) &&",
+  "    !isCqPointerComment(comment) && !isCqBlockerComment(comment);",
   "}",
   "",
   "function actionableComments(comments) {",
@@ -649,6 +660,85 @@ export function replacePageJs(): string {
     "    ...fields,",
     "    page_replaced: true,",
     "    operation: 'page_replaced',",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Select Prior Doc Page by Stage (task_13 step 2). */
+export function selectPriorDocPageJs(): string {
+  return joinN8nJs([
+    "const fields = $('Extract Task Fields').first().json;",
+    "const stage = fields.stage || 'investigate';",
+    "",
+    "let priorPageName = null;",
+    "if (stage === 'write') priorPageName = 'Brief';",
+    "if (stage === 'format') priorPageName = 'Argument';",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...fields,",
+    "    prior_page_name: priorPageName,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Extract Latest Lead Feedback Comment (task_13 step 3). */
+export function extractLatestLeadFeedbackJs(): string {
+  return joinN8nJs([
+    REVISION_COMMENT_HELPERS_JS,
+    "",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const collected = $('Collect Task Comments').first().json || {};",
+    "const comments = normalizeComments(collected.feedback_comments ?? collected.comments ?? []);",
+    "",
+    "const actionable = comments.filter((comment) => isActionableComment(comment));",
+    "if (actionable.length === 0) {",
+    "  return [{",
+    "    json: {",
+    "      ...taskFields,",
+    "      lead_feedback: undefined,",
+    "    },",
+    "  }];",
+    "}",
+    "",
+    "const sorted = [...actionable].sort((left, right) => commentTimestamp(left) - commentTimestamp(right));",
+    "const latestFeedback = commentBody(sorted[sorted.length - 1]);",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...taskFields,",
+    "    lead_feedback: latestFeedback || undefined,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Prepare Staged Call Agent Input (task_13 step 4). */
+export function prepareStagedCallAgentInputJs(): string {
+  return joinN8nJs([
+    `const DEFAULT_MODEL = ${JSON.stringify(DEFAULT_MODEL)};`,
+    "",
+    "const fields = $('Extract Task Fields').first().json;",
+    "const priorDoc = $('Read Current Page').first()?.json;",
+    "const feedbackFields = $('Extract Latest Lead Feedback').first()?.json || {};",
+    "",
+    "const stage = fields.stage || 'investigate';",
+    "const priorArtifact = priorDoc?.page_content || '';",
+    "const leadFeedback = feedbackFields.lead_feedback || undefined;",
+    "",
+    "return [{",
+    "  json: {",
+    "    agent_id: fields.agent_id,",
+    "    stage,",
+    "    task_title: fields.task_title,",
+    "    task_description: fields.task_description,",
+    "    criterios_de_aceite: fields.criterios_de_aceite,",
+    "    prior_stage_artifact: priorArtifact || undefined,",
+    "    lead_feedback: leadFeedback,",
+    "    model: fields.model || DEFAULT_MODEL,",
+    "    task_id: fields.task_id,",
     "  },",
     "}];",
   ]);

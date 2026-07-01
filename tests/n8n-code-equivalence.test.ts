@@ -156,6 +156,38 @@ describe("marketing pipeline n8n code equivalence", () => {
     expect(JSON.stringify(jsResult?.feedback_comments)).not.toContain("Generated post");
   });
 
+  it("collectTaskComments jsCode filters [CQ-AI] pointer and [CQ-BLOCKER] blocker comments", () => {
+    const fields = { ...extractTaskFields(task, mapping), ingress_mode: "revision" };
+    const pointerComment: ClickUpComment = {
+      id: "pointer",
+      comment_text: "[CQ-AI] Brief section updated with new angle",
+      user: { username: "system" },
+    };
+    const blockerComment: ClickUpComment = {
+      id: "blocker",
+      comment_text: "[CQ-BLOCKER] Missing required acceptance criteria",
+      user: { username: "system" },
+    };
+    const humanComment: ClickUpComment = {
+      id: "human",
+      comment_text: "Revise the CTA to focus on conversions.",
+      user: { username: "Lead" },
+    };
+
+    const jsResult = firstCodeNodeJson(
+      runN8nCodeNode(collectTaskCommentsJs(), {
+        allInputs: [pointerComment, blockerComment, humanComment] as unknown as Array<Record<string, unknown>>,
+        nodeOutputs: { "Extract Task Fields": fields as unknown as Record<string, unknown> },
+      })
+    );
+
+    expect(jsResult?.comment_count).toBe(3);
+    expect(jsResult?.has_actionable_feedback).toBe(true);
+    expect(JSON.stringify(jsResult?.feedback_comments)).toContain("Revise the CTA");
+    expect(JSON.stringify(jsResult?.feedback_comments)).not.toContain("[CQ-AI]");
+    expect(JSON.stringify(jsResult?.feedback_comments)).not.toContain("[CQ-BLOCKER]");
+  });
+
   it("prepareRevisionCallAgentInput jsCode embeds original brief, filtered feedback, and simple instructions", () => {
     const fields = { ...extractTaskFields(task, mapping), ingress_mode: "revision" };
     const feedback = commentsFixture.comments.filter((comment) => String(comment.comment_text ?? "").includes("Shorten"));
