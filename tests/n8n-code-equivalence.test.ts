@@ -3,10 +3,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assembleSystemPrompt,
+  parseStageOutput,
   pairSkillContentsFromFetch,
   pairReferenceContentsFromFetch,
 } from "../src/call-agent/logic.js";
 import type { AgentConfig } from "../src/types/agent-config.js";
+import { isStageError } from "../src/types/call-agent-io.js";
 import {
   buildCallAgentInput,
   buildRevisionTaskDescription,
@@ -30,7 +32,7 @@ import {
   prepareRevisionCallAgentInputJs,
   setIngressModeJs,
 } from "../src/workflows/marketing-pipeline-n8n.js";
-import { assemblePromptJs, parseAgentConfigJs } from "../src/workflows/call-agent-n8n.js";
+import { assemblePromptJs, parseAgentConfigJs, parseStageOutputJs } from "../src/workflows/call-agent-n8n.js";
 
 const REPO_ROOT = resolve(__dirname, "..");
 const WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-ready-to-work.json");
@@ -334,5 +336,147 @@ describe("Call Agent n8n code equivalence", () => {
 
     expect(refContents["agents/references/editorial-brief.md"]).toContain("Structure and angles");
     expect(refContents["agents/references/example-brief.md"]).toContain("Sample brief format");
+  });
+
+  it("parseStageOutputJs accepts valid investigate stage output", () => {
+    const stageOutput = {
+      stage: "investigate",
+      artifact_markdown: "## Brief\n\nKey findings from research.",
+      resumo: "Summary of findings.",
+      self_check: "- All research documented",
+      next_gate: "brief review",
+    };
+
+    const jsResult = firstCodeNodeJson(
+      runN8nCodeNode(parseStageOutputJs(), {
+        input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
+        nodeOutputs: {
+          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
+        },
+      })
+    );
+
+    expect(jsResult?.stage).toBe("investigate");
+    expect(jsResult?.next_gate).toBe("brief review");
+    expect(jsResult?.artifact_markdown).toContain("Brief");
+  });
+
+  it("parseStageOutputJs accepts valid stage output with blocker_question", () => {
+    const stageOutput = {
+      stage: "investigate",
+      artifact_markdown: "## Brief\n\nPartial research.",
+      resumo: "Incomplete findings.",
+      self_check: "- Missing sources",
+      next_gate: "brief review",
+      blocker_question: "Can you provide additional sources?",
+    };
+
+    const jsResult = firstCodeNodeJson(
+      runN8nCodeNode(parseStageOutputJs(), {
+        input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
+        nodeOutputs: {
+          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
+        },
+      })
+    );
+
+    expect(jsResult?.blocker_question).toBe("Can you provide additional sources?");
+  });
+
+  it("parseStageOutputJs rejects unknown stage", () => {
+    const stageOutput = {
+      stage: "unknown",
+      artifact_markdown: "Brief",
+      resumo: "Summary",
+      self_check: "Checks",
+      next_gate: "brief review",
+    };
+
+    const jsResult = firstCodeNodeJson(
+      runN8nCodeNode(parseStageOutputJs(), {
+        input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
+        nodeOutputs: {
+          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
+        },
+      })
+    );
+
+    expect(jsResult?.error).toContain("Unknown stage");
+  });
+
+  it("parseStageOutputJs rejects mismatched next_gate for stage", () => {
+    const stageOutput = {
+      stage: "investigate",
+      artifact_markdown: "Brief",
+      resumo: "Summary",
+      self_check: "Checks",
+      next_gate: "content review",
+    };
+
+    const jsResult = firstCodeNodeJson(
+      runN8nCodeNode(parseStageOutputJs(), {
+        input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
+        nodeOutputs: {
+          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
+        },
+      })
+    );
+
+    expect(jsResult?.error).toContain("Invalid next_gate");
+    expect(jsResult?.error).toContain("investigate");
+  });
+
+  it("parseStageOutputJs returns error envelope for malformed JSON", () => {
+    const jsResult = firstCodeNodeJson(
+      runN8nCodeNode(parseStageOutputJs(), {
+        input: { output: [{ type: "message", content: [{ type: "output_text", text: "not-json-at-all" }] }] },
+        nodeOutputs: {
+          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
+        },
+      })
+    );
+
+    expect(jsResult?.error).toContain("Failed to parse StageAgentOutput");
+    expect(jsResult?.raw_response).toBe("not-json-at-all");
+  });
+
+  it("parseStageOutputJs rejects missing required keys", () => {
+    const partial = {
+      stage: "investigate",
+      artifact_markdown: "Brief",
+      resumo: "Summary",
+    };
+
+    const jsResult = firstCodeNodeJson(
+      runN8nCodeNode(parseStageOutputJs(), {
+        input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(partial) }] }] },
+        nodeOutputs: {
+          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
+        },
+      })
+    );
+
+    expect(jsResult?.error).toContain("Missing required keys");
+  });
+
+  it("parseStageOutputJs rejects empty artifact_markdown", () => {
+    const stageOutput = {
+      stage: "investigate",
+      artifact_markdown: "   ",
+      resumo: "Summary",
+      self_check: "Checks",
+      next_gate: "brief review",
+    };
+
+    const jsResult = firstCodeNodeJson(
+      runN8nCodeNode(parseStageOutputJs(), {
+        input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
+        nodeOutputs: {
+          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
+        },
+      })
+    );
+
+    expect(jsResult?.error).toContain("Empty or non-string values");
   });
 });
