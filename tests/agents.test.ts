@@ -71,6 +71,44 @@ describe("field mapping", () => {
       expect(field, `${key} missing clickup_field_id`).toHaveProperty("clickup_field_id");
     }
   });
+
+  it("includes all staged status keys: investigate, brief_review, write, content_review, format, final_review", () => {
+    const fieldMapping = readFieldMapping();
+    const stagedKeys = ["investigate", "brief_review", "write", "content_review", "format", "final_review"];
+    for (const key of stagedKeys) {
+      expect(fieldMapping.statuses, `missing staged status key: ${key}`).toHaveProperty(key);
+      expect(String(fieldMapping.statuses[key])).not.toBe("");
+    }
+  });
+
+  it("includes editorial_doc_url custom field with name and clickup_field_id", () => {
+    const fieldMapping = readFieldMapping();
+    expect(fieldMapping.custom_fields, "missing editorial_doc_url field").toHaveProperty("editorial_doc_url");
+    const docUrlField = fieldMapping.custom_fields.editorial_doc_url;
+    expect(docUrlField.name).toBe("Editorial Doc URL");
+    expect(docUrlField.clickup_field_id).toBeDefined();
+  });
+
+  it("preserves existing criterios_de_aceite and agent_id custom fields", () => {
+    const fieldMapping = readFieldMapping();
+    expect(fieldMapping.custom_fields).toHaveProperty("criterios_de_aceite");
+    expect(fieldMapping.custom_fields).toHaveProperty("agent_id");
+    const criteriosField = fieldMapping.custom_fields.criterios_de_aceite;
+    const agentField = fieldMapping.custom_fields.agent_id;
+    expect(criteriosField.name).toBe("Critérios de Aceite");
+    expect(criteriosField.clickup_field_id).toBe("bd2e7a51-3e9e-4d6a-9729-770fac44a504");
+    expect(agentField.name).toBe("agent_id");
+    expect(agentField.clickup_field_id).toBe("a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0");
+  });
+
+  it("retains legacy status keys for backward compatibility: ready, needs_review, writing, review", () => {
+    const fieldMapping = readFieldMapping();
+    const legacyKeys = ["ready", "needs_review", "writing", "review"];
+    for (const key of legacyKeys) {
+      expect(fieldMapping.statuses, `missing legacy status key: ${key}`).toHaveProperty(key);
+      expect(String(fieldMapping.statuses[key])).not.toBe("");
+    }
+  });
 });
 
 describe("isAgentError", () => {

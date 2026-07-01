@@ -12,15 +12,26 @@
       "type": "short_text",
       "default": "linkedin-writer",
       "clickup_field_id": "a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0"
+    },
+    "editorial_doc_url": {
+      "name": "Editorial Doc URL",
+      "type": "url",
+      "clickup_field_id": "<TBD>"
     }
   },
   "statuses": {
     "backlog": "backlog",
+    "investigate": "investigate",
+    "brief_review": "brief review",
+    "write": "write",
+    "content_review": "content review",
+    "format": "format",
+    "final_review": "final review",
+    "publish": "publish",
+    "completed": "Closed",
     "ready": "ready",
     "needs_review": "needs review",
     "writing": "writing",
-    "review": "approval",
-    "publish": "publish",
-    "completed": "Closed"
+    "review": "approval"
   }
 }

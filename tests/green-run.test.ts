@@ -192,8 +192,23 @@ function fullFieldMapping(overrides: Partial<FieldMapping> = {}): FieldMapping {
     custom_fields: {
       criterios_de_aceite: { name: "Critérios de Aceite", type: "text", clickup_field_id: "cf1" },
       agent_id: { name: "agent_id", type: "short_text", clickup_field_id: "cf2", default: "linkedin-writer" },
+      editorial_doc_url: { name: "Editorial Doc URL", type: "url", clickup_field_id: "cf3" },
     },
-    statuses: { backlog: "Backlog", ready: "Ready", needs_review: "Needs Review", writing: "Writing", review: "Approval" },
+    statuses: {
+      backlog: "Backlog",
+      investigate: "Investigate",
+      brief_review: "Brief Review",
+      write: "Write",
+      content_review: "Content Review",
+      format: "Format",
+      final_review: "Final Review",
+      ready: "Ready",
+      needs_review: "Needs Review",
+      writing: "Writing",
+      review: "Approval",
+      publish: "Publish",
+      completed: "Closed",
+    },
     ...overrides,
   };
 }
@@ -212,12 +227,26 @@ function stubClickUpAndN8nSuccess(): void {
       if (url.includes("api.clickup.com")) {
         if (url.includes("/field")) {
           return jsonResponse({
-            fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }],
+            fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "Editorial Doc URL" }],
           });
         }
         return jsonResponse({
           name: "Linkedin Post Creator",
-          statuses: [{ status: "Ready" }, { status: "Needs Review" }, { status: "Writing" }, { status: "Approval" }],
+          statuses: [
+            { status: "Backlog" },
+            { status: "Investigate" },
+            { status: "Brief Review" },
+            { status: "Write" },
+            { status: "Content Review" },
+            { status: "Format" },
+            { status: "Final Review" },
+            { status: "Ready" },
+            { status: "Needs Review" },
+            { status: "Writing" },
+            { status: "Approval" },
+            { status: "Publish" },
+            { status: "Closed" },
+          ],
         });
       }
       return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: true }] });
@@ -367,11 +396,25 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
       vi.fn(async (url: string) => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
-            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
+            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "Editorial Doc URL" }] });
           }
           return jsonResponse({
             name: "Linkedin Post Creator",
-            statuses: [{ status: "ready" }, { status: "needs review" }, { status: "writing" }, { status: "approval" }],
+            statuses: [
+              { status: "backlog" },
+              { status: "investigate" },
+              { status: "brief review" },
+              { status: "write" },
+              { status: "content review" },
+              { status: "format" },
+              { status: "final review" },
+              { status: "ready" },
+              { status: "needs review" },
+              { status: "writing" },
+              { status: "approval" },
+              { status: "publish" },
+              { status: "closed" },
+            ],
           });
         }
         return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: true }] });
