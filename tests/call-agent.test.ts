@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   REQUIRED_OUTPUT_KEYS,
+  REQUIRED_STAGE_OUTPUT_KEYS,
   assembleSystemPrompt,
   assembleUserMessage,
   buildStructuredLog,
@@ -12,12 +13,13 @@ import {
   githubFetchPaths,
   pairSkillContentsFromFetch,
   parseAgentOutput,
+  parseStageOutput,
   providerIsOpenAI,
   providerIsRouted,
 } from "../src/call-agent/logic.js";
 import type { AgentConfig } from "../src/types/agent-config.js";
 import type { CallAgentInput } from "../src/types/call-agent-io.js";
-import { isAgentError } from "../src/types/call-agent-io.js";
+import { isAgentError, isStageError } from "../src/types/call-agent-io.js";
 import { buildCallAgentWorkflow, GPT_NODE_NAME } from "../src/workflows/build-call-agent.js";
 import type { N8nNode } from "../src/workflows/build-call-agent.js";
 
@@ -106,6 +108,242 @@ describe("parseAgentOutput", () => {
     expect(() => parseAgentOutput("{")).not.toThrow();
     expect(() => parseAgentOutput("[]")).not.toThrow();
     expect(isAgentError(parseAgentOutput("[]"))).toBe(true);
+  });
+});
+
+describe("parseStageOutput", () => {
+  const SAMPLE_VALID_STAGE_OUTPUT = {
+    stage: "investigate",
+    artifact_markdown: "## Brief\n\nKey findings from research.",
+    resumo: "Summary of brief findings.",
+    self_check: "- All research documented\n- Key insights highlighted",
+    next_gate: "brief review",
+  };
+
+  const SAMPLE_VALID_BLOCKER_OUTPUT = {
+    stage: "investigate",
+    artifact_markdown: "## Brief\n\nPartial research.",
+    resumo: "Incomplete findings.",
+    self_check: "- Missing sources",
+    next_gate: "brief review",
+    blocker_question: "Can you provide additional sources for the claims?",
+  };
+
+  it("produces a StageAgentOutput with all required keys for valid JSON", () => {
+    const result = parseStageOutput(JSON.stringify(SAMPLE_VALID_STAGE_OUTPUT));
+    expect(isStageError(result)).toBe(false);
+    if (!isStageError(result)) {
+      for (const key of REQUIRED_STAGE_OUTPUT_KEYS) {
+        expect(key in result).toBe(true);
+      }
+      expect(result.stage).toBe("investigate");
+      expect(result.next_gate).toBe("brief review");
+    }
+  });
+
+  it("accepts a valid stage output with blocker_question", () => {
+    const result = parseStageOutput(JSON.stringify(SAMPLE_VALID_BLOCKER_OUTPUT));
+    expect(isStageError(result)).toBe(false);
+    if (!isStageError(result)) {
+      expect(result.blocker_question).toBe("Can you provide additional sources for the claims?");
+    }
+  });
+
+  it("rejects output with unknown stage", () => {
+    const invalid = { ...SAMPLE_VALID_STAGE_OUTPUT, stage: "unknown-stage" };
+    const result = parseStageOutput(JSON.stringify(invalid));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("unknown");
+      expect(result.error.toLowerCase()).toContain("stage");
+    }
+  });
+
+  it("rejects output with mismatched next_gate for the stage", () => {
+    const invalid = { ...SAMPLE_VALID_STAGE_OUTPUT, next_gate: "content review" };
+    const result = parseStageOutput(JSON.stringify(invalid));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("next_gate");
+      expect(result.error).toContain("investigate");
+      expect(result.error).toContain("brief review");
+    }
+  });
+
+  it("rejects output for write stage with wrong next_gate", () => {
+    const invalid = {
+      stage: "write",
+      artifact_markdown: "## Argument\n\nFull argument.",
+      resumo: "Argument summary.",
+      self_check: "- Logically sound",
+      next_gate: "brief review",
+    };
+    const result = parseStageOutput(JSON.stringify(invalid));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("content review");
+    }
+  });
+
+  it("rejects output for format stage with wrong next_gate", () => {
+    const invalid = {
+      stage: "format",
+      artifact_markdown: "## Final Draft\n\nFormatted post.",
+      resumo: "Format summary.",
+      self_check: "- Formatting complete",
+      next_gate: "content review",
+    };
+    const result = parseStageOutput(JSON.stringify(invalid));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("final review");
+    }
+  });
+
+  it("returns an error envelope (not partial output) for malformed JSON", () => {
+    const result = parseStageOutput("not-json-at-all");
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.raw_response).toBe("not-json-at-all");
+    }
+    expect(result).not.toHaveProperty("stage");
+  });
+
+  it("returns an error envelope naming the missing key", () => {
+    const partial = {
+      stage: "investigate",
+      artifact_markdown: "content",
+      resumo: "summary",
+    };
+    const result = parseStageOutput(JSON.stringify(partial));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("self_check");
+      expect(result.error).toContain("next_gate");
+    }
+  });
+
+  it("fails validation for empty artifact_markdown", () => {
+    const invalid = { ...SAMPLE_VALID_STAGE_OUTPUT, artifact_markdown: "   " };
+    const result = parseStageOutput(JSON.stringify(invalid));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("artifact_markdown");
+    }
+  });
+
+  it("fails validation for empty resumo", () => {
+    const invalid = { ...SAMPLE_VALID_STAGE_OUTPUT, resumo: "" };
+    const result = parseStageOutput(JSON.stringify(invalid));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("resumo");
+    }
+  });
+
+  it("fails validation for empty self_check", () => {
+    const invalid = { ...SAMPLE_VALID_STAGE_OUTPUT, self_check: "   " };
+    const result = parseStageOutput(JSON.stringify(invalid));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("self_check");
+    }
+  });
+
+  it("fails validation for blocker_question that is empty", () => {
+    const invalid = { ...SAMPLE_VALID_STAGE_OUTPUT, blocker_question: "   " };
+    const result = parseStageOutput(JSON.stringify(invalid));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("blocker_question");
+    }
+  });
+
+  it("strips ```json fences before parsing", () => {
+    const fenced = `\`\`\`json\n${JSON.stringify(SAMPLE_VALID_STAGE_OUTPUT)}\n\`\`\``;
+    const result = parseStageOutput(fenced);
+    expect(isStageError(result)).toBe(false);
+    if (!isStageError(result)) {
+      expect(result.stage).toBe("investigate");
+    }
+  });
+
+  it("never throws on garbage input", () => {
+    expect(() => parseStageOutput("{")).not.toThrow();
+    expect(() => parseStageOutput("[]")).not.toThrow();
+    expect(isStageError(parseStageOutput("[]"))).toBe(true);
+  });
+
+  it("accepts valid investigate stage with correct next_gate", () => {
+    const output = {
+      stage: "investigate",
+      artifact_markdown: "Brief findings",
+      resumo: "Summary",
+      self_check: "Checks done",
+      next_gate: "brief review",
+    };
+    const result = parseStageOutput(JSON.stringify(output));
+    expect(isStageError(result)).toBe(false);
+    if (!isStageError(result)) {
+      expect(result.stage).toBe("investigate");
+      expect(result.next_gate).toBe("brief review");
+    }
+  });
+
+  it("accepts valid write stage with correct next_gate", () => {
+    const output = {
+      stage: "write",
+      artifact_markdown: "Full argument",
+      resumo: "Summary",
+      self_check: "Checks done",
+      next_gate: "content review",
+    };
+    const result = parseStageOutput(JSON.stringify(output));
+    expect(isStageError(result)).toBe(false);
+    if (!isStageError(result)) {
+      expect(result.stage).toBe("write");
+      expect(result.next_gate).toBe("content review");
+    }
+  });
+
+  it("accepts valid format stage with correct next_gate", () => {
+    const output = {
+      stage: "format",
+      artifact_markdown: "Formatted post",
+      resumo: "Summary",
+      self_check: "Checks done",
+      next_gate: "final review",
+    };
+    const result = parseStageOutput(JSON.stringify(output));
+    expect(isStageError(result)).toBe(false);
+    if (!isStageError(result)) {
+      expect(result.stage).toBe("format");
+      expect(result.next_gate).toBe("final review");
+    }
+  });
+
+  it("preserves optional blocker_question when present", () => {
+    const output = {
+      stage: "investigate",
+      artifact_markdown: "Brief",
+      resumo: "Summary",
+      self_check: "Checks",
+      next_gate: "brief review",
+      blocker_question: "Need clarification on sources",
+    };
+    const result = parseStageOutput(JSON.stringify(output));
+    expect(isStageError(result)).toBe(false);
+    if (!isStageError(result)) {
+      expect(result.blocker_question).toBe("Need clarification on sources");
+    }
+  });
+
+  it("omits blocker_question from result when not present", () => {
+    const result = parseStageOutput(JSON.stringify(SAMPLE_VALID_STAGE_OUTPUT));
+    expect(isStageError(result)).toBe(false);
+    if (!isStageError(result)) {
+      expect("blocker_question" in result).toBe(false);
+    }
   });
 });
 

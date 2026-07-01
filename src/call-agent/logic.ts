@@ -1,7 +1,9 @@
 import type { AgentConfig } from "../types/agent-config.js";
-import type { AgentErrorEnvelope, CallAgentInput, ParseResult } from "../types/call-agent-io.js";
+import type { AgentErrorEnvelope, CallAgentInput, ParseResult, StageParsedResult, StageErrorEnvelope } from "../types/call-agent-io.js";
+import { isKnownStage, getStageDefinition } from "../marketing-pipeline/stages.js";
 
 export const REQUIRED_OUTPUT_KEYS = ["deliverable_markdown", "resumo", "autochecagem"] as const;
+export const REQUIRED_STAGE_OUTPUT_KEYS = ["stage", "artifact_markdown", "resumo", "self_check", "next_gate"] as const;
 export const GITHUB_REPO_OWNER = "rafiti052";
 export const GITHUB_REPO_NAME = "agentic-mkt";
 export const DEFAULT_PROVIDER = "openai";
@@ -136,6 +138,82 @@ export function parseAgentOutput(rawResponse: string): ParseResult {
     deliverable_markdown: record.deliverable_markdown as string,
     resumo: record.resumo as string,
     autochecagem: record.autochecagem as string,
+  };
+}
+
+function stageErrorEnvelope(message: string, rawResponse: string): StageErrorEnvelope {
+  return { error: message, raw_response: rawResponse };
+}
+
+/** Parse LLM output into a StageAgentOutput, returning an error envelope on any parse/validation failure. */
+export function parseStageOutput(rawResponse: string): StageParsedResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripJsonFences(rawResponse));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return stageErrorEnvelope(`Failed to parse StageAgentOutput: ${message}`, rawResponse);
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return stageErrorEnvelope("Expected JSON object", rawResponse);
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const missing = REQUIRED_STAGE_OUTPUT_KEYS.filter((key) => !(key in record));
+  if (missing.length > 0) {
+    return stageErrorEnvelope(`Missing required keys: ${missing.join(", ")}`, rawResponse);
+  }
+
+  // Validate stage is a known stage
+  const stage = record.stage;
+  if (!isKnownStage(stage)) {
+    return stageErrorEnvelope(`Unknown stage '${String(stage)}'. Expected one of: investigate, write, format`, rawResponse);
+  }
+
+  // Get stage definition for next_gate validation
+  let stageDefinition;
+  try {
+    stageDefinition = getStageDefinition(stage);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown stage";
+    return stageErrorEnvelope(message, rawResponse);
+  }
+
+  // Validate required string fields are non-empty
+  const requiredStringFields = ["artifact_markdown", "resumo", "self_check"] as const;
+  const empty = requiredStringFields.filter((key) => {
+    const value = record[key];
+    return typeof value !== "string" || value.trim().length === 0;
+  });
+  if (empty.length > 0) {
+    return stageErrorEnvelope(`Empty or non-string values for: ${empty.join(", ")}`, rawResponse);
+  }
+
+  // Validate next_gate matches stage definition
+  const nextGate = record.next_gate;
+  if (nextGate !== stageDefinition.next_gate) {
+    return stageErrorEnvelope(
+      `Invalid next_gate '${String(nextGate)}' for stage '${stage}'. Expected '${stageDefinition.next_gate}'`,
+      rawResponse
+    );
+  }
+
+  // Validate blocker_question if present
+  const blockerQuestion = record.blocker_question;
+  if (blockerQuestion !== undefined) {
+    if (typeof blockerQuestion !== "string" || blockerQuestion.trim().length === 0) {
+      return stageErrorEnvelope("blocker_question must be a non-empty string when present", rawResponse);
+    }
+  }
+
+  return {
+    stage,
+    artifact_markdown: record.artifact_markdown as string,
+    resumo: record.resumo as string,
+    self_check: record.self_check as string,
+    next_gate: nextGate as "brief review" | "content review" | "final review",
+    ...(blockerQuestion ? { blocker_question: blockerQuestion as string } : {}),
   };
 }
 
