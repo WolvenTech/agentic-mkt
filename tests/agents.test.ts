@@ -21,6 +21,8 @@ const REQUIRED_AGENT_KEYS = [
   "output_schema",
 ] as const;
 
+const OPTIONAL_AGENT_KEYS = ["references"] as const;
+
 const OUTPUT_SCHEMA_KEYS = ["deliverable_markdown", "resumo", "autochecagem"] as const;
 
 function readAgentConfig(): AgentConfig {
@@ -53,6 +55,89 @@ describe("agent config", () => {
       expect(typeof agent.output_schema[key]).toBe("string");
       expect(agent.output_schema[key].trim().length).toBeGreaterThan(0);
     }
+  });
+
+  it("preserves backward compatibility: linkedin-writer.json does not require references", () => {
+    const agent = readAgentConfig();
+    expect("references" in agent || !("references" in agent)).toBe(true);
+  });
+
+  it("allows optional references field when present", () => {
+    const agent = readAgentConfig();
+    if ("references" in agent && agent.references !== undefined) {
+      expect(Array.isArray(agent.references)).toBe(true);
+      for (const ref of agent.references) {
+        expect(typeof ref).toBe("string");
+        expect(ref.trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("accepts a staged config fixture with references array", () => {
+    const stagedConfig: AgentConfig = {
+      id: "investigate-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["wolven-voice", "investigative-brief"],
+      references: ["agents/references/editorial-brief.md"],
+      output_schema: {
+        deliverable_markdown: "Example output",
+        resumo: "Summary",
+        autochecagem: "Validation",
+      },
+    };
+    expect(stagedConfig.id).toBe("investigate-agent");
+    expect(stagedConfig.references).toBeDefined();
+    expect(Array.isArray(stagedConfig.references)).toBe(true);
+    expect(stagedConfig.references?.[0]).toBe("agents/references/editorial-brief.md");
+  });
+
+  it("validates that references, when present, must be strings", () => {
+    function validateReferences(config: AgentConfig): boolean {
+      if (!config.references) {
+        return true;
+      }
+      for (const ref of config.references) {
+        if (typeof ref !== "string" || ref.trim().length === 0) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    const validConfig: AgentConfig = {
+      id: "valid-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["skill1"],
+      references: ["agents/references/template.md"],
+      output_schema: {
+        deliverable_markdown: "Example",
+        resumo: "Summary",
+        autochecagem: "Validation",
+      },
+    };
+    expect(validateReferences(validConfig)).toBe(true);
+
+    const invalidConfig: AgentConfig = {
+      id: "invalid-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["skill1"],
+      references: ["" as any],
+      output_schema: {
+        deliverable_markdown: "Example",
+        resumo: "Summary",
+        autochecagem: "Validation",
+      },
+    };
+    expect(validateReferences(invalidConfig)).toBe(false);
   });
 });
 

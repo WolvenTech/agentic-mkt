@@ -27,6 +27,11 @@ export function skillPath(skillName: string): string {
   return `agents/skills/${skillName}.md`;
 }
 
+/** Build a GitHub fetch path for a reference file (already absolute or relative to repo root). */
+export function referencePath(referenceFile: string): string {
+  return referenceFile;
+}
+
 /** Decode a GitHub contents-API response (base64 `content` field) to UTF-8 text. */
 export function decodeGithubFileContent(githubResponse: { content?: unknown }): string {
   const content = githubResponse.content;
@@ -316,10 +321,19 @@ export function buildStructuredLog(params: {
   };
 }
 
+/**
+ * githubFetchPaths returns all GitHub file paths to fetch for an agent config:
+ * agent config JSON, all skill markdown files, and all reference/template files.
+ */
 export function githubFetchPaths(agentConfig: AgentConfig): string[] {
   const paths = [agentConfigPath(agentConfig.id)];
   for (const skill of agentConfig.skills) {
     paths.push(skillPath(skill));
+  }
+  if (agentConfig.references) {
+    for (const reference of agentConfig.references) {
+      paths.push(referencePath(reference));
+    }
   }
   return paths;
 }

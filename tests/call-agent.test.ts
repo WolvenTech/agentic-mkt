@@ -575,6 +575,38 @@ describe("prompt assembly", () => {
     expect(paths).toContain("agents/skills/linkedin-format.md");
   });
 
+  it("githubFetchPaths includes reference paths for staged configs with references", () => {
+    const stagedAgent: typeof agent = {
+      id: "investigate-agent",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["wolven-voice", "investigative-brief"],
+      references: ["agents/references/editorial-brief.md", "agents/references/example-brief.md"],
+      output_schema: {
+        deliverable_markdown: "Example",
+        resumo: "Summary",
+        autochecagem: "Validation",
+      },
+    };
+    const paths = githubFetchPaths(stagedAgent);
+    expect(paths).toContain("agents/investigate-agent.json");
+    expect(paths).toContain("agents/skills/wolven-voice.md");
+    expect(paths).toContain("agents/skills/investigative-brief.md");
+    expect(paths).toContain("agents/references/editorial-brief.md");
+    expect(paths).toContain("agents/references/example-brief.md");
+  });
+
+  it("githubFetchPaths handles legacy config without references", () => {
+    const legacyAgent = readAgentConfig();
+    const paths = githubFetchPaths(legacyAgent);
+    expect(paths).toContain("agents/linkedin-writer.json");
+    expect(paths).toContain("agents/skills/wolven-voice.md");
+    expect(paths).toContain("agents/skills/linkedin-format.md");
+    expect(paths.length).toBe(3);
+  });
+
   it("decodeGithubFileContent round-trips base64-encoded file content", () => {
     const payload = githubFilePayload(JSON.stringify(agent));
     const decoded = decodeGithubFileContent(payload);
