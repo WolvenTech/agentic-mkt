@@ -5,12 +5,11 @@ import { DEFAULT_MODEL, extractTaskFields, loadFieldMapping } from "../src/marke
 import { clickupGet, clickupPost, clickupPut, type ClickUpClientOptions } from "../src/clickup/client.js";
 import { createN8nClient } from "../src/n8n/client.js";
 import { runLocalProofChecks } from "../src/proof/local-proof.js";
+import { summarizeProof, printFailures, type EvidenceStatus } from "../src/proof/result-summary.js";
 
 const V2_BASE = "https://api.clickup.com/api/v2";
 const V3_BASE = "https://api.clickup.com";
 const LOG_DIR = resolve(REPO_ROOT, "logs", "content-quality-proof");
-
-type EvidenceStatus = "pass" | "fail" | "blocked" | "observe" | "skip";
 
 interface EvidenceRow {
   id: string;
@@ -131,6 +130,10 @@ async function main(): Promise<void> {
     );
     console.log(outputPath);
     console.log(JSON.stringify({ mode: "local", state, evidence: rows }, null, 2));
+
+    const summary = summarizeProof(rows, localProof.passed);
+    printFailures(summary);
+    process.exitCode = summary.exitCode;
     return;
   }
 
@@ -512,6 +515,10 @@ async function main(): Promise<void> {
   );
   console.log(outputPath);
   console.log(JSON.stringify({ mode: "live", state, evidence: rows }, null, 2));
+
+  const summary = summarizeProof(rows, localProof.passed);
+  printFailures(summary);
+  process.exitCode = summary.exitCode;
 }
 
 main().catch((err) => {
