@@ -135,12 +135,10 @@ describe("deployWorkflows", () => {
           active: true,
           nodes: [
             {
-              name: "Ready to Work?",
-              parameters: {
-                conditions: {
-                  conditions: [{ leftValue: "={{$json.after.status}}", rightValue: "ready" }],
-                },
-              },
+              name: "ClickUp Webhook",
+              type: "n8n-nodes-base.webhook",
+              parameters: { path: "marketing-pipeline-staged-ingress" },
+              webhookId: "live-webhook",
             },
             {
               name: "Status → In Progress",
@@ -179,7 +177,7 @@ describe("deployWorkflows", () => {
     });
 
     expect(report.callAgent.id).toBe("wf-call");
-    expect(report.marketingPipeline.ingressFilter).toBe("ready");
+    expect(report.marketingPipeline.ingressFilter).toBe("marketing-pipeline-staged-ingress");
     expect(report.marketingPipeline.writingStatus).toBe("writing");
     expect(report.marketingPipeline.reviewStatus).toBe("approval");
 

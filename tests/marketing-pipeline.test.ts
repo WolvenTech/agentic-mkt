@@ -89,10 +89,6 @@ function nodeByName(workflow: ReturnType<typeof buildMarketingPipelineWorkflow>,
   return workflow.nodes.find((node) => node.name === name);
 }
 
-function jsCodeFromWorkflow(workflow: ReturnType<typeof buildMarketingPipelineWorkflow>, nodeName: string): string {
-  return String((nodeByName(workflow, nodeName)?.parameters as { jsCode?: string } | undefined)?.jsCode ?? "");
-}
-
 describe("marketing pipeline ingress logic", () => {
   it("does not export the removed ready/review ingress helpers", () => {
     expect("ingressMatchesReadyToWork" in marketingPipelineLogic).toBe(false);
@@ -453,14 +449,18 @@ describe("Marketing Pipeline topology", () => {
   const workflow = buildMarketingPipelineWorkflow(mapping);
   const nodes = new Set(workflow.nodes.map((node) => node.name));
 
-  it("has exactly two ingress trigger branches: staged or ready, and needs review", () => {
-    expect(workflow.connections["Staged or Ready?"]?.main).toEqual([
-      [{ node: "Set First Draft Ingress", type: "main", index: 0 }],
-      [{ node: "Needs Review?", type: "main", index: 0 }],
+  it("routes staged ingress directly into staged processing", () => {
+    expect(workflow.connections["Extract Stage"]?.main).toEqual([
+      [{ node: "Set Staged Ingress", type: "main", index: 0 }],
     ]);
-    expect(workflow.connections["Needs Review?"]?.main).toEqual([
-      [{ node: "Set Revision Ingress", type: "main", index: 0 }],
-      [{ node: "Set Needs Review Skip Target", type: "main", index: 0 }],
+    expect(workflow.connections["Set Staged Ingress"]?.main).toEqual([
+      [{ node: "Extract Webhook Context", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["Status → In Progress"]?.main).toEqual([
+      [{ node: "GET Task Comments", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["Collect Task Comments"]?.main).toEqual([
+      [{ node: "Read Current Page", type: "main", index: 0 }],
     ]);
   });
 
@@ -474,14 +474,19 @@ describe("Marketing Pipeline topology", () => {
     ]);
   });
 
-  it("removes old ready/revision single-agent workflow from production path", () => {
-    // Old workflow would have had a single Execute Call Agent convergence path
-    // Verify we don't have the old revision-count infrastructure
-    const nodes = new Set(workflow.nodes.map((node) => node.name));
-    expect(nodes.has("Revision Cap OK?")).toBe(false);
-    expect(nodes.has("Increment Revision Count")).toBe(false);
-    expect(nodes.has("Reset Revision Count")).toBe(false);
-    // Old ready/writing/approval flow was replaced by staged routing
+  it("removes legacy ready/review/revision nodes from the generated workflow", () => {
+    for (const removedNode of [
+      "Staged or Ready?",
+      "Needs Review?",
+      "Set First Draft Ingress",
+      "Set Revision Ingress",
+      "Revision Ingress?",
+      "Prepare Revision Call Agent Input",
+      "Prepare Call Agent Input",
+      "Set Needs Review Skip Target",
+    ]) {
+      expect(nodes.has(removedNode), removedNode).toBe(false);
+    }
   });
 
   it("fetches review comments through the built-in ClickUp comment getAll operation", () => {
@@ -498,29 +503,19 @@ describe("Marketing Pipeline topology", () => {
     });
   });
 
-  it("posts guidance and returns to approval when revision feedback is empty", () => {
-    expect(workflow.connections["Actionable Feedback?"]?.main?.[1]?.[0]?.node).toBe("Log Empty Feedback Guidance");
-    expect(workflowConnectionPath(workflow, "Log Empty Feedback Guidance", "Empty Feedback → Approval")).toEqual([
-      "Log Empty Feedback Guidance",
-      "Format Empty Feedback Guidance",
-      "POST Empty Feedback Guidance",
-      "Empty Feedback → Approval",
+  it("keeps the staged execution chain connected from status update to Call Agent", () => {
+    expect(workflowConnectionPath(workflow, "Status → In Progress", "Execute Call Agent")).toEqual([
+      "Status → In Progress",
+      "GET Task Comments",
+      "Collect Task Comments",
+      "Read Current Page",
+      "Extract Latest Lead Feedback",
+      "Prepare Staged Call Agent Input",
+      "Execute Call Agent",
     ]);
-    expect(workflowConnectionPath(workflow, "Log Empty Feedback Guidance", "Execute Call Agent")).toBeNull();
-    expect(jsCodeFromWorkflow(workflow, "Format Empty Feedback Guidance")).toContain("did not find actionable lead feedback");
-  });
-
-  it("converges first drafts and revisions into the shared Call Agent, comment, and approval path", () => {
-    const firstDraftPath = workflowConnectionPath(workflow, "Set First Draft Ingress", "Status → Review");
-    expect(firstDraftPath).not.toBeNull();
-    expect(firstDraftPath).toContain("Execute Call Agent");
-
-    // Verify revision path reaches Execute Call Agent through Revision Ingress? branch
-    const revisionPath = workflowConnectionPath(workflow, "Route by Stage?", "Revision Ingress?");
-    expect(revisionPath).not.toBeNull();
-    const revisionFullPath = workflowConnectionPath(workflow, "Set Revision Ingress", "Status → Review");
-    expect(revisionFullPath).not.toBeNull();
-    expect(revisionFullPath).toContain("Execute Call Agent");
+    expect(workflowConnectionPath(workflow, "Prepare Staged Call Agent Input", "Status → Review")).toContain(
+      "Execute Call Agent"
+    );
   });
 
   it("uses first() instead of paired item lookup on the final approval status update", () => {
@@ -957,7 +952,7 @@ describe("Marketing Pipeline stage routing", () => {
     expect(extractStageFromWebhook(investigatePayload, mapping)).toBe("investigate");
 
     // Verify workflow topology includes investigate path
-    expect(workflowConnectionPath(workflow, "Extract Stage", "Staged or Ready?")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Extract Stage", "Set Staged Ingress")).not.toBeNull();
     expect(workflowConnectionPath(workflow, "Route by Stage?", "Investigate?")).not.toBeNull();
     expect(workflowConnectionPath(workflow, "Investigate?", "Status → In Progress")).not.toBeNull();
   });
@@ -1012,10 +1007,18 @@ describe("Marketing Pipeline stage routing", () => {
     expect(workflowConnectionPath(workflow, "Execute Call Agent", "Status → Next Gate")).not.toBeNull();
   });
 
-  it("stageinput assembly branches for staged vs old workflows", () => {
-    expect(workflow.connections["Staged Input Assembly?"]?.main).toEqual([
+  it("staged input assembly stays linear after the status update", () => {
+    expect(workflow.connections["Status → In Progress"]?.main).toEqual([
+      [{ node: "GET Task Comments", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["GET Task Comments"]?.main).toEqual([
+      [{ node: "Collect Task Comments", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["Collect Task Comments"]?.main).toEqual([
       [{ node: "Read Current Page", type: "main", index: 0 }],
-      [{ node: "Prepare Revision Input?", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["Read Current Page"]?.main).toEqual([
+      [{ node: "Extract Latest Lead Feedback", type: "main", index: 0 }],
     ]);
   });
 

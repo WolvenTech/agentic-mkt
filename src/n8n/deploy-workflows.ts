@@ -114,13 +114,10 @@ function marketingStatusSummary(workflow: N8nDeployWorkflow): Pick<
   DeployWorkflowResult,
   "ingressFilter" | "writingStatus" | "reviewStatus"
 > {
-  const ingress = workflow.nodes.find((n) => n.name === "Ready to Work?");
+  const ingress = workflow.nodes.find((n) => n.name === "ClickUp Webhook");
   const writing = workflow.nodes.find((n) => n.name === "Status → In Progress");
   const review = workflow.nodes.find((n) => n.name === "Status → Review");
-  const ingressConditions =
-    (ingress?.parameters as { conditions?: { conditions?: Array<{ leftValue?: string; rightValue?: string }> } })
-      ?.conditions?.conditions ?? [];
-  const ingressValue = ingressConditions.find((c) => String(c.leftValue ?? "").includes("after.status"))?.rightValue;
+  const ingressValue = String((ingress?.parameters as { path?: string } | undefined)?.path ?? "");
   const writingValue = (writing?.parameters as { updateFields?: { status?: string } })?.updateFields?.status;
   const reviewValue = (review?.parameters as { updateFields?: { status?: string } })?.updateFields?.status;
   return {
@@ -185,7 +182,7 @@ export function printDeployReport(report: DeployWorkflowsReport): void {
   console.log(`Updated Call Agent (${report.callAgent.id}) on ${report.apiUrl}`);
   console.log(`  active (unchanged): ${report.callAgent.active}`);
   console.log(`Updated Marketing Pipeline (${report.marketingPipeline.id}) on ${report.apiUrl}`);
-  console.log(`  ingress filter: ${report.marketingPipeline.ingressFilter}`);
+  console.log(`  ingress path: ${report.marketingPipeline.ingressFilter}`);
   console.log(`  writing status: ${report.marketingPipeline.writingStatus}`);
   console.log(`  review status: ${report.marketingPipeline.reviewStatus}`);
   console.log(`  active (unchanged): ${report.marketingPipeline.active}`);

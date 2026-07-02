@@ -1,7 +1,5 @@
 import {
   statusName,
-  webhookIfExpression,
-  extractStageFromWebhook,
 } from "../marketing-pipeline/logic.js";
 import type { FieldMapping } from "../types/field-mapping.js";
 import type { N8nNode, N8nWorkflowExport } from "./build-call-agent.js";
@@ -17,14 +15,9 @@ import {
   extractWebhookContextJs,
   formatBlockerCommentJs,
   formatDraftCommentJs,
-  formatGuidanceCommentJs,
   formatPointerCommentJs,
   logDuplicateIngressJs,
-  logEmptyFeedbackGuidanceJs,
-  logIngressSkippedJs,
   markHistoryItemSeenJs,
-  prepareCallAgentInputJs,
-  prepareRevisionCallAgentInputJs,
   prepareStagedCallAgentInputJs,
   readCurrentPageJs,
   replacePageJs,
@@ -32,8 +25,6 @@ import {
   routeInvestigateIfExpression,
   routeWriteIfExpression,
   setIngressModeJs,
-  setNeedsReviewSkipTargetJs,
-  stagedIngressIfExpression,
   updateStatusToNextGateJs,
   updateStatusToPreviousGateJs,
 } from "./marketing-pipeline-n8n.js";
@@ -41,20 +32,6 @@ import {
 const CLICKUP_CREDENTIALS = {
   clickUpApi: { id: "CLICKUP_CREDENTIAL_ID", name: "ClickUp Marketing Pipeline" },
 };
-
-function legacyNeedsReviewIfExpression(fieldMapping: FieldMapping): string {
-  const needsReviewStatus = String(statusName(fieldMapping, "needs_review")).trim().toLowerCase();
-  return (
-    `={{ (() => { ` +
-    `const payload = $json.body && $json.body.history_items ? $json.body : $json; ` +
-    `const item = payload?.history_items?.[0]; ` +
-    `if (!item || item.field !== "status") return false; ` +
-    `const after = item.after; ` +
-    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
-    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(needsReviewStatus)}; ` +
-    `})() }}`
-  );
-}
 
 /** Build the Marketing Pipeline n8n main workflow export. Source of truth per ADR-006. */
 export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nWorkflowExport {
@@ -81,36 +58,8 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       webhookId: nodeId("ClickUp Webhook:webhookId"),
       parameters: {
         httpMethod: "POST",
-        path: "marketing-pipeline-ready-to-work",
+        path: "marketing-pipeline-staged-ingress",
         responseMode: "onReceived",
-        options: {},
-      },
-    },
-    {
-      id: nodeId("Staged or Ready?"),
-      name: "Staged or Ready?",
-      type: "n8n-nodes-base.if",
-      typeVersion: 2.2,
-      position: [240, 300],
-      parameters: {
-        conditions: {
-          options: { version: 2, leftValue: "", caseSensitive: true, typeValidation: "loose" },
-          combinator: "or",
-          conditions: [
-            {
-              id: conditionId("Staged or Ready?", 0),
-              leftValue: stagedIngressIfExpression(fieldMapping),
-              rightValue: "",
-              operator: { type: "boolean", operation: "true", singleValue: true },
-            },
-            {
-              id: conditionId("Staged or Ready?", 1),
-              leftValue: webhookIfExpression(fieldMapping),
-              rightValue: "",
-              operator: { type: "boolean", operation: "true", singleValue: true },
-            },
-          ],
-        },
         options: {},
       },
     },
@@ -123,42 +72,12 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { jsCode: extractStageJs(fieldMapping) },
     },
     {
-      id: nodeId("Needs Review?"),
-      name: "Needs Review?",
-      type: "n8n-nodes-base.if",
-      typeVersion: 2.2,
-      position: [480, 480],
-      parameters: {
-        conditions: {
-          options: { version: 2, leftValue: "", caseSensitive: true, typeValidation: "loose" },
-          combinator: "and",
-          conditions: [
-            {
-              id: conditionId("Needs Review?", 0),
-              leftValue: legacyNeedsReviewIfExpression(fieldMapping),
-              rightValue: "",
-              operator: { type: "boolean", operation: "true", singleValue: true },
-            },
-          ],
-        },
-        options: {},
-      },
-    },
-    {
-      id: nodeId("Set First Draft Ingress"),
-      name: "Set First Draft Ingress",
+      id: nodeId("Set Staged Ingress"),
+      name: "Set Staged Ingress",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [480, 220],
       parameters: { jsCode: setIngressModeJs("first_draft") },
-    },
-    {
-      id: nodeId("Set Revision Ingress"),
-      name: "Set Revision Ingress",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [720, 480],
-      parameters: { jsCode: setIngressModeJs("revision") },
     },
     {
       id: nodeId("Extract Webhook Context"),
@@ -304,28 +223,6 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       },
     },
     {
-      id: nodeId("Revision Ingress?"),
-      name: "Revision Ingress?",
-      type: "n8n-nodes-base.if",
-      typeVersion: 2.2,
-      position: [2160, 300],
-      parameters: {
-        conditions: {
-          options: { version: 2, leftValue: "", caseSensitive: true, typeValidation: "loose" },
-          combinator: "and",
-          conditions: [
-            {
-              id: conditionId("Revision Ingress?", 0),
-              leftValue: "={{ $json.ingress_mode === 'revision' }}",
-              rightValue: "",
-              operator: { type: "boolean", operation: "true", singleValue: true },
-            },
-          ],
-        },
-        options: {},
-      },
-    },
-    {
       id: nodeId("GET Task Comments"),
       name: "GET Task Comments",
       type: "n8n-nodes-base.clickUp",
@@ -349,75 +246,6 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { jsCode: collectTaskCommentsJs() },
     },
     {
-      id: nodeId("Actionable Feedback?"),
-      name: "Actionable Feedback?",
-      type: "n8n-nodes-base.if",
-      typeVersion: 2.2,
-      position: [2880, 480],
-      parameters: {
-        conditions: {
-          options: { version: 2, leftValue: "", caseSensitive: true, typeValidation: "loose" },
-          combinator: "and",
-          conditions: [
-            {
-              id: conditionId("Actionable Feedback?", 0),
-              leftValue: "={{ $json.has_actionable_feedback === true }}",
-              rightValue: "",
-              operator: { type: "boolean", operation: "true", singleValue: true },
-            },
-          ],
-        },
-        options: {},
-      },
-    },
-    {
-      id: nodeId("Log Empty Feedback Guidance"),
-      name: "Log Empty Feedback Guidance",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [3120, 660],
-      parameters: { jsCode: logEmptyFeedbackGuidanceJs() },
-    },
-    {
-      id: nodeId("Format Empty Feedback Guidance"),
-      name: "Format Empty Feedback Guidance",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [3360, 660],
-      parameters: { jsCode: formatGuidanceCommentJs() },
-    },
-    {
-      id: nodeId("POST Empty Feedback Guidance"),
-      name: "POST Empty Feedback Guidance",
-      type: "n8n-nodes-base.clickUp",
-      typeVersion: 1,
-      position: [3600, 660],
-      retryOnFail: true,
-      maxTries: 2,
-      waitBetweenTries: 1000,
-      credentials: CLICKUP_CREDENTIALS,
-      parameters: {
-        resource: "comment",
-        operation: "create",
-        commentOn: "task",
-        id: "={{ $json.task_id }}",
-        commentText: "={{ $json.comment_text }}",
-      },
-    },
-    {
-      id: nodeId("Empty Feedback → Approval"),
-      name: "Empty Feedback → Approval",
-      type: "n8n-nodes-base.clickUp",
-      typeVersion: 1,
-      position: [3840, 660],
-      credentials: CLICKUP_CREDENTIALS,
-      parameters: {
-        operation: "update",
-        id: "={{ $('Extract Task Fields').first().json.task_id }}",
-        updateFields: { status: statusReview },
-      },
-    },
-    {
       id: nodeId("Status → In Progress"),
       name: "Status → In Progress",
       type: "n8n-nodes-base.clickUp",
@@ -429,58 +257,6 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
         id: "={{ $('Extract Task Fields').first().json.task_id }}",
         updateFields: { status: statusWriting },
       },
-    },
-    {
-      id: nodeId("Staged Input Assembly?"),
-      name: "Staged Input Assembly?",
-      type: "n8n-nodes-base.if",
-      typeVersion: 2.2,
-      position: [3240, 300],
-      parameters: {
-        conditions: {
-          options: { version: 2, leftValue: "", caseSensitive: true, typeValidation: "loose" },
-          combinator: "and",
-          conditions: [
-            {
-              id: conditionId("Staged Input Assembly?", 0),
-              leftValue: "={{ $('Extract Task Fields').first().json.stage !== null }}",
-              rightValue: "",
-              operator: { type: "boolean", operation: "true", singleValue: true },
-            },
-          ],
-        },
-        options: {},
-      },
-    },
-    {
-      id: nodeId("Prepare Revision Input?"),
-      name: "Prepare Revision Input?",
-      type: "n8n-nodes-base.if",
-      typeVersion: 2.2,
-      position: [3480, 420],
-      parameters: {
-        conditions: {
-          options: { version: 2, leftValue: "", caseSensitive: true, typeValidation: "loose" },
-          combinator: "and",
-          conditions: [
-            {
-              id: conditionId("Prepare Revision Input?", 0),
-              leftValue: "={{ $('Extract Task Fields').first().json.ingress_mode === 'revision' }}",
-              rightValue: "",
-              operator: { type: "boolean", operation: "true", singleValue: true },
-            },
-          ],
-        },
-        options: {},
-      },
-    },
-    {
-      id: nodeId("Prepare Revision Call Agent Input"),
-      name: "Prepare Revision Call Agent Input",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [3600, 420],
-      parameters: { jsCode: prepareRevisionCallAgentInputJs() },
     },
     {
       id: nodeId("Read Current Page"),
@@ -505,14 +281,6 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       typeVersion: 2,
       position: [3840, 60],
       parameters: { jsCode: prepareStagedCallAgentInputJs() },
-    },
-    {
-      id: nodeId("Prepare Call Agent Input"),
-      name: "Prepare Call Agent Input",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [3600, 180],
-      parameters: { jsCode: prepareCallAgentInputJs() },
     },
     {
       id: nodeId("Execute Call Agent"),
@@ -595,22 +363,6 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       typeVersion: 2,
       position: [4320, 420],
       parameters: { jsCode: agentParseFailureJs() },
-    },
-    {
-      id: nodeId("Set Needs Review Skip Target"),
-      name: "Set Needs Review Skip Target",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [720, 660],
-      parameters: { jsCode: setNeedsReviewSkipTargetJs() },
-    },
-    {
-      id: nodeId("Log Ingress Skipped"),
-      name: "Log Ingress Skipped",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [960, 660],
-      parameters: { jsCode: logIngressSkippedJs(fieldMapping) },
     },
     {
       id: nodeId("Log Duplicate Ingress"),
@@ -778,21 +530,8 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
 
   const connections: N8nWorkflowExport["connections"] = {
     "ClickUp Webhook": { main: [[{ node: "Extract Stage", type: "main", index: 0 }]] },
-    "Extract Stage": { main: [[{ node: "Staged or Ready?", type: "main", index: 0 }]] },
-    "Staged or Ready?": {
-      main: [
-        [{ node: "Set First Draft Ingress", type: "main", index: 0 }],
-        [{ node: "Needs Review?", type: "main", index: 0 }],
-      ],
-    },
-    "Needs Review?": {
-      main: [
-        [{ node: "Set Revision Ingress", type: "main", index: 0 }],
-        [{ node: "Set Needs Review Skip Target", type: "main", index: 0 }],
-      ],
-    },
-    "Set First Draft Ingress": { main: [[{ node: "Extract Webhook Context", type: "main", index: 0 }]] },
-    "Set Revision Ingress": { main: [[{ node: "Extract Webhook Context", type: "main", index: 0 }]] },
+    "Extract Stage": { main: [[{ node: "Set Staged Ingress", type: "main", index: 0 }]] },
+    "Set Staged Ingress": { main: [[{ node: "Extract Webhook Context", type: "main", index: 0 }]] },
     "Extract Webhook Context": { main: [[{ node: "Dedup?", type: "main", index: 0 }]] },
     "Dedup?": {
       main: [
@@ -806,7 +545,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
     "Route by Stage?": {
       main: [
         [{ node: "Investigate?", type: "main", index: 0 }],
-        [{ node: "Revision Ingress?", type: "main", index: 0 }],
+        [],
       ],
     },
     "Investigate?": {
@@ -827,41 +566,12 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
         [],
       ],
     },
-    "Revision Ingress?": {
-      main: [
-        [{ node: "GET Task Comments", type: "main", index: 0 }],
-        [{ node: "Status → In Progress", type: "main", index: 0 }],
-      ],
-    },
     "GET Task Comments": { main: [[{ node: "Collect Task Comments", type: "main", index: 0 }]] },
-    "Collect Task Comments": { main: [[{ node: "Actionable Feedback?", type: "main", index: 0 }]] },
-    "Actionable Feedback?": {
-      main: [
-        [{ node: "Status → In Progress", type: "main", index: 0 }],
-        [{ node: "Log Empty Feedback Guidance", type: "main", index: 0 }],
-      ],
-    },
-    "Log Empty Feedback Guidance": { main: [[{ node: "Format Empty Feedback Guidance", type: "main", index: 0 }]] },
-    "Format Empty Feedback Guidance": { main: [[{ node: "POST Empty Feedback Guidance", type: "main", index: 0 }]] },
-    "POST Empty Feedback Guidance": { main: [[{ node: "Empty Feedback → Approval", type: "main", index: 0 }]] },
-    "Status → In Progress": { main: [[{ node: "Staged Input Assembly?", type: "main", index: 0 }]] },
-    "Staged Input Assembly?": {
-      main: [
-        [{ node: "Read Current Page", type: "main", index: 0 }],
-        [{ node: "Prepare Revision Input?", type: "main", index: 0 }],
-      ],
-    },
+    "Collect Task Comments": { main: [[{ node: "Read Current Page", type: "main", index: 0 }]] },
+    "Status → In Progress": { main: [[{ node: "GET Task Comments", type: "main", index: 0 }]] },
     "Read Current Page": { main: [[{ node: "Extract Latest Lead Feedback", type: "main", index: 0 }]] },
     "Extract Latest Lead Feedback": { main: [[{ node: "Prepare Staged Call Agent Input", type: "main", index: 0 }]] },
     "Prepare Staged Call Agent Input": { main: [[{ node: "Execute Call Agent", type: "main", index: 0 }]] },
-    "Prepare Revision Input?": {
-      main: [
-        [{ node: "Prepare Revision Call Agent Input", type: "main", index: 0 }],
-        [{ node: "Prepare Call Agent Input", type: "main", index: 0 }],
-      ],
-    },
-    "Prepare Revision Call Agent Input": { main: [[{ node: "Execute Call Agent", type: "main", index: 0 }]] },
-    "Prepare Call Agent Input": { main: [[{ node: "Execute Call Agent", type: "main", index: 0 }]] },
     "Execute Call Agent": { main: [[{ node: "Agent Output OK?", type: "main", index: 0 }]] },
     "Agent Output OK?": {
       main: [
@@ -891,7 +601,6 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
     "Update Status to Next Gate": { main: [[{ node: "Status → Next Gate", type: "main", index: 0 }]] },
     "Format Draft Comment": { main: [[{ node: "POST Task Comment", type: "main", index: 0 }]] },
     "POST Task Comment": { main: [[{ node: "Status → Review", type: "main", index: 0 }]] },
-    "Set Needs Review Skip Target": { main: [[{ node: "Log Ingress Skipped", type: "main", index: 0 }]] },
   };
 
   return {
