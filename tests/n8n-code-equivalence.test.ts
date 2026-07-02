@@ -20,11 +20,9 @@ import {
   loadFieldMapping,
 } from "../src/marketing-pipeline/logic.js";
 import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/marketing-pipeline/logic.js";
-import { AGENT_BLOCKED_TAG, AGENT_WORKING_TAG } from "../src/marketing-pipeline/stages.js";
 import { firstCodeNodeJson, runN8nCodeNode } from "../src/workflows/n8n-codegen.js";
 import {
   collectTaskCommentsJs,
-  cleanupStageTagsJs,
   extractTaskFieldsJs,
   extractWebhookContextJs,
   formatDraftCommentJs,
@@ -33,10 +31,13 @@ import {
   prepareCallAgentInputJs,
   prepareRevisionCallAgentInputJs,
   setIngressModeJs,
-  stageStartWorkingTagJs,
-  swapBlockerTagsJs,
 } from "../src/workflows/marketing-pipeline-n8n.js";
-import { assemblePromptJs, parseAgentConfigJs, parseStageOutputJs } from "../src/workflows/call-agent-n8n.js";
+import {
+  assemblePromptJs,
+  parseAgentConfigJs,
+  parseCallAgentOutputJs,
+  parseStageOutputJs,
+} from "../src/workflows/call-agent-n8n.js";
 
 const REPO_ROOT = resolve(__dirname, "..");
 const WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-ready-to-work.json");
@@ -53,20 +54,6 @@ function fixtureFieldMapping() {
   mapping.custom_fields.agent_id!.clickup_field_id = "cf_agent_id_001";
   mapping.custom_fields.editorial_doc_url!.clickup_field_id = "cf_editorial_doc_url_001";
   return mapping;
-}
-
-function captureWarnings() {
-  const warnings: string[] = [];
-  return {
-    warnings,
-    console: {
-      log: vi.fn(),
-      warn: (...args: unknown[]) => {
-        warnings.push(args.map((value) => String(value)).join(" "));
-      },
-      error: vi.fn(),
-    },
-  };
 }
 
 afterEach(() => {
@@ -142,6 +129,7 @@ describe("marketing pipeline n8n code equivalence", () => {
       task_description: tsFields.task_description,
       criterios_de_aceite: tsFields.criterios_de_aceite,
       editorial_doc_url: tsFields.editorial_doc_url,
+      workspace_id: String(task.team_id ?? ""),
       ingress_mode: "first_draft",
       model: "gpt-4.1-mini",
     });
@@ -212,6 +200,24 @@ describe("marketing pipeline n8n code equivalence", () => {
     expect(JSON.stringify(jsResult?.feedback_comments)).not.toContain("[CQ-BLOCKER]");
   });
 
+  it("collectTaskComments jsCode normalizes an always-output empty comment item", async () => {
+    const fields = { ...extractTaskFields(task, mapping), ingress_mode: "first_draft" };
+    const jsResult = firstCodeNodeJson(
+      await runN8nCodeNode(collectTaskCommentsJs(), {
+        allInputs: [{}],
+        nodeOutputs: { "Extract Task Fields": fields as unknown as Record<string, unknown> },
+      })
+    );
+
+    expect(jsResult).toMatchObject({
+      task_id: fields.task_id,
+      comments: [],
+      feedback_comments: [],
+      comment_count: 0,
+      has_actionable_feedback: false,
+    });
+  });
+
   it("prepareRevisionCallAgentInput jsCode embeds original brief, filtered feedback, and simple instructions", async () => {
     const fields = { ...extractTaskFields(task, mapping), ingress_mode: "revision" };
     const feedback = commentsFixture.comments.filter((comment) => String(comment.comment_text ?? "").includes("Shorten"));
@@ -272,192 +278,6 @@ describe("marketing pipeline n8n code equivalence", () => {
     expect(jsResult?.comment_text).toBe(
       formatClickupComment(agentOutput, { agentId: fields.agent_id, model: "gpt-4.1-mini" })
     );
-  });
-});
-
-describe("tag helper code equivalence", () => {
-  function setClickUpToken(): () => void {
-    const previousApiToken = process.env.CLICKUP_API_TOKEN;
-    const previousFallbackToken = process.env.CLICKUP_TOKEN;
-    process.env.CLICKUP_API_TOKEN = "pk_test_token";
-    delete process.env.CLICKUP_TOKEN;
-
-    return () => {
-      if (previousApiToken === undefined) {
-        delete process.env.CLICKUP_API_TOKEN;
-      } else {
-        process.env.CLICKUP_API_TOKEN = previousApiToken;
-      }
-      if (previousFallbackToken === undefined) {
-        delete process.env.CLICKUP_TOKEN;
-      } else {
-        process.env.CLICKUP_TOKEN = previousFallbackToken;
-      }
-    };
-  }
-
-  it("stageStartWorkingTagJs attempts to add agent-working for the current task", async () => {
-    const restoreEnv = setClickUpToken();
-    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
-      expect(url).toBe("https://api.clickup.com/api/v2/task/task-123/tag/agent-working");
-      expect(init.method).toBe("POST");
-      expect((init.headers as Record<string, string>).Authorization).toBe("pk_test_token");
-      expect(init.body).toBeUndefined();
-      return new Response(null, { status: 204 });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const { warnings, console } = captureWarnings();
-
-    try {
-      const result = await runN8nCodeNode(stageStartWorkingTagJs(), {
-        input: { task_id: "task-123", preserved: "yes" },
-        nodeOutputs: { "Extract Task Fields": { task_id: "task-123" } },
-        console,
-      });
-
-      expect(firstCodeNodeJson(result)).toEqual({ task_id: "task-123", preserved: "yes" });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(warnings).toHaveLength(0);
-    } finally {
-      restoreEnv();
-    }
-  });
-
-  it("cleanupStageTagsJs removes both activity tags on successful stage exit", async () => {
-    const restoreEnv = setClickUpToken();
-    let callNumber = 0;
-    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
-      callNumber += 1;
-      if (callNumber === 1) {
-        expect(url).toBe(`https://api.clickup.com/api/v2/task/task-123/tag/${AGENT_WORKING_TAG}`);
-        expect(init.method).toBe("DELETE");
-      } else {
-        expect(url).toBe(`https://api.clickup.com/api/v2/task/task-123/tag/${AGENT_BLOCKED_TAG}`);
-        expect(init.method).toBe("DELETE");
-      }
-      expect((init.headers as Record<string, string>).Authorization).toBe("pk_test_token");
-      return new Response(null, { status: 204 });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const { warnings, console } = captureWarnings();
-
-    try {
-      const result = await runN8nCodeNode(cleanupStageTagsJs(), {
-        input: { task_id: "task-123", preserved: "yes" },
-        nodeOutputs: { "Extract Task Fields": { task_id: "task-123" } },
-        console,
-      });
-
-      expect(firstCodeNodeJson(result)).toEqual({ task_id: "task-123", preserved: "yes" });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(warnings).toHaveLength(0);
-    } finally {
-      restoreEnv();
-    }
-  });
-
-  it("swapBlockerTagsJs removes agent-working and adds agent-blocked on blocker output", async () => {
-    const restoreEnv = setClickUpToken();
-    let callNumber = 0;
-    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
-      callNumber += 1;
-      if (callNumber === 1) {
-        expect(url).toBe(`https://api.clickup.com/api/v2/task/task-123/tag/${AGENT_WORKING_TAG}`);
-        expect(init.method).toBe("DELETE");
-      } else {
-        expect(url).toBe(`https://api.clickup.com/api/v2/task/task-123/tag/${AGENT_BLOCKED_TAG}`);
-        expect(init.method).toBe("POST");
-      }
-      expect((init.headers as Record<string, string>).Authorization).toBe("pk_test_token");
-      return new Response(null, { status: 204 });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const { warnings, console } = captureWarnings();
-
-    try {
-      const result = await runN8nCodeNode(swapBlockerTagsJs(), {
-        input: { task_id: "task-123", preserved: "yes" },
-        nodeOutputs: { "Extract Task Fields": { task_id: "task-123" } },
-        console,
-      });
-
-      expect(firstCodeNodeJson(result)).toEqual({ task_id: "task-123", preserved: "yes" });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(warnings).toHaveLength(0);
-    } finally {
-      restoreEnv();
-    }
-  });
-
-  it("logs a warning payload and returns the original item when a tag API call fails", async () => {
-    const restoreEnv = setClickUpToken();
-    const fetchMock = vi.fn(async () => {
-      return new Response(JSON.stringify({ err: "Rate limited" }), {
-        status: 429,
-        headers: { "content-type": "application/json" },
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const { warnings, console } = captureWarnings();
-
-    try {
-      const result = await runN8nCodeNode(stageStartWorkingTagJs(), {
-        input: { task_id: "task-123", preserved: "yes" },
-        nodeOutputs: { "Extract Task Fields": { task_id: "task-123" } },
-        console,
-      });
-
-      expect(firstCodeNodeJson(result)).toEqual({ task_id: "task-123", preserved: "yes" });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(warnings).toHaveLength(1);
-      expect(JSON.parse(warnings[0])).toMatchObject({
-        event: "clickup_tag_warning",
-        reason: "clickup_tag_request_failed",
-        action: "add",
-        tag_name: AGENT_WORKING_TAG,
-        task_id: "task-123",
-        status: 429,
-      });
-    } finally {
-      restoreEnv();
-    }
-  });
-
-  it("runs without requiring any n8n credential beyond ClickUp token access", async () => {
-    const previousApiToken = process.env.CLICKUP_API_TOKEN;
-    const previousFallbackToken = process.env.CLICKUP_TOKEN;
-    delete process.env.CLICKUP_API_TOKEN;
-    delete process.env.CLICKUP_TOKEN;
-    const { warnings, console } = captureWarnings();
-
-    try {
-      const result = await runN8nCodeNode(stageStartWorkingTagJs(), {
-        input: { task_id: "task-123", preserved: "yes" },
-        nodeOutputs: { "Extract Task Fields": { task_id: "task-123" } },
-        console,
-      });
-
-      expect(firstCodeNodeJson(result)).toEqual({ task_id: "task-123", preserved: "yes" });
-      expect(warnings).toHaveLength(1);
-      expect(JSON.parse(warnings[0])).toMatchObject({
-        event: "clickup_tag_warning",
-        reason: "missing_clickup_token",
-        action: "add",
-        tag_name: AGENT_WORKING_TAG,
-        task_id: "task-123",
-      });
-    } finally {
-      if (previousApiToken === undefined) {
-        delete process.env.CLICKUP_API_TOKEN;
-      } else {
-        process.env.CLICKUP_API_TOKEN = previousApiToken;
-      }
-      if (previousFallbackToken === undefined) {
-        delete process.env.CLICKUP_TOKEN;
-      } else {
-        process.env.CLICKUP_TOKEN = previousFallbackToken;
-      }
-    }
   });
 });
 
@@ -686,5 +506,92 @@ describe("Call Agent n8n code equivalence", () => {
     );
 
     expect(jsResult?.error).toContain("Empty or non-string values");
+  });
+
+  it("parseCallAgentOutputJs stamps next_gate through for a staged agent_config (regression test for missing next_gate bug)", async () => {
+    const stageOutput = {
+      stage: "investigate",
+      artifact_markdown: "## Brief\n\nKey findings from research.",
+      resumo: "Summary of findings.",
+      self_check: "- All research documented",
+      next_gate: "brief review",
+    };
+    const stagedAgentConfig = {
+      output_schema: {
+        stage: "investigate",
+        artifact_markdown: "Brief",
+        resumo: "Summary",
+        self_check: "Checks",
+        next_gate: "brief review",
+      },
+    };
+
+    const jsResult = firstCodeNodeJson(
+      await runN8nCodeNode(parseCallAgentOutputJs(), {
+        input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
+        nodeOutputs: {
+          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "investigative-brief", task_id: "test-task" },
+          "Assemble Prompt": { agent_config: stagedAgentConfig },
+        },
+      })
+    );
+
+    expect(jsResult?.next_gate).toBe("brief review");
+    expect(jsResult?.stage).toBe("investigate");
+    expect(jsResult?.error).toBeUndefined();
+  });
+
+  it("parseCallAgentOutputJs uses the legacy AgentOutput contract for a non-staged agent_config", async () => {
+    const legacyOutput = {
+      deliverable_markdown: "## Hook\n\nDraft content.",
+      resumo: "Summary of the draft.",
+      autochecagem: "- Checks pass",
+    };
+    const legacyAgentConfig = {
+      output_schema: {
+        deliverable_markdown: "Draft",
+        resumo: "Summary",
+        autochecagem: "Checks",
+      },
+    };
+
+    const jsResult = firstCodeNodeJson(
+      await runN8nCodeNode(parseCallAgentOutputJs(), {
+        input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(legacyOutput) }] }] },
+        nodeOutputs: {
+          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "linkedin-writer", task_id: "test-task" },
+          "Assemble Prompt": { agent_config: legacyAgentConfig },
+        },
+      })
+    );
+
+    expect(jsResult?.deliverable_markdown).toBe(legacyOutput.deliverable_markdown);
+    expect(jsResult?.next_gate).toBeUndefined();
+    expect(jsResult?.error).toBeUndefined();
+  });
+
+  it("parseCallAgentOutputJs rejects staged output missing next_gate with a staged agent_config", async () => {
+    const incomplete = {
+      stage: "investigate",
+      artifact_markdown: "Brief",
+      resumo: "Summary",
+      self_check: "Checks",
+    };
+    const stagedAgentConfig = {
+      output_schema: { stage: "investigate", artifact_markdown: "x", resumo: "x", self_check: "x", next_gate: "x" },
+    };
+
+    const jsResult = firstCodeNodeJson(
+      await runN8nCodeNode(parseCallAgentOutputJs(), {
+        input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(incomplete) }] }] },
+        nodeOutputs: {
+          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "investigative-brief", task_id: "test-task" },
+          "Assemble Prompt": { agent_config: stagedAgentConfig },
+        },
+      })
+    );
+
+    expect(jsResult?.error).toContain("Missing required keys");
+    expect(jsResult?.error).toContain("next_gate");
   });
 });

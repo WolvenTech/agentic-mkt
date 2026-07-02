@@ -141,8 +141,8 @@ describe("deployWorkflows", () => {
               webhookId: "live-webhook",
             },
             {
-              name: "Status → In Progress",
-              parameters: { updateFields: { status: "writing" } },
+              name: "Add agent-working",
+              type: "n8n-nodes-base.code",
             },
             { name: "Status → Review", parameters: { updateFields: { status: "approval" } } },
             {
@@ -178,7 +178,7 @@ describe("deployWorkflows", () => {
 
     expect(report.callAgent.id).toBe("wf-call");
     expect(report.marketingPipeline.ingressFilter).toBe("marketing-pipeline-staged-ingress");
-    expect(report.marketingPipeline.writingStatus).toBe("writing");
+    expect(report.marketingPipeline.workingTag).toBe("agent-working");
     expect(report.marketingPipeline.reviewStatus).toBe("approval");
 
     const puts = fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT");

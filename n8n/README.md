@@ -220,7 +220,7 @@ Target latency: **≤ 60 s** per stage (record actuals in [`agents/harness/green
 
 ### Troubleshooting
 
-See [`agents/harness/io-contract.md` → Troubleshooting](../agents/harness/io-contract.md#troubleshooting) for webhook, stuck writing (`Status → In Progress`), OpenAI parse, and field-mapping failures.
+See [`agents/harness/io-contract.md` → Troubleshooting](../agents/harness/io-contract.md#troubleshooting) for webhook, stuck with `agent-working`, OpenAI parse, and field-mapping failures.
 
 **Update live n8n after builder changes:**
 

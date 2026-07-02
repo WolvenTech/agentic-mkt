@@ -240,6 +240,16 @@ export function parseStageOutput(rawResponse: string): StageParsedResult {
   };
 }
 
+/** Does this agent's output_schema declare the stage-aware contract (has a `stage` key)? */
+export function isStagedAgentConfig(agentConfig: AgentConfig): boolean {
+  return typeof agentConfig.output_schema.stage === "string";
+}
+
+/** Parse LLM output using whichever contract this agent's output_schema declares. */
+export function parseCallAgentOutput(agentConfig: AgentConfig, rawResponse: string): ParseResult | StageParsedResult {
+  return isStagedAgentConfig(agentConfig) ? parseStageOutput(rawResponse) : parseAgentOutput(rawResponse);
+}
+
 /** Merge Parse Agent Config items with GitHub fetch responses by index (n8n Merge node output shape). */
 export function mergeSkillFetchItems(
   parseItems: Array<Record<string, unknown>>,
@@ -313,17 +323,11 @@ export function assembleSystemPrompt(
     }
   }
 
-  const schema = agentConfig.output_schema;
-  const example: Record<string, string> = {};
-  for (const key of REQUIRED_OUTPUT_KEYS) {
-    example[key] = schema[key];
-  }
-
   lines.push(
     "# Required Output Format",
     "Respond with JSON only. Do not wrap the JSON in markdown code fences.",
     "Required keys and semantics:",
-    JSON.stringify(example, null, 2)
+    JSON.stringify(agentConfig.output_schema, null, 2)
   );
 
   return lines.join("\n").trim();

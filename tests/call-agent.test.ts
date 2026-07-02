@@ -11,10 +11,12 @@ import {
   extractOpenAIText,
   openaiModelId,
   githubFetchPaths,
+  isStagedAgentConfig,
   isValidReferencePath,
   pairSkillContentsFromFetch,
   pairReferenceContentsFromFetch,
   parseAgentOutput,
+  parseCallAgentOutput,
   parseStageOutput,
   providerIsOpenAI,
   providerIsRouted,
@@ -347,6 +349,62 @@ describe("parseStageOutput", () => {
     if (!isStageError(result)) {
       expect("blocker_question" in result).toBe(false);
     }
+  });
+});
+
+describe("isStagedAgentConfig / parseCallAgentOutput", () => {
+  function readStagedAgentConfig(): AgentConfig {
+    const path = resolve(REPO_ROOT, "agents", "investigative-brief.json");
+    return JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+  }
+
+  it("isStagedAgentConfig is true for the three staged agent configs", () => {
+    for (const id of ["investigative-brief", "long-form-argument", "linkedin-format"]) {
+      const path = resolve(REPO_ROOT, "agents", `${id}.json`);
+      const agent = JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+      expect(isStagedAgentConfig(agent)).toBe(true);
+    }
+  });
+
+  it("isStagedAgentConfig is false for the legacy linkedin-writer config", () => {
+    expect(isStagedAgentConfig(readAgentConfig())).toBe(false);
+  });
+
+  it("parseCallAgentOutput returns next_gate for a staged agent's valid output", () => {
+    const stagedAgent = readStagedAgentConfig();
+    const rawResponse = JSON.stringify({
+      stage: "investigate",
+      artifact_markdown: "## Brief\n\nKey findings from research.",
+      resumo: "Summary of brief findings.",
+      self_check: "- All research documented\n- Key insights highlighted",
+      next_gate: "brief review",
+    });
+
+    const result = parseCallAgentOutput(stagedAgent, rawResponse);
+
+    expect(isStageError(result)).toBe(false);
+    if (!isStageError(result) && "next_gate" in result) {
+      expect(result.next_gate).toBe("brief review");
+    }
+  });
+
+  it("parseCallAgentOutput returns deliverable_markdown (no next_gate) for the legacy agent's valid output", () => {
+    const rawResponse = JSON.stringify(SAMPLE_VALID_LLM_OUTPUT);
+
+    const result = parseCallAgentOutput(readAgentConfig(), rawResponse);
+
+    expect(isAgentError(result)).toBe(false);
+    if (!isAgentError(result)) {
+      expect((result as { deliverable_markdown?: string }).deliverable_markdown).toBeDefined();
+      expect("next_gate" in result).toBe(false);
+    }
+  });
+
+  it("parseCallAgentOutput returns an error envelope for malformed JSON regardless of contract", () => {
+    const staged = parseCallAgentOutput(readStagedAgentConfig(), "not json");
+    const legacy = parseCallAgentOutput(readAgentConfig(), "not json");
+    expect(isStageError(staged)).toBe(true);
+    expect(isAgentError(legacy)).toBe(true);
   });
 });
 
@@ -929,15 +987,17 @@ describe("buildCallAgentWorkflow (sub-workflow topology)", () => {
       operation?: string;
       simplify?: boolean;
       modelId?: { value?: string };
-      responses?: { values?: Array<{ content?: string; role?: string }> };
+      responses?: { values?: Array<{ content?: string; role?: string; type?: string }> };
       options?: { instructions?: string; maxTokens?: string };
     };
-    expect(params.resource).toBe("text");
-    expect(params.operation).toBe("response");
-    expect(params.simplify).toBe(true);
+    expect(params.resource).toBeUndefined();
+    expect(params.operation).toBeUndefined();
+    expect(params.simplify).toBeUndefined();
     expect(params.modelId?.value).toContain("gpt-4.1-mini");
     expect(params.options?.instructions).toContain("system_prompt");
     expect(params.responses?.values?.[0]?.content).toContain("user_message");
+    expect(params.responses?.values?.[0]?.role).toBeUndefined();
+    expect(params.responses?.values?.[0]?.type).toBeUndefined();
     expect(params.options?.maxTokens).toContain("max_output_tokens");
   });
 
@@ -950,12 +1010,16 @@ describe("buildCallAgentWorkflow (sub-workflow topology)", () => {
     expect(values).toEqual(["google", "openai"]);
   });
 
-  it("Parse Agent Output node validates every required output key", () => {
+  it("Parse Agent Output node validates the prod legacy contract and carries configured next_gate", () => {
     const parseNode = nodesByName.get("Parse Agent Output");
     const code = String((parseNode?.parameters as { jsCode?: string }).jsCode ?? "");
     for (const key of REQUIRED_OUTPUT_KEYS) {
       expect(code).toContain(key);
     }
+    expect(code).toContain("next_gate");
+    expect(code).toContain("Parse Agent Config");
+    expect(code).toContain("agent_config");
+    expect(code).not.toContain("REQUIRED_STAGE_KEYS");
   });
 
   it("pins a hardcoded test input for isolation runs", () => {

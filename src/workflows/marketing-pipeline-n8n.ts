@@ -1,6 +1,5 @@
 import { DEFAULT_AGENT_ID, DEFAULT_MODEL, fieldId } from "../marketing-pipeline/logic.js";
-import { AGENT_BLOCKED_TAG, AGENT_WORKING_TAG } from "../marketing-pipeline/stages.js";
-import { CLICKUP_API_BASE } from "../clickup/client.js";
+import { ALL_STAGES } from "../marketing-pipeline/stages.js";
 import type { FieldMapping } from "../types/field-mapping.js";
 import { joinN8nJs } from "./n8n-codegen.js";
 
@@ -86,6 +85,7 @@ export function extractTaskFieldsJs(fieldMapping: FieldMapping): string {
     "    task_description: String(task.description ?? task.text_content ?? ''),",
     "    criterios_de_aceite: readCustomField(task, FIELD_IDS.criterios_de_aceite),",
     "    editorial_doc_url: readCustomField(task, FIELD_IDS.editorial_doc_url),",
+    "    workspace_id: String(task.team_id ?? ''),",
     "    ingress_mode: String(webhook.ingress_mode ?? 'first_draft'),",
     `    model: ${JSON.stringify(DEFAULT_MODEL)},`,
     "  },",
@@ -332,138 +332,6 @@ export function formatDraftCommentJs(): string {
   ]);
 }
 
-/** Shared ClickUp task tag helpers — best-effort and warning-only on failure. */
-export const CLICKUP_TAG_HELPERS_JS = [
-  `const CLICKUP_API_BASE = ${JSON.stringify(CLICKUP_API_BASE)};`,
-  "const CLICKUP_TAG_WARNING_EVENT = 'clickup_tag_warning';",
-  "",
-  "function logTagWarning(details) {",
-  "  console.warn(JSON.stringify({",
-  "    event: CLICKUP_TAG_WARNING_EVENT,",
-  "    ...details,",
-  "  }));",
-  "}",
-  "",
-  "async function requestClickUpTag(action, taskId, tagName, token) {",
-  "  const method = action === 'remove' ? 'DELETE' : 'POST';",
-  "  const path = `/task/${encodeURIComponent(taskId)}/tag/${encodeURIComponent(tagName)}`;",
-  "  try {",
-  "    const response = await fetch(`${CLICKUP_API_BASE}${path}`, {",
-  "      method,",
-  "      headers: {",
-  "        Authorization: token,",
-  "        Accept: 'application/json',",
-  "      },",
-  "    });",
-  "    if (!response.ok) {",
-  "      const body = await response.text().catch(() => '');",
-  "      return {",
-  "        ok: false,",
-  "        status: response.status,",
-  "        body: body.slice(0, 200),",
-  "      };",
-  "    }",
-  "    return { ok: true };",
-  "  } catch (error) {",
-  "    return {",
-  "      ok: false,",
-  "      error: String(error),",
-  "    };",
-  "  }",
-  "}",
-  "",
-  "async function bestEffortTagChange(item, taskId, action, tagName, context) {",
-  "  const normalizedTaskId = String(taskId ?? '').trim();",
-  "  if (!normalizedTaskId) {",
-  "    logTagWarning({",
-  "      reason: 'missing_task_id',",
-  "      action,",
-  "      tag_name: tagName,",
-  "      context,",
-  "    });",
-  "    return item;",
-  "  }",
-  "",
-  "  const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;",
-  "  if (!token) {",
-  "    logTagWarning({",
-  "      reason: 'missing_clickup_token',",
-  "      action,",
-  "      tag_name: tagName,",
-  "      task_id: normalizedTaskId,",
-  "      context,",
-  "    });",
-  "    return item;",
-  "  }",
-  "",
-  "  const result = await requestClickUpTag(action, normalizedTaskId, tagName, token);",
-  "  if (!result.ok) {",
-  "    logTagWarning({",
-  "      reason: 'clickup_tag_request_failed',",
-  "      action,",
-  "      tag_name: tagName,",
-  "      task_id: normalizedTaskId,",
-  "      context,",
-  "      ...result,",
-  "    });",
-  "  }",
-  "",
-  "  return item;",
-  "}",
-  "",
-  "async function bestEffortTagSequence(item, taskId, operations, context) {",
-  "  for (const operation of operations) {",
-  "    await bestEffortTagChange(item, taskId, operation.action, operation.tagName, context);",
-  "  }",
-  "  return item;",
-  "}",
-].join("\n");
-
-/** n8n Code node: Add agent-working on stage start. */
-export function stageStartWorkingTagJs(): string {
-  return joinN8nJs([
-    CLICKUP_TAG_HELPERS_JS,
-    "",
-    "const item = $input.first().json;",
-    "const taskFields = $('Extract Task Fields').first().json;",
-    "const taskId = taskFields.task_id || item.task_id || '';",
-    `await bestEffortTagChange(item, taskId, 'add', ${JSON.stringify(AGENT_WORKING_TAG)}, 'stage_start');`,
-    "return [{ json: item }];",
-  ]);
-}
-
-/** n8n Code node: Remove agent-working and agent-blocked on successful stage exit. */
-export function cleanupStageTagsJs(): string {
-  return joinN8nJs([
-    CLICKUP_TAG_HELPERS_JS,
-    "",
-    "const item = $input.first().json;",
-    "const taskFields = $('Extract Task Fields').first().json;",
-    "const taskId = taskFields.task_id || item.task_id || '';",
-    `await bestEffortTagSequence(item, taskId, [`,
-    `  { action: 'remove', tagName: ${JSON.stringify(AGENT_WORKING_TAG)} },`,
-    `  { action: 'remove', tagName: ${JSON.stringify(AGENT_BLOCKED_TAG)} },`,
-    "], 'stage_exit_cleanup');",
-    "return [{ json: item }];",
-  ]);
-}
-
-/** n8n Code node: Swap agent-working for agent-blocked on blocker output. */
-export function swapBlockerTagsJs(): string {
-  return joinN8nJs([
-    CLICKUP_TAG_HELPERS_JS,
-    "",
-    "const item = $input.first().json;",
-    "const taskFields = $('Extract Task Fields').first().json;",
-    "const taskId = taskFields.task_id || item.task_id || '';",
-    `await bestEffortTagSequence(item, taskId, [`,
-    `  { action: 'remove', tagName: ${JSON.stringify(AGENT_WORKING_TAG)} },`,
-    `  { action: 'add', tagName: ${JSON.stringify(AGENT_BLOCKED_TAG)} },`,
-    "], 'blocker_swap');",
-    "return [{ json: item }];",
-  ]);
-}
-
 /** n8n Code node: Agent Parse Failure. */
 export function agentParseFailureJs(): string {
   return joinN8nJs([
@@ -568,235 +436,119 @@ export function setNeedsReviewSkipTargetJs(): string {
   ]);
 }
 
-/** Shared ClickUp Docs v3 API helpers — mirrors createClickUpDoc, listDocPages, etc. from docs-helpers.ts */
-export const CLICKUP_DOCS_V3_HELPERS_JS = [
-  "async function docsV3Request(method, path, token, body) {",
-  "  const baseUrl = 'https://api.clickup.com';",
-  "  const headers = {",
-  "    'Authorization': token,",
-  "    'Accept': 'application/json',",
-  "  };",
-  "  if (body) headers['Content-Type'] = 'application/json';",
-  "  ",
-  "  try {",
-  "    const response = await fetch(`${baseUrl}${path}`, {",
-  "      method,",
-  "      headers,",
-  "      body: body ? JSON.stringify(body) : undefined,",
-  "    });",
-  "    ",
-  "    if (!response.ok) {",
-  "      const text = await response.text().catch(() => '');",
-  "      return {",
-  "        success: false,",
-  "        error: `HTTP ${response.status}${text ? ': ' + text.slice(0, 200) : ''}`,",
-  "      };",
-  "    }",
-  "    ",
-  "    if (response.status === 204) return { success: true, data: undefined };",
-  "    ",
-  "    const data = await response.json();",
-  "    return { success: true, data };",
-  "  } catch (err) {",
-  "    return { success: false, error: String(err) };",
-  "  }",
-  "}",
-  "",
-  "async function createClickUpDoc(workspaceId, listId, taskId, token) {",
-  "  const path = `/api/v3/workspaces/${workspaceId}/docs`;",
-  "  const body = {",
-  "    name: `Editorial workspace for ${taskId}`,",
-  "    parent: { id: listId, type: 6 },",
-  "    visibility: 'PRIVATE',",
-  "    create_page: true,",
-  "  };",
-  "  const result = await docsV3Request('POST', path, token, body);",
-  "  if (!result.success) return result;",
-  "  if (!result.data?.id) {",
-  "    return { success: false, error: 'Doc created but response did not include id' };",
-  "  }",
-  "  return { success: true, data: result.data.id };",
-  "}",
-  "",
-  "async function listDocPages(workspaceId, docId, token) {",
-  "  const path = `/api/v3/workspaces/${workspaceId}/docs/${docId}/pages`;",
-  "  const result = await docsV3Request('GET', path, token);",
-  "  if (!result.success) return result;",
-  "  const pages = result.data?.pages ?? [];",
-  "  return { success: true, data: pages };",
-  "}",
-  "",
-  "async function readPageContent(workspaceId, docId, pageId, token) {",
-  "  const path = `/api/v3/workspaces/${workspaceId}/docs/${docId}/pages/${pageId}?content_format=text/md`;",
-  "  const result = await docsV3Request('GET', path, token);",
-  "  if (!result.success) return result;",
-  "  if (result.data?.content === undefined) {",
-  "    return { success: false, error: 'Page fetched but response did not include content' };",
-  "  }",
-  "  return { success: true, data: result.data.content };",
-  "}",
-  "",
-  "async function replacePage(workspaceId, docId, pageId, content, token) {",
-  "  const path = `/api/v3/workspaces/${workspaceId}/docs/${docId}/pages/${pageId}`;",
-  "  const body = {",
-  "    content,",
-  "    content_edit_mode: 'replace',",
-  "    content_format: 'text/md',",
-  "  };",
-  "  const result = await docsV3Request('PUT', path, token, body);",
-  "  return result;",
-  "}",
-  "",
-  "async function getOrCreatePageByName(workspaceId, docId, pageName, token) {",
-  "  const listResult = await listDocPages(workspaceId, docId, token);",
-  "  if (!listResult.success) return listResult;",
-  "  ",
-  "  const pages = listResult.data ?? [];",
-  "  const existing = pages.find((p) => p.name === pageName);",
-  "  if (existing?.id) return { success: true, data: existing.id };",
-  "  ",
-  "  const path = `/api/v3/workspaces/${workspaceId}/docs/${docId}/pages`;",
-  "  const body = {",
-  "    name: pageName,",
-  "    content: `# ${pageName}\\n\\n*Initial placeholder content for ${pageName}.*`,",
-  "    content_format: 'text/md',",
-  "  };",
-  "  const createResult = await docsV3Request('POST', path, token, body);",
-  "  if (!createResult.success) return createResult;",
-  "  if (!createResult.data?.id) {",
-  "    return { success: false, error: `Page '${pageName}' created but response did not include id` };",
-  "  }",
-  "  return { success: true, data: createResult.data.id };",
-  "}",
-].join("\n");
+/** n8n IF node expression: does the task already have an editorial_doc_url pointer? */
+export function hasDocUrlIfExpression(): string {
+  return "={{ Boolean(String($('Extract Task Fields').first().json.editorial_doc_url ?? '').trim()) }}";
+}
 
-/** n8n Code node: Create ClickUp Doc if needed (task_12 step 1). */
-export function createDocIfNeededJs(): string {
+/** n8n Code node: Use Existing Doc — reuse the doc_id from editorial_doc_url. */
+export function useExistingDocJs(): string {
   return joinN8nJs([
-    CLICKUP_DOCS_V3_HELPERS_JS,
-    "",
     "const fields = $('Extract Task Fields').first().json;",
-    "const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;",
-    "if (!token) throw new Error('CLICKUP_API_TOKEN not set');",
+    "const docId = String(fields.editorial_doc_url ?? '').trim();",
     "",
-    "let docId = String(fields.editorial_doc_url ?? '').trim();",
-    "if (docId) {",
-    "  return [{",
-    "    json: {",
-    "      ...fields,",
-    "      doc_id: docId,",
-    "      doc_created: false,",
-    "      operation: 'use_existing_doc',",
-    "    },",
-    "  }];",
-    "}",
-    "",
-    "const webhook = $('Extract Webhook Context').first().json;",
-    "const workspaceId = fields.workspace_id;",
-    "const listId = webhook.list_id;",
-    "if (!workspaceId || !listId) {",
-    "  throw new Error('workspace_id and list_id required for Doc creation');",
-    "}",
-    "",
-    "const result = await createClickUpDoc(workspaceId, listId, fields.task_id, token);",
-    "if (!result.success) {",
-    "  throw new Error(`Doc creation failed: ${result.error}`);",
+    "return [{",
+    "  json: {",
+    "    workspace_id: fields.workspace_id,",
+    "    doc_id: docId,",
+    "    doc_created: false,",
+    "    operation: 'use_existing_doc',",
+    "    stage: fields.stage,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Doc Created — validate the POST Create ClickUp Doc response. */
+export function docCreatedJs(): string {
+  return joinN8nJs([
+    "const fields = $('Extract Task Fields').first().json;",
+    "if (!$json.id) {",
+    "  throw new Error('Doc created but response did not include id');",
     "}",
     "",
     "return [{",
     "  json: {",
-    "    ...fields,",
-    "    doc_id: result.data,",
+    "    workspace_id: fields.workspace_id,",
+    "    doc_id: $json.id,",
     "    doc_created: true,",
     "    operation: 'created_doc',",
+    "    stage: fields.stage,",
     "  },",
     "}];",
   ]);
 }
 
-/** n8n Code node: Get or Create Stage Page (task_12 step 2). */
-export function getOrCreateStagePage(stageName: string, pageName: string): string {
+/** n8n Code node: Find Stage Page — locate this stage's page in the GET List Doc Pages response. */
+export function findStagePageJs(): string {
+  const stagePageEntries = ALL_STAGES.map(
+    (definition) => `  ${JSON.stringify(definition.stage)}: ${JSON.stringify(definition.page_name)},`
+  );
   return joinN8nJs([
-    CLICKUP_DOCS_V3_HELPERS_JS,
+    "const STAGE_TO_PAGE_NAME = {",
+    ...stagePageEntries,
+    "};",
     "",
-    "const fields = $input.first().json;",
-    "const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;",
-    "if (!token) throw new Error('CLICKUP_API_TOKEN not set');",
-    "",
-    "const workspaceId = fields.workspace_id;",
-    "const docId = fields.doc_id;",
-    "if (!workspaceId || !docId) {",
-    "  throw new Error('workspace_id and doc_id required');",
+    "const fields = $('Doc Ready').first().json;",
+    "const stage = fields.stage;",
+    "const pageName = STAGE_TO_PAGE_NAME[stage];",
+    "if (!pageName) {",
+    "  throw new Error(`Unknown stage '${stage}'. Expected one of: ${Object.keys(STAGE_TO_PAGE_NAME).join(', ')}`);",
     "}",
     "",
-    "const result = await getOrCreatePageByName(workspaceId, docId, " + JSON.stringify(pageName) + ", token);",
-    "if (!result.success) {",
-    "  throw new Error(`Page lookup/create failed: ${result.error}`);",
+    "const pages = $json.pages || [];",
+    "const existing = pages.find((page) => page.name === pageName);",
+    "",
+    "return [{",
+    "  json: {",
+    "    workspace_id: fields.workspace_id,",
+    "    doc_id: fields.doc_id,",
+    "    stage,",
+    "    page_name: pageName,",
+    "    page_id: existing?.id ?? '',",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n IF node expression: did Find Stage Page locate an existing page_id? */
+export function pageExistsIfExpression(): string {
+  return "={{ Boolean($json.page_id) }}";
+}
+
+/** n8n Code node: Page Created — validate the POST Create Doc Page response. */
+export function pageCreatedJs(): string {
+  return joinN8nJs([
+    "const fields = $('Find Stage Page').first().json;",
+    "if (!$json.id) {",
+    "  throw new Error(`Page '${fields.page_name}' created but response did not include id`);",
     "}",
     "",
     "return [{",
     "  json: {",
     "    ...fields,",
-    `    stage: ${JSON.stringify(stageName)},`,
-    `    page_name: ${JSON.stringify(pageName)},`,
-    "    page_id: result.data,",
-    "    operation: 'have_page_id',",
+    "    page_id: $json.id,",
     "  },",
     "}];",
   ]);
 }
 
-/** n8n Code node: Read Current Page Content (task_12 step 3). */
+/** n8n Code node: Read Current Page Content — reshape the GET Doc Page Content response. */
 export function readCurrentPageJs(): string {
   return joinN8nJs([
-    CLICKUP_DOCS_V3_HELPERS_JS,
-    "",
-    "const fields = $input.first().json;",
-    "const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;",
-    "if (!token) throw new Error('CLICKUP_API_TOKEN not set');",
-    "",
-    "const workspaceId = fields.workspace_id;",
-    "const docId = fields.doc_id;",
-    "const pageId = fields.page_id;",
-    "if (!workspaceId || !docId || !pageId) {",
-    "  throw new Error('workspace_id, doc_id, and page_id required');",
+    "const content = $json.content;",
+    "if (content === undefined) {",
+    "  throw new Error('Page fetched but response did not include content');",
     "}",
     "",
-    "const result = await readPageContent(workspaceId, docId, pageId, token);",
-    "if (!result.success) {",
-    "  throw new Error(`Page read failed: ${result.error}`);",
-    "}",
-    "",
-    "return [{",
-    "  json: {",
-    "    ...fields,",
-    "    page_content: result.data,",
-    "  },",
-    "}];",
+    "return [{ json: { page_content: content } }];",
   ]);
 }
 
-/** n8n Code node: Replace Stage Page Content (task_12 step 3). */
+/** n8n Code node: Replace Stage Page Content — reshape the PUT Replace Doc Page Content response. */
 export function replacePageJs(): string {
   return joinN8nJs([
-    CLICKUP_DOCS_V3_HELPERS_JS,
-    "",
-    "const fields = $input.first().json;",
-    "const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;",
-    "if (!token) throw new Error('CLICKUP_API_TOKEN not set');",
-    "",
-    "const workspaceId = fields.workspace_id;",
-    "const docId = fields.doc_id;",
-    "const pageId = fields.page_id;",
-    "const content = fields.artifact_markdown || '';",
-    "if (!workspaceId || !docId || !pageId) {",
-    "  throw new Error('workspace_id, doc_id, and page_id required');",
-    "}",
-    "",
-    "const result = await replacePage(workspaceId, docId, pageId, content, token);",
-    "if (!result.success) {",
-    "  throw new Error(`Page replacement failed: ${result.error}`);",
-    "}",
+    "const fields = $('Format Pointer Comment').first().json;",
     "",
     "return [{",
     "  json: {",
@@ -996,7 +748,7 @@ export function updateStatusToNextGateJs(): string {
   return joinN8nJs([
     "const taskFields = $('Extract Task Fields').first().json;",
     "const commentData = $('Format Pointer Comment').first().json;",
-    "const nextGate = commentData.next_gate || '';",
+    "const nextGate =  $('Execute Call Agent').first().json.next_gate || '';",
     "",
     "const STATUS_MAP = {",
     "  'brief review': 'Brief Review',",

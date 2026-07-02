@@ -1,5 +1,3 @@
-import type { AgentOutput } from "./call-agent-io.js";
-
 /**
  * AgentConfig defines a marketing agent's instructions, model parameters, and artifact references.
  *
@@ -21,5 +19,5 @@ export interface AgentConfig {
   max_output_tokens: number;
   skills: string[];
   references?: string[];
-  output_schema: Record<keyof AgentOutput, string>;
+  output_schema: Record<string, string>;
 }

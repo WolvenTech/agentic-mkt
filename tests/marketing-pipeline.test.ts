@@ -35,15 +35,17 @@ import {
   workflowConnectionPath,
 } from "../src/marketing-pipeline/logic.js";
 import {
-  CLICKUP_DOCS_V3_HELPERS_JS,
-  createDocIfNeededJs,
   detectBlockerJs,
+  docCreatedJs,
   extractLatestLeadFeedbackJs,
   extractTaskFieldsJs,
   extractStageJs,
+  findStagePageJs,
   formatBlockerCommentJs,
   formatPointerCommentJs,
-  getOrCreateStagePage,
+  hasDocUrlIfExpression,
+  pageCreatedJs,
+  pageExistsIfExpression,
   prepareStagedCallAgentInputJs,
   readCurrentPageJs,
   replacePageJs,
@@ -51,6 +53,7 @@ import {
   stagedIngressIfExpression,
   updateStatusToNextGateJs,
   updateStatusToPreviousGateJs,
+  useExistingDocJs,
 } from "../src/workflows/marketing-pipeline-n8n.js";
 import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/marketing-pipeline/logic.js";
 import type { FieldMapping } from "../src/types/field-mapping.js";
@@ -456,16 +459,13 @@ describe("Marketing Pipeline topology", () => {
     expect(workflow.connections["Set Staged Ingress"]?.main).toEqual([
       [{ node: "Extract Webhook Context", type: "main", index: 0 }],
     ]);
-    expect(workflow.connections["Status → In Progress"]?.main).toEqual([
+    expect(workflow.connections["Add agent-working"]?.main).toEqual([
       [{ node: "GET Task Comments", type: "main", index: 0 }],
     ]);
     expect(workflow.connections["Collect Task Comments"]?.main).toEqual([
-      [{ node: "Read Current Page", type: "main", index: 0 }],
+      [{ node: "Has Doc URL?", type: "main", index: 0 }],
     ]);
     expect(workflow.connections["Prepare Staged Call Agent Input"]?.main).toEqual([
-      [{ node: "Add agent-working", type: "main", index: 0 }],
-    ]);
-    expect(workflow.connections["Add agent-working"]?.main).toEqual([
       [{ node: "Execute Call Agent", type: "main", index: 0 }],
     ]);
   });
@@ -490,6 +490,7 @@ describe("Marketing Pipeline topology", () => {
       "Prepare Revision Call Agent Input",
       "Prepare Call Agent Input",
       "Set Needs Review Skip Target",
+      "Status → In Progress",
     ]) {
       expect(nodes.has(removedNode), removedNode).toBe(false);
     }
@@ -508,24 +509,39 @@ describe("Marketing Pipeline topology", () => {
       resource: "comment",
       operation: "getAll",
       commentsOn: "task",
-      limit: 50,
+      id: "={{ $('Extract Task Fields').item.json.task_id }}",
     });
+    expect((node?.parameters as { limit?: unknown }).limit).toBeUndefined();
+    expect(node?.alwaysOutputData).toBe(true);
   });
 
-  it("keeps the staged execution chain connected from status update to Call Agent", () => {
-    expect(workflowConnectionPath(workflow, "Status → In Progress", "Execute Call Agent")).toEqual([
-      "Status → In Progress",
+  it("keeps the staged execution chain connected from activity tag to Call Agent", () => {
+    expect(workflowConnectionPath(workflow, "Add agent-working", "Execute Call Agent")).toEqual([
+      "Add agent-working",
       "GET Task Comments",
       "Collect Task Comments",
+      "Has Doc URL?",
+      "Use Existing Doc",
+      "Doc Ready",
+      "GET List Doc Pages",
+      "Find Stage Page",
+      "Page Exists?",
+      "Page Ready",
+      "GET Doc Page Content",
       "Read Current Page",
       "Extract Latest Lead Feedback",
       "Prepare Staged Call Agent Input",
-      "Add agent-working",
       "Execute Call Agent",
     ]);
     expect(workflowConnectionPath(workflow, "Prepare Staged Call Agent Input", "Status → Review")).toContain(
-      "Add agent-working"
+      "Execute Call Agent"
     );
+  });
+
+  it("uses the exact agent-working tag name in generated workflow content", () => {
+    const serialized = JSON.stringify(workflow);
+    expect(serialized).toContain(AGENT_WORKING_TAG);
+    expect(serialized).not.toContain("agen-working");
   });
 
   it("uses first() instead of paired item lookup on the final approval status update", () => {
@@ -751,76 +767,63 @@ describe("stage definitions and status mapping", () => {
 });
 
 describe("n8n Doc and page helper code generation", () => {
-  it("generates Doc creation code with proper error handling", () => {
-    const code = createDocIfNeededJs();
+  it("generates the Has Doc URL? IF expression from editorial_doc_url", () => {
+    const expr = hasDocUrlIfExpression();
+    expect(expr).toContain("editorial_doc_url");
+    expect(expr).toContain("Extract Task Fields");
+  });
 
-    // Verify the code includes key patterns
-    expect(code).toContain("createClickUpDoc");
+  it("generates Use Existing Doc code reusing editorial_doc_url as doc_id", () => {
+    const code = useExistingDocJs();
     expect(code).toContain("editorial_doc_url");
     expect(code).toContain("doc_id");
-    expect(code).toContain("doc_created");
-    expect(code).toContain("CLICKUP_API_TOKEN");
+    expect(code).toContain("doc_created: false");
+    expect(code).toContain("use_existing_doc");
     expect(code).toContain("workspace_id");
-    expect(code).toContain("list_id");
   });
 
-  it("generates stage page creation code", () => {
-    const code = getOrCreateStagePage("investigate", "Brief");
+  it("generates Doc Created code validating the HTTP response id", () => {
+    const code = docCreatedJs();
+    expect(code).toContain("$json.id");
+    expect(code).toContain("doc_created: true");
+    expect(code).toContain("created_doc");
+    expect(code).toContain("did not include id");
+  });
 
-    expect(code).toContain("getOrCreatePageByName");
+  it("generates Find Stage Page code with stage-to-page-name mapping from ALL_STAGES", () => {
+    const code = findStagePageJs();
+    expect(code).toContain("STAGE_TO_PAGE_NAME");
+    expect(code).toContain(INVESTIGATE_STAGE.page_name);
+    expect(code).toContain(WRITE_STAGE.page_name);
+    expect(code).toContain(FORMAT_STAGE.page_name);
     expect(code).toContain("page_id");
-    expect(code).toContain("Brief");
-    expect(code).toContain("investigate");
-    expect(code).toContain("CLICKUP_API_TOKEN");
+    expect(code).toContain("Doc Ready");
   });
 
-  it("generates page read code", () => {
+  it("generates the Page Exists? IF expression from page_id", () => {
+    const expr = pageExistsIfExpression();
+    expect(expr).toContain("page_id");
+  });
+
+  it("generates Page Created code validating the HTTP response id", () => {
+    const code = pageCreatedJs();
+    expect(code).toContain("$json.id");
+    expect(code).toContain("Find Stage Page");
+    expect(code).toContain("did not include id");
+  });
+
+  it("generates page read code that reshapes the HTTP response content", () => {
     const code = readCurrentPageJs();
-
-    expect(code).toContain("readPageContent");
     expect(code).toContain("page_content");
-    expect(code).toContain("workspace_id");
-    expect(code).toContain("doc_id");
-    expect(code).toContain("page_id");
+    expect(code).toContain("$json.content");
+    expect(code).toContain("did not include content");
   });
 
-  it("generates page replacement code with replace mode", () => {
+  it("generates page replacement code carrying Format Pointer Comment fields forward", () => {
     const code = replacePageJs();
-
-    expect(code).toContain("replacePage");
-    expect(code).toContain("artifact_markdown");
+    expect(code).toContain("Format Pointer Comment");
     expect(code).toContain("page_replaced");
-    expect(code).toContain("content_edit_mode");
-    expect(code).toContain("CLICKUP_API_TOKEN");
-  });
-
-  it("generated code references proper stage page names from stage definitions", () => {
-    // Verify each stage generates correct page name
-    const stagesAndPages = [
-      { stage: INVESTIGATE_STAGE.stage, pageName: INVESTIGATE_STAGE.page_name },
-      { stage: WRITE_STAGE.stage, pageName: WRITE_STAGE.page_name },
-      { stage: FORMAT_STAGE.stage, pageName: FORMAT_STAGE.page_name },
-    ];
-
-    for (const { stage, pageName } of stagesAndPages) {
-      const code = getOrCreateStagePage(stage, pageName);
-      expect(code).toContain(pageName);
-      expect(code).toContain(stage);
-    }
-  });
-
-  it("CLICKUP_DOCS_V3_HELPERS_JS is properly structured for n8n", () => {
-    // Verify the helper functions are defined
-    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function docsV3Request");
-    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function createClickUpDoc");
-    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function listDocPages");
-    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function readPageContent");
-    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function replacePage");
-    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("async function getOrCreatePageByName");
-
-    // Verify error handling patterns
-    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("success: false");
-    expect(CLICKUP_DOCS_V3_HELPERS_JS).toContain("success: true");
+    expect(code).toContain("page_replaced: true");
   });
 });
 
@@ -964,7 +967,7 @@ describe("Marketing Pipeline stage routing", () => {
     // Verify workflow topology includes investigate path
     expect(workflowConnectionPath(workflow, "Extract Stage", "Set Staged Ingress")).not.toBeNull();
     expect(workflowConnectionPath(workflow, "Route by Stage?", "Investigate?")).not.toBeNull();
-    expect(workflowConnectionPath(workflow, "Investigate?", "Status → In Progress")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Investigate?", "Add agent-working")).not.toBeNull();
   });
 
   it("routes write ingress to long-form-argument agent", () => {
@@ -974,7 +977,7 @@ describe("Marketing Pipeline stage routing", () => {
 
     // Verify workflow topology includes write path
     expect(workflowConnectionPath(workflow, "Route by Stage?", "Write?")).not.toBeNull();
-    expect(workflowConnectionPath(workflow, "Write?", "Status → In Progress")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Write?", "Add agent-working")).not.toBeNull();
   });
 
   it("routes format ingress to linkedin-format agent", () => {
@@ -984,7 +987,7 @@ describe("Marketing Pipeline stage routing", () => {
 
     // Verify workflow topology includes format path
     expect(workflowConnectionPath(workflow, "Route by Stage?", "Format?")).not.toBeNull();
-    expect(workflowConnectionPath(workflow, "Format?", "Status → In Progress")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Format?", "Add agent-working")).not.toBeNull();
   });
 
   it("investigate happy path reaches Execute Call Agent and next gate (brief review)", () => {
@@ -1017,15 +1020,15 @@ describe("Marketing Pipeline stage routing", () => {
     expect(workflowConnectionPath(workflow, "Execute Call Agent", "Status → Next Gate")).not.toBeNull();
   });
 
-  it("staged input assembly stays linear after the status update", () => {
-    expect(workflow.connections["Status → In Progress"]?.main).toEqual([
+  it("staged input assembly stays linear after the activity tag update", () => {
+    expect(workflow.connections["Add agent-working"]?.main).toEqual([
       [{ node: "GET Task Comments", type: "main", index: 0 }],
     ]);
     expect(workflow.connections["GET Task Comments"]?.main).toEqual([
       [{ node: "Collect Task Comments", type: "main", index: 0 }],
     ]);
     expect(workflow.connections["Collect Task Comments"]?.main).toEqual([
-      [{ node: "Read Current Page", type: "main", index: 0 }],
+      [{ node: "Has Doc URL?", type: "main", index: 0 }],
     ]);
     expect(workflow.connections["Read Current Page"]?.main).toEqual([
       [{ node: "Extract Latest Lead Feedback", type: "main", index: 0 }],
@@ -1069,6 +1072,7 @@ describe("Marketing Pipeline stage routing", () => {
     expect(workflowConnectionPath(workflow, "POST Pointer Comment", "Status → Next Gate")).toEqual([
       "POST Pointer Comment",
       "Clear activity tags",
+      "Remove agent-blocked tag",
       "Update Status to Next Gate",
       "Status → Next Gate",
     ]);
@@ -1077,6 +1081,105 @@ describe("Marketing Pipeline stage routing", () => {
   it("staged success path replaces Doc page before posting comment", () => {
     expect(workflowConnectionPath(workflow, "Format Pointer Comment", "Replace Doc Page")).not.toBeNull();
     expect(workflowConnectionPath(workflow, "Replace Doc Page", "POST Pointer Comment")).not.toBeNull();
+  });
+
+  it("Doc/Page creation chain nodes exist with the correct node types", () => {
+    expect(nodeByName(workflow, "Has Doc URL?")?.type).toBe("n8n-nodes-base.if");
+    expect(nodeByName(workflow, "Use Existing Doc")?.type).toBe("n8n-nodes-base.code");
+    expect(nodeByName(workflow, "POST Create ClickUp Doc")?.type).toBe("n8n-nodes-base.httpRequest");
+    expect(nodeByName(workflow, "Doc Created")?.type).toBe("n8n-nodes-base.code");
+    expect(nodeByName(workflow, "Doc Ready")?.type).toBe("n8n-nodes-base.noOp");
+    expect(nodeByName(workflow, "GET List Doc Pages")?.type).toBe("n8n-nodes-base.httpRequest");
+    expect(nodeByName(workflow, "Find Stage Page")?.type).toBe("n8n-nodes-base.code");
+    expect(nodeByName(workflow, "Page Exists?")?.type).toBe("n8n-nodes-base.if");
+    expect(nodeByName(workflow, "POST Create Doc Page")?.type).toBe("n8n-nodes-base.httpRequest");
+    expect(nodeByName(workflow, "Page Created")?.type).toBe("n8n-nodes-base.code");
+    expect(nodeByName(workflow, "Page Ready")?.type).toBe("n8n-nodes-base.noOp");
+    expect(nodeByName(workflow, "GET Doc Page Content")?.type).toBe("n8n-nodes-base.httpRequest");
+    expect(nodeByName(workflow, "Read Current Page")?.type).toBe("n8n-nodes-base.code");
+    expect(nodeByName(workflow, "PUT Replace Doc Page Content")?.type).toBe("n8n-nodes-base.httpRequest");
+    expect(nodeByName(workflow, "Replace Doc Page")?.type).toBe("n8n-nodes-base.code");
+  });
+
+  it("all Doc/Page HTTP nodes authenticate with the predefined ClickUp credential", () => {
+    for (const name of [
+      "POST Create ClickUp Doc",
+      "GET List Doc Pages",
+      "POST Create Doc Page",
+      "GET Doc Page Content",
+      "PUT Replace Doc Page Content",
+    ]) {
+      const node = nodeByName(workflow, name);
+      expect(node?.parameters).toMatchObject({
+        authentication: "predefinedCredentialType",
+        nodeCredentialType: "clickUpApi",
+      });
+      expect(node?.credentials).toEqual({
+        clickUpApi: { id: "CLICKUP_CREDENTIAL_ID", name: "ClickUp Marketing Pipeline" },
+      });
+    }
+  });
+
+  it("Has Doc URL? branches to Use Existing Doc on true, doc creation on false", () => {
+    const branches = workflow.connections["Has Doc URL?"]?.main ?? [];
+    expect(branches[0]?.[0]?.node).toBe("Use Existing Doc");
+    expect(branches[1]?.[0]?.node).toBe("POST Create ClickUp Doc");
+  });
+
+  it("Use Existing Doc and Doc Created both converge on Doc Ready", () => {
+    expect(workflow.connections["Use Existing Doc"]?.main).toEqual([
+      [{ node: "Doc Ready", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["Doc Created"]?.main).toEqual([
+      [{ node: "Doc Ready", type: "main", index: 0 }],
+    ]);
+  });
+
+  it("Page Exists? branches directly to Page Ready on true, page creation on false", () => {
+    const branches = workflow.connections["Page Exists?"]?.main ?? [];
+    expect(branches[0]?.[0]?.node).toBe("Page Ready");
+    expect(branches[1]?.[0]?.node).toBe("POST Create Doc Page");
+  });
+
+  it("Page Exists? true branch and Page Created both converge on Page Ready", () => {
+    expect(workflow.connections["Page Created"]?.main).toEqual([
+      [{ node: "Page Ready", type: "main", index: 0 }],
+    ]);
+  });
+
+  it("Doc/Page creation chain connects end to end from Collect Task Comments to Extract Latest Lead Feedback", () => {
+    const chain = [
+      "Collect Task Comments",
+      "Has Doc URL?",
+      "Use Existing Doc",
+      "Doc Ready",
+      "GET List Doc Pages",
+      "Find Stage Page",
+      "Page Exists?",
+      "Page Ready",
+      "GET Doc Page Content",
+      "Read Current Page",
+      "Extract Latest Lead Feedback",
+    ];
+    for (let index = 0; index < chain.length - 1; index += 1) {
+      const from = chain[index];
+      const to = chain[index + 1];
+      expect(workflowConnectionPath(workflow, from as string, to as string), `${from} -> ${to}`).not.toBeNull();
+    }
+    // false branches also reach the convergence points
+    expect(workflowConnectionPath(workflow, "Has Doc URL?", "POST Create ClickUp Doc")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "POST Create ClickUp Doc", "Doc Ready")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Page Exists?", "POST Create Doc Page")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "POST Create Doc Page", "Page Ready")).not.toBeNull();
+  });
+
+  it("Doc/Page replace chain connects Format Pointer Comment through PUT to Replace Doc Page", () => {
+    expect(workflow.connections["Format Pointer Comment"]?.main).toEqual([
+      [{ node: "PUT Replace Doc Page Content", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["PUT Replace Doc Page Content"]?.main).toEqual([
+      [{ node: "Replace Doc Page", type: "main", index: 0 }],
+    ]);
   });
 });
 
@@ -1165,6 +1268,7 @@ describe("staged success output handling (task_17)", () => {
       "Replace Doc Page",
       "POST Pointer Comment",
       "Clear activity tags",
+      "Remove agent-blocked tag",
       "Update Status to Next Gate",
       "Status → Next Gate",
     ];
@@ -1373,9 +1477,11 @@ describe("blocker output handling (task_18)", () => {
     });
 
     it("has activity tag lifecycle nodes in workflow", () => {
-      expect(nodeByName(workflow, "Add agent-working")?.type).toBe("n8n-nodes-base.code");
-      expect(nodeByName(workflow, "Clear activity tags")?.type).toBe("n8n-nodes-base.code");
-      expect(nodeByName(workflow, "Swap activity tags")?.type).toBe("n8n-nodes-base.code");
+      expect(nodeByName(workflow, "Add agent-working")?.type).toBe("n8n-nodes-base.clickUp");
+      expect(nodeByName(workflow, "Clear activity tags")?.type).toBe("n8n-nodes-base.clickUp");
+      expect(nodeByName(workflow, "Remove agent-blocked tag")?.type).toBe("n8n-nodes-base.clickUp");
+      expect(nodeByName(workflow, "Swap activity tags")?.type).toBe("n8n-nodes-base.clickUp");
+      expect(nodeByName(workflow, "Add agent-blocked tag")?.type).toBe("n8n-nodes-base.clickUp");
     });
 
     it("routes Staged Success to Detect Blocker for staged outputs", () => {
@@ -1403,6 +1509,9 @@ describe("blocker output handling (task_18)", () => {
         [{ node: "Clear activity tags", type: "main", index: 0 }],
       ]);
       expect(workflow.connections["Clear activity tags"]?.main).toEqual([
+        [{ node: "Remove agent-blocked tag", type: "main", index: 0 }],
+      ]);
+      expect(workflow.connections["Remove agent-blocked tag"]?.main).toEqual([
         [{ node: "Update Status to Next Gate", type: "main", index: 0 }],
       ]);
     });
@@ -1412,6 +1521,9 @@ describe("blocker output handling (task_18)", () => {
         [{ node: "Swap activity tags", type: "main", index: 0 }],
       ]);
       expect(workflow.connections["Swap activity tags"]?.main).toEqual([
+        [{ node: "Add agent-blocked tag", type: "main", index: 0 }],
+      ]);
+      expect(workflow.connections["Add agent-blocked tag"]?.main).toEqual([
         [{ node: "Update Status to Previous Gate", type: "main", index: 0 }],
       ]);
     });
@@ -1423,6 +1535,7 @@ describe("blocker output handling (task_18)", () => {
         "Format Blocker Comment",
         "POST Blocker Comment",
         "Swap activity tags",
+        "Add agent-blocked tag",
         "Update Status to Previous Gate",
         "Status → Previous Gate",
       ];

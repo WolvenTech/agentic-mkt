@@ -9,6 +9,7 @@ export interface N8nCodeNodeContext {
   nodeOutputs?: Record<string, Record<string, unknown>>;
   executionId?: string;
   staticData?: Record<string, unknown>;
+  env?: Record<string, string | undefined>;
   now?: number;
   console?: Pick<Console, "log" | "warn" | "error">;
 }
@@ -40,6 +41,7 @@ export function runN8nCodeNode(jsCode: string, context: N8nCodeNodeContext = {})
     "console",
     "Buffer",
     "Date",
+    "$env",
     jsCode
   );
 
@@ -50,7 +52,8 @@ export function runN8nCodeNode(jsCode: string, context: N8nCodeNodeContext = {})
     $getWorkflowStaticData,
     consoleLike,
     Buffer,
-    DateLike
+    DateLike,
+    context.env ?? {}
   );
 }
 

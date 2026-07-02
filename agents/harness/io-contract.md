@@ -342,19 +342,19 @@ Actionable diagnostics for common M1 failure modes. Primary diagnostic surface: 
 5. **Simulate without ClickUp:** open the webhook node → **Listen for test event** → POST a staged ingress fixture to the test URL (e.g., `clickup/fixtures/task-status-updated-investigate.json` for the Investigate stage). If this succeeds but production fails, the ClickUp registration is wrong — re-register with the production URL.
 6. Verify ingress filter: payload must have `history_items[0].field === "status"` and be **entering** one of `investigate`, `write`, or `format` per [`field-mapping.json`](../../clickup/field-mapping.json) ([`clickup/webhook-contract.md`](../../clickup/webhook-contract.md)). Transitions such as `investigate → brief_review` are self-echo and correctly ignored.
 
-### Task stuck in In Progress
+### Task stuck with agent-working
 
-**Symptoms:** Status changed to writing but no comment appeared; task never reached approval.
+**Symptoms:** Task has the `agent-working` tag but no pointer or blocker comment appeared; task never reached the next gate.
 
 **Diagnostic steps:**
 
 1. Open **n8n → Executions** and find the run for this task (filter by workflow **Marketing Pipeline**, sort by time).
 2. Check execution status: **Error** (red) vs **Success** (green) vs **Running** (stuck).
-3. Walk the node sequence per TechSpec happy path: **Ready to Work?** → **GET ClickUp Task** → **Extract Task Fields** → **Status → In Progress** → **Execute Call Agent** → **Format Draft Comment** → **POST Task Comment** → **Status → Review**.
+3. Walk the staged node sequence: **GET ClickUp Task** → **Extract Task Fields** → stage IF (**Investigate?**, **Write?**, or **Format?**) → **Add agent-working** → **GET Task Comments** → **Collect Task Comments** → **Read Current Page** → **Execute Call Agent** → pointer/blocker comment handling.
 4. If failed at **Execute Call Agent**, open the sub-workflow execution (ID often one less than main — see [green run evidence](#m1-green-run-evidence)). Check **Parse Agent Output** for `parse_success: false` or error envelope.
 5. If failed at **GET ClickUp Task** or **POST Task Comment**, re-bind the ClickUp credential and verify the token has access to the Marketing Pipeline list.
 6. If **Running** for > 120 s, check OpenAI node timeout and GitHub fetch retries (max 2). Cancel stale execution and retry after fixing credentials.
-7. Confirm task was not manually moved out of writing during the run — partial runs leave the task in writing with no comment.
+7. Confirm task was not manually moved out of the stage during the run — partial runs can leave the `agent-working` tag with no comment.
 
 ### OpenAI JSON parse failures
 
@@ -411,7 +411,7 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 **When to use:** Human-in-the-loop pipelines where the GUI (ClickUp) shows progress and the orchestrator mutates status at defined gates.
 
-**Description:** Webhook ingress when entering `ready` triggers processing. Orchestrator sets **writing** (**Status → In Progress**) before long-running work and **approval** (**Status → Review**) only after successful delivery. Failures leave the task in writing with a visible n8n error — never silent.
+**Description:** Webhook ingress when entering a work stage triggers processing. Orchestrator sets `agent-working` before long-running work and advances the task to the next gate only after successful delivery. Failures leave a visible n8n error and the task tagged for investigation.
 
 | Artifact | Reference |
 |----------|-----------|

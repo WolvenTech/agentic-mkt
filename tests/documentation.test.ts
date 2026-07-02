@@ -130,9 +130,9 @@ describe("troubleshooting", () => {
     }
   });
 
-  it("documents task-stuck-in-In-Progress diagnostics", () => {
-    expect(contract).toContain("task stuck in in progress");
-    for (const step of ["n8n → executions", "execute call agent", "status → review"]) {
+  it("documents task-stuck-with-agent-working diagnostics", () => {
+    expect(contract).toContain("task stuck with agent-working");
+    for (const step of ["n8n → executions", "add agent-working", "collect task comments", "execute call agent"]) {
       expect(contract).toContain(step);
     }
   });

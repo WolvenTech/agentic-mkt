@@ -7,8 +7,8 @@
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
       "position": [
-        0,
-        300
+        224,
+        304
       ],
       "parameters": {
         "inputSource": "passthrough"
@@ -21,7 +21,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        100
+        112
       ],
       "parameters": {}
     },
@@ -31,8 +31,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        240,
-        100
+        224,
+        112
       ],
       "parameters": {
         "mode": "raw",
@@ -46,8 +46,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        480,
-        200
+        448,
+        208
       ],
       "parameters": {
         "jsCode": "const item = $input.first().json;\nreturn [{\n  json: {\n    ...item,\n    _started_at_ms: Date.now(),\n    task_id: item.task_id ?? item.task_title ?? 'isolation-test',\n  },\n}];"
@@ -59,8 +59,8 @@
       "type": "n8n-nodes-base.github",
       "typeVersion": 1.1,
       "position": [
-        720,
-        200
+        672,
+        208
       ],
       "retryOnFail": true,
       "maxTries": 2,
@@ -85,7 +85,10 @@
           "value": "agentic-mkt"
         },
         "filePath": "=agents/{{ $json.agent_id }}.json",
-        "asBinaryProperty": false
+        "asBinaryProperty": false,
+        "additionalParameters": {
+          "reference": "content-quality-pipeline"
+        }
       }
     },
     {
@@ -94,8 +97,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
-        200
+        896,
+        208
       ],
       "parameters": {
         "jsCode": "const input = $('Store Input Context').first().json;\nconst github = $input.first().json;\nconst encoded = github.content;\nif (!encoded) {\n  return [{ json: { error: 'GitHub agent config fetch failed', raw_response: JSON.stringify(github) } }];\n}\nconst decoded = Buffer.from(String(encoded).replace(/\\n/g, ''), 'base64').toString('utf8');\nconst agentConfig = JSON.parse(decoded);\nconst skills = Array.isArray(agentConfig.skills) ? agentConfig.skills : [];\nconst references = Array.isArray(agentConfig.references) ? agentConfig.references : [];\nconst items = [\n  ...skills.map((skill) => ({\n    json: {\n      ...input,\n      agent_config: agentConfig,\n      skill,\n      skill_path: `agents/skills/${skill}.md`,\n      path: `agents/skills/${skill}.md`,\n    },\n  })),\n  ...references.map((reference) => ({\n    json: {\n      ...input,\n      agent_config: agentConfig,\n      reference,\n      path: reference,\n    },\n  })),\n];\nreturn items;"
@@ -107,8 +110,8 @@
       "type": "n8n-nodes-base.github",
       "typeVersion": 1.1,
       "position": [
-        1200,
-        200
+        1120,
+        288
       ],
       "retryOnFail": true,
       "maxTries": 2,
@@ -133,7 +136,10 @@
           "value": "agentic-mkt"
         },
         "filePath": "={{ $json.path }}",
-        "asBinaryProperty": false
+        "asBinaryProperty": false,
+        "additionalParameters": {
+          "reference": "content-quality-pipeline"
+        }
       }
     },
     {
@@ -142,8 +148,8 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        1320,
-        200
+        1344,
+        208
       ],
       "parameters": {
         "mode": "combine",
@@ -157,8 +163,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1560,
-        200
+        1568,
+        208
       ],
       "parameters": {
         "jsCode": "const items = $input.all();\nconst base = items[0]?.json ?? {};\nconst agentConfig = base.agent_config;\nif (!agentConfig) {\n  return [{ json: { error: 'Missing agent_config after Merge Agent Files Fetch', raw_response: JSON.stringify(base) } }];\n}\nconst skillContents = {};\nconst referenceContents = {};\nfor (const item of items) {\n  const skill = item.json.skill;\n  const reference = item.json.reference;\n  const encoded = item.json.content;\n  if (!encoded) continue;\n  const decoded = Buffer.from(String(encoded).replace(/\\n/g, ''), 'base64').toString('utf8');\n  if (skill) {\n    skillContents[skill] = decoded;\n  } else if (reference) {\n    referenceContents[reference] = decoded;\n  }\n}\nconst schema = agentConfig.output_schema ?? {};\nconst example = {\n  deliverable_markdown: schema.deliverable_markdown ?? 'Full LinkedIn post draft in markdown',\n  resumo: schema.resumo ?? '2-3 sentence summary of the draft',\n  autochecagem: schema.autochecagem ?? 'Bullet list validating draft against acceptance criteria',\n};\nconst skillBlocks = (agentConfig.skills ?? []).map((skill) => {\n  const body = (skillContents[skill] ?? '').trim();\n  return `## Skill: ${skill}\\n${body}`;\n}).join('\\n\\n');\nconst systemPromptLines = [\n  '# Agent Role',\n  `You are the \\`${agentConfig.id}\\` marketing worker agent.`,\n  '',\n  '# Skills',\n  skillBlocks,\n  '',\n];\nconst references = agentConfig.references ?? [];\nif (references.length > 0) {\n  const referenceBlocks = references.map((ref) => {\n    const body = (referenceContents[ref] ?? '').trim();\n    return `## Reference: ${ref}\\n${body}`;\n  }).join('\\n\\n');\n  systemPromptLines.push('# References', referenceBlocks, '');\n}\nsystemPromptLines.push(\n  '# Required Output Format',\n  'Respond with JSON only. Do not wrap the JSON in markdown code fences.',\n  'Required keys and semantics:',\n  JSON.stringify(example, null, 2),\n);\nconst systemPrompt = systemPromptLines.join('\\n');\nconst userMessage = [\n  '# Task Title',\n  base.task_title ?? '',\n  '',\n  '# Task Description',\n  base.task_description ?? '',\n  '',\n  '# Critérios de Aceite',\n  base.criterios_de_aceite ?? '',\n].join('\\n');\nreturn [{\n  json: {\n    ...base,\n    agent_config: agentConfig,\n    skill_contents: skillContents,\n    reference_contents: referenceContents,\n    system_prompt: systemPrompt,\n    user_message: userMessage,\n    temperature: agentConfig.temperature ?? 0.7,\n    max_output_tokens: agentConfig.max_output_tokens ?? 1024,\n    provider: agentConfig.provider ?? 'openai',\n    model: agentConfig.model ?? 'gpt-4.1-mini',\n  },\n}];"
@@ -170,8 +176,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1800,
-        200
+        1792,
+        208
       ],
       "parameters": {
         "conditions": {
@@ -212,8 +218,8 @@
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 2.1,
       "position": [
-        2040,
-        120
+        2016,
+        112
       ],
       "credentials": {
         "openAiApi": {
@@ -222,8 +228,6 @@
         }
       },
       "parameters": {
-        "resource": "text",
-        "operation": "response",
         "modelId": {
           "__rl": true,
           "mode": "id",
@@ -232,18 +236,15 @@
         "responses": {
           "values": [
             {
-              "type": "text",
-              "role": "user",
               "content": "={{ $json.user_message }}"
             }
           ]
         },
-        "simplify": true,
         "builtInTools": {},
         "options": {
           "instructions": "={{ $json.system_prompt }}",
-          "temperature": "={{ $json.temperature ?? 0.7 }}",
-          "maxTokens": "={{ $json.max_output_tokens ?? 1024 }}"
+          "maxTokens": "={{ $json.max_output_tokens ?? 1024 }}",
+          "temperature": "={{ $json.temperature ?? 0.7 }}"
         }
       }
     },
@@ -253,11 +254,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2280,
-        120
+        2240,
+        112
       ],
       "parameters": {
-        "jsCode": "const REQUIRED_KEYS = [\"deliverable_markdown\",\"resumo\",\"autochecagem\"];\nconst startedAt = $('Store Input Context').first().json._started_at_ms ?? Date.now();\nconst input = $('Store Input Context').first().json;\nconst agentId = input.agent_id ?? 'unknown';\nconst taskId = input.task_id ?? input.task_title ?? 'unknown';\nconst executionId = $execution.id;\n\nfunction stripFences(text) {\n  const trimmed = (text ?? '').trim();\n  if (!trimmed.startsWith('```')) return trimmed;\n  const lines = trimmed.split('\\n');\n  if (lines[0].startsWith('```')) lines.shift();\n  if (lines.length && lines[lines.length - 1].trim() === '```') lines.pop();\n  return lines.join('\\n').trim();\n}\n\nfunction extractOpenAIText(item) {\n  const json = item.json ?? {};\n  const chunks = [];\n  const output = json.output;\n  if (Array.isArray(output)) {\n    for (const message of output) {\n      const content = message?.content;\n      if (!Array.isArray(content)) continue;\n      for (const block of content) {\n        if (block?.type !== 'output_text' || block.text == null) continue;\n        if (typeof block.text === 'string') chunks.push(block.text);\n        else if (typeof block.text === 'object') chunks.push(JSON.stringify(block.text));\n      }\n    }\n  }\n  if (chunks.length) return chunks.join('');\n  const choice = Array.isArray(json.choices) ? json.choices[0] : null;\n  if (choice?.message?.content && typeof choice.message.content === 'string') {\n    return choice.message.content;\n  }\n  for (const key of ['text', 'message']) {\n    if (typeof json[key] === 'string') return json[key];\n  }\n  return JSON.stringify(json);\n}\n\nconst rawResponse = extractOpenAIText($input.first());\nlet parseSuccess = false;\nlet result;\n\ntry {\n  const cleaned = stripFences(rawResponse);\n  const parsed = JSON.parse(cleaned);\n  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {\n    throw new Error('Expected JSON object');\n  }\n  const missing = REQUIRED_KEYS.filter((key) => !(key in parsed));\n  if (missing.length) throw new Error(`Missing required keys: ${missing.join(', ')}`);\n  const invalid = REQUIRED_KEYS.filter((key) => typeof parsed[key] !== 'string' || !parsed[key].trim());\n  if (invalid.length) throw new Error(`Empty or non-string values for: ${invalid.join(', ')}`);\n  result = {\n    deliverable_markdown: parsed.deliverable_markdown,\n    resumo: parsed.resumo,\n    autochecagem: parsed.autochecagem,\n  };\n  parseSuccess = true;\n} catch (error) {\n  result = {\n    error: `Failed to parse AgentOutput: ${error.message}`,\n    raw_response: rawResponse,\n  };\n}\n\nconst latencyMs = Date.now() - startedAt;\nconsole.log(JSON.stringify({\n  task_id: taskId,\n  agent_id: agentId,\n  execution_id: executionId,\n  latency_ms: latencyMs,\n  parse_success: parseSuccess,\n}));\n\nreturn [{ json: result }];"
+        "jsCode": "const REQUIRED_KEYS = [\"deliverable_markdown\",\"resumo\",\"autochecagem\"];\nconst startedAt = $('Store Input Context').first().json._started_at_ms ?? Date.now();\nconst input = $('Store Input Context').first().json;\nconst agentId = input.agent_id ?? 'unknown';\nconst taskId = input.task_id ?? input.task_title ?? 'unknown';\nconst executionId = $execution.id;\n\nfunction stripFences(text) {\n  const trimmed = (text ?? '').trim();\n  if (!trimmed.startsWith('```')) return trimmed;\n  const lines = trimmed.split('\\n');\n  if (lines[0].startsWith('```')) lines.shift();\n  if (lines.length && lines[lines.length - 1].trim() === '```') lines.pop();\n  return lines.join('\\n').trim();\n}\n\nfunction extractOpenAIText(item) {\n  const json = item.json ?? {};\n  const chunks = [];\n  const output = json.output;\n  if (Array.isArray(output)) {\n    for (const message of output) {\n      const content = message?.content;\n      if (!Array.isArray(content)) continue;\n      for (const block of content) {\n        if (block?.type !== 'output_text' || block.text == null) continue;\n        if (typeof block.text === 'string') chunks.push(block.text);\n        else if (typeof block.text === 'object') chunks.push(JSON.stringify(block.text));\n      }\n    }\n  }\n  if (chunks.length) return chunks.join('');\n  const choice = Array.isArray(json.choices) ? json.choices[0] : null;\n  if (choice?.message?.content && typeof choice.message.content === 'string') {\n    return choice.message.content;\n  }\n  for (const key of ['text', 'message']) {\n    if (typeof json[key] === 'string') return json[key];\n  }\n  return JSON.stringify(json);\n}\n\nconst rawResponse = extractOpenAIText($input.first());\nlet parseSuccess = false;\nlet result;\n\ntry {\n  const cleaned = stripFences(rawResponse);\n  const parsed = JSON.parse(cleaned);\n  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {\n    throw new Error('Expected JSON object');\n  }\n  const missing = REQUIRED_KEYS.filter((key) => !(key in parsed));\n  if (missing.length) throw new Error(`Missing required keys: ${missing.join(', ')}`);\n  const invalid = REQUIRED_KEYS.filter((key) => typeof parsed[key] !== 'string' || !parsed[key].trim());\n  if (invalid.length) throw new Error(`Empty or non-string values for: ${invalid.join(', ')}`);\n  result = {\n    deliverable_markdown: parsed.deliverable_markdown,\n    resumo: parsed.resumo,\n    autochecagem: parsed.autochecagem,\n    next_gate: $('Parse Agent Config').first().json.agent_config.output_schema.next_gate\n  };\n  parseSuccess = true;\n} catch (error) {\n  result = {\n    error: `Failed to parse AgentOutput: ${error.message}`,\n    raw_response: rawResponse,\n  };\n}\n\nconst latencyMs = Date.now() - startedAt;\nconsole.log(JSON.stringify({\n  task_id: taskId,\n  agent_id: agentId,\n  execution_id: executionId,\n  latency_ms: latencyMs,\n  parse_success: parseSuccess,\n}));\n\nreturn [{ json: result }];"
       }
     },
     {
@@ -266,8 +267,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2040,
-        320
+        2016,
+        304
       ],
       "parameters": {
         "jsCode": "return [{\n  json: {\n    error: `Unsupported provider: ${$json.provider ?? 'unknown'}. M1 routes openai (and legacy google) to GPT.`,\n    raw_response: JSON.stringify($json),\n  },\n}];"

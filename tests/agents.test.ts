@@ -85,7 +85,7 @@ describe("agent config", () => {
     expect(Object.keys(agent.output_schema).sort()).toEqual([...OUTPUT_SCHEMA_KEYS].sort());
     for (const key of OUTPUT_SCHEMA_KEYS) {
       expect(typeof agent.output_schema[key]).toBe("string");
-      expect(agent.output_schema[key].trim().length).toBeGreaterThan(0);
+      expect((agent.output_schema[key] ?? "").trim().length).toBeGreaterThan(0);
     }
   });
 
