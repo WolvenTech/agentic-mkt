@@ -14,30 +14,6 @@ export const COMMENT_SECTIONS = ["## LinkedIn Draft", "## Resumo", "## Autocheca
 
 export type IngressMode = "first_draft" | "revision" | "skip";
 
-/** Expected main-workflow node order (old first draft ingress) for topology validation. */
-export const HAPPY_PATH_NODE_SEQUENCE = [
-  "ClickUp Webhook",
-  "Extract Stage",
-  "Staged or Ready?",
-  "Set First Draft Ingress",
-  "Extract Webhook Context",
-  "Dedup?",
-  "Mark History Item Seen",
-  "GET ClickUp Task",
-  "Extract Task Fields",
-  "Route by Stage?",
-  "Revision Ingress?",
-  "Status → In Progress",
-  "Staged Input Assembly?",
-  "Prepare Revision Input?",
-  "Prepare Call Agent Input",
-  "Execute Call Agent",
-  "Agent Output OK?",
-  "Format Draft Comment",
-  "POST Task Comment",
-  "Status → Review",
-] as const;
-
 /** Staged investigate ingress happy-path node order for topology validation. */
 export const STAGED_INVESTIGATE_PATH_NODE_SEQUENCE = [
   "ClickUp Webhook",
@@ -120,34 +96,6 @@ export const STAGED_FORMAT_PATH_NODE_SEQUENCE = [
   "POST Pointer Comment",
   "Update Status to Next Gate",
   "Status → Next Gate",
-] as const;
-
-/** Revision happy-path node order for topology validation. */
-export const REVISION_PATH_NODE_SEQUENCE = [
-  "ClickUp Webhook",
-  "Extract Stage",
-  "Staged or Ready?",
-  "Needs Review?",
-  "Set Revision Ingress",
-  "Extract Webhook Context",
-  "Dedup?",
-  "Mark History Item Seen",
-  "GET ClickUp Task",
-  "Extract Task Fields",
-  "Route by Stage?",
-  "Revision Ingress?",
-  "GET Task Comments",
-  "Collect Task Comments",
-  "Actionable Feedback?",
-  "Status → In Progress",
-  "Staged Input Assembly?",
-  "Prepare Revision Input?",
-  "Prepare Revision Call Agent Input",
-  "Execute Call Agent",
-  "Agent Output OK?",
-  "Format Draft Comment",
-  "POST Task Comment",
-  "Status → Review",
 ] as const;
 
 export interface WebhookHistoryItem {
@@ -279,7 +227,7 @@ export function formatIngressTransition(item: WebhookHistoryItem | undefined): s
   return `${before}->${after}`;
 }
 
-/** Derive ingress skip reason for payloads that fail `ingressMatchesReadyToWork`. */
+/** Derive ingress skip reason for legacy ingress filters. */
 export function deriveIngressSkipReason(
   payload: ClickUpWebhookPayload,
   fieldMapping: FieldMapping = loadFieldMapping(),
@@ -345,38 +293,6 @@ export function describeIngressSkipReason(
   };
 }
 
-/** Return true when webhook payload enters the automation ingress status (ClickUp taskStatusUpdated shape). */
-export function ingressMatchesReadyToWork(
-  payload: ClickUpWebhookPayload,
-  fieldMapping: FieldMapping = loadFieldMapping()
-): boolean {
-  const event = unwrapWebhookPayload(payload);
-  const items = event.history_items ?? [];
-  const item = items[0];
-  if (!item || item.field !== "status") {
-    return false;
-  }
-  const after = item.after;
-  const status = after !== null && typeof after === "object" ? (after as Record<string, unknown>).status : after;
-  return normalizeStatusValue(status) === normalizeStatusValue(statusName(fieldMapping, "ready"));
-}
-
-/** Return true when webhook payload enters the Needs Review revision ingress status. */
-export function ingressMatchesNeedsReview(
-  payload: ClickUpWebhookPayload,
-  fieldMapping: FieldMapping = loadFieldMapping()
-): boolean {
-  const event = unwrapWebhookPayload(payload);
-  const items = event.history_items ?? [];
-  const item = items[0];
-  if (!item || item.field !== "status") {
-    return false;
-  }
-  const after = item.after;
-  const status = after !== null && typeof after === "object" ? (after as Record<string, unknown>).status : after;
-  return normalizeStatusValue(status) === normalizeStatusValue(statusName(fieldMapping, "needs_review"));
-}
-
 /** n8n IF node expression per clickup/webhook-contract.md. */
 export function webhookIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
   const readyStatus = normalizeStatusValue(statusName(fieldMapping, "ready"));
@@ -389,22 +305,6 @@ export function webhookIfExpression(fieldMapping: FieldMapping = loadFieldMappin
     `const after = item.after; ` +
     `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
     `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(readyStatus)}; ` +
-    `})() }}`
-  );
-}
-
-/** n8n IF node expression for Needs Review revision ingress. */
-export function needsReviewIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
-  const needsReviewStatus = normalizeStatusValue(statusName(fieldMapping, "needs_review"));
-  const root = webhookPayloadRootExpression();
-  return (
-    `={{ (() => { ` +
-    `const payload = ${root}; ` +
-    `const item = payload?.history_items?.[0]; ` +
-    `if (!item || item.field !== "status") return false; ` +
-    `const after = item.after; ` +
-    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
-    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(needsReviewStatus)}; ` +
     `})() }}`
   );
 }

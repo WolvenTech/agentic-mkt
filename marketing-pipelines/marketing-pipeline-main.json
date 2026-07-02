@@ -96,7 +96,7 @@
           "conditions": [
             {
               "id": "c9566540-65f8-3303-5330-a26401f7db9d",
-              "leftValue": "={{ (() => { const payload = ($json.body && $json.body.history_items ? $json.body : $json); const item = payload?.history_items?.[0]; if (!item || item.field !== \"status\") return false; const after = item.after; const status = (after !== null && typeof after === \"object\") ? after.status : after; return String(status ?? \"\").trim().toLowerCase() === \"needs review\"; })() }}",
+              "leftValue": "={{ (() => { const payload = $json.body && $json.body.history_items ? $json.body : $json; const item = payload?.history_items?.[0]; if (!item || item.field !== \"status\") return false; const after = item.after; const status = (after !== null && typeof after === \"object\") ? after.status : after; return String(status ?? \"\").trim().toLowerCase() === \"needs review\"; })() }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",

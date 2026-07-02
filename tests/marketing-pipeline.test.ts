@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import * as marketingPipelineLogic from "../src/marketing-pipeline/logic.js";
 import {
   STAGED_INVESTIGATE_PATH_NODE_SEQUENCE,
   STAGED_WRITE_PATH_NODE_SEQUENCE,
@@ -16,10 +17,8 @@ import {
   formatCommentThread,
   getPreviousGateForStage,
   hasActionableFeedback,
-  ingressMatchesFormat,
   ingressMatchesInvestigate,
-  ingressMatchesNeedsReview,
-  ingressMatchesReadyToWork,
+  ingressMatchesFormat,
   ingressMatchesWrite,
   isBlockerOutput,
   loadFieldMapping,
@@ -68,8 +67,6 @@ import {
 import { buildMarketingPipelineWorkflow } from "../src/workflows/build-marketing-pipeline.js";
 
 const REPO_ROOT = resolve(__dirname, "..");
-const READY_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-ready-to-work.json");
-const NEEDS_REVIEW_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-needs-review.json");
 const INVESTIGATE_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-investigate.json");
 const WRITE_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-write.json");
 const FORMAT_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-format.json");
@@ -97,33 +94,10 @@ function jsCodeFromWorkflow(workflow: ReturnType<typeof buildMarketingPipelineWo
 }
 
 describe("marketing pipeline ingress logic", () => {
-  it("accepts backlog -> ready for first drafts and approval -> needs review for revisions", () => {
-    const mapping = fixtureFieldMapping();
-    const readyPayload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
-    const revisionPayload = readJson<ClickUpWebhookPayload>(NEEDS_REVIEW_WEBHOOK_FIXTURE_PATH);
-
-    expect(ingressMatchesReadyToWork(readyPayload, mapping)).toBe(true);
-    expect(ingressMatchesNeedsReview(readyPayload, mapping)).toBe(false);
-    expect(ingressMatchesReadyToWork(revisionPayload, mapping)).toBe(false);
-    expect(ingressMatchesNeedsReview(revisionPayload, mapping)).toBe(true);
-  });
-
-  it("filters self-echo and non-ingress status transitions", () => {
-    const mapping = fixtureFieldMapping();
-    const payload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
-    const item = payload.history_items?.[0];
-    const before = item?.before as Record<string, unknown>;
-    const after = item?.after as Record<string, unknown>;
-
-    before.status = statusName(mapping, "needs_review");
-    after.status = statusName(mapping, "review");
-    expect(ingressMatchesReadyToWork(payload, mapping)).toBe(false);
-    expect(ingressMatchesNeedsReview(payload, mapping)).toBe(false);
-
-    before.status = statusName(mapping, "ready");
-    after.status = statusName(mapping, "writing");
-    expect(ingressMatchesReadyToWork(payload, mapping)).toBe(false);
-    expect(ingressMatchesNeedsReview(payload, mapping)).toBe(false);
+  it("does not export the removed ready/review ingress helpers", () => {
+    expect("ingressMatchesReadyToWork" in marketingPipelineLogic).toBe(false);
+    expect("ingressMatchesNeedsReview" in marketingPipelineLogic).toBe(false);
+    expect("needsReviewIfExpression" in marketingPipelineLogic).toBe(false);
   });
 
   it("accepts staged status transitions: investigate, write, format", () => {
@@ -145,6 +119,20 @@ describe("marketing pipeline ingress logic", () => {
     expect(ingressMatchesFormat(formatPayload, mapping)).toBe(true);
   });
 
+  it("skips non-status history items before staged extraction", () => {
+    const mapping = fixtureFieldMapping();
+    const payload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
+    const item = payload.history_items?.[0];
+
+    if (item) {
+      item.field = "priority";
+    }
+    expect(extractStageFromWebhook(payload, mapping)).toBeNull();
+    expect(ingressMatchesInvestigate(payload, mapping)).toBe(false);
+    expect(ingressMatchesWrite(payload, mapping)).toBe(false);
+    expect(ingressMatchesFormat(payload, mapping)).toBe(false);
+  });
+
   it("exports canonical activity tags alongside the stage model", () => {
     expect(AGENT_WORKING_TAG).toBe("agent-working");
     expect(AGENT_BLOCKED_TAG).toBe("agent-blocked");
@@ -164,7 +152,7 @@ describe("marketing pipeline ingress logic", () => {
 
   it("rejects human gates as non-ingress when not entering staged status", () => {
     const mapping = fixtureFieldMapping();
-    const payload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
+    const payload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
     const item = payload.history_items?.[0];
     const after = item?.after as Record<string, unknown>;
 
@@ -192,20 +180,23 @@ describe("marketing pipeline ingress logic", () => {
 
   it("rejects old ingress statuses when staged flow is active", () => {
     const mapping = fixtureFieldMapping();
-    const payload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
+    const payload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
+    const item = payload.history_items?.[0];
+    const after = item?.after as Record<string, unknown>;
 
     // Old ready status should not match any staged ingress
+    after.status = statusName(mapping, "ready");
     expect(ingressMatchesInvestigate(payload, mapping)).toBe(false);
     expect(ingressMatchesWrite(payload, mapping)).toBe(false);
     expect(ingressMatchesFormat(payload, mapping)).toBe(false);
     expect(extractStageFromWebhook(payload, mapping)).toBeNull();
 
     // Old needs_review status should not match any staged ingress
-    const revisionPayload = readJson<ClickUpWebhookPayload>(NEEDS_REVIEW_WEBHOOK_FIXTURE_PATH);
-    expect(ingressMatchesInvestigate(revisionPayload, mapping)).toBe(false);
-    expect(ingressMatchesWrite(revisionPayload, mapping)).toBe(false);
-    expect(ingressMatchesFormat(revisionPayload, mapping)).toBe(false);
-    expect(extractStageFromWebhook(revisionPayload, mapping)).toBeNull();
+    after.status = statusName(mapping, "needs_review");
+    expect(ingressMatchesInvestigate(payload, mapping)).toBe(false);
+    expect(ingressMatchesWrite(payload, mapping)).toBe(false);
+    expect(ingressMatchesFormat(payload, mapping)).toBe(false);
+    expect(extractStageFromWebhook(payload, mapping)).toBeNull();
   });
 
   it("returns null stage for non-status field changes", () => {
@@ -225,7 +216,7 @@ describe("marketing pipeline ingress logic", () => {
 
   it("derives staged ingress skip reasons for non-matching payloads", () => {
     const mapping = fixtureFieldMapping();
-    const payload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
+    const payload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
 
     // Non-status field should return skip reason
     const item = payload.history_items?.[0];
@@ -243,8 +234,12 @@ describe("marketing pipeline ingress logic", () => {
     expect(deriveStagedIngressSkipReason(emptyPayload, mapping)).toBe("no_history_items");
 
     // Entering old status (not staged) should return skip reason
-    const oldStatusPayload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
-    expect(deriveStagedIngressSkipReason(oldStatusPayload, mapping)).toBe("not_entering_staged_status");
+    if (item) {
+      item.field = "status";
+      const after = item.after as Record<string, unknown>;
+      after.status = statusName(mapping, "ready");
+    }
+    expect(deriveStagedIngressSkipReason(payload, mapping)).toBe("not_entering_staged_status");
   });
 
   it("handles payload with missing history item object", () => {
@@ -274,7 +269,7 @@ describe("marketing pipeline ingress logic", () => {
 
   it("handles after value as null", () => {
     const mapping = fixtureFieldMapping();
-    const payload = readJson<ClickUpWebhookPayload>(READY_WEBHOOK_FIXTURE_PATH);
+    const payload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
     const item = payload.history_items?.[0];
 
     if (item) {
@@ -466,6 +461,16 @@ describe("Marketing Pipeline topology", () => {
     expect(workflow.connections["Needs Review?"]?.main).toEqual([
       [{ node: "Set Revision Ingress", type: "main", index: 0 }],
       [{ node: "Set Needs Review Skip Target", type: "main", index: 0 }],
+    ]);
+  });
+
+  it("keeps dedup filtering before staged processing starts", () => {
+    expect(workflow.connections["Extract Webhook Context"]?.main).toEqual([
+      [{ node: "Dedup?", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["Dedup?"]?.main).toEqual([
+      [{ node: "Log Duplicate Ingress", type: "main", index: 0 }],
+      [{ node: "Mark History Item Seen", type: "main", index: 0 }],
     ]);
   });
 

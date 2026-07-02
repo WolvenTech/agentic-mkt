@@ -1,5 +1,4 @@
 import {
-  needsReviewIfExpression,
   statusName,
   webhookIfExpression,
   extractStageFromWebhook,
@@ -42,6 +41,20 @@ import {
 const CLICKUP_CREDENTIALS = {
   clickUpApi: { id: "CLICKUP_CREDENTIAL_ID", name: "ClickUp Marketing Pipeline" },
 };
+
+function legacyNeedsReviewIfExpression(fieldMapping: FieldMapping): string {
+  const needsReviewStatus = String(statusName(fieldMapping, "needs_review")).trim().toLowerCase();
+  return (
+    `={{ (() => { ` +
+    `const payload = $json.body && $json.body.history_items ? $json.body : $json; ` +
+    `const item = payload?.history_items?.[0]; ` +
+    `if (!item || item.field !== "status") return false; ` +
+    `const after = item.after; ` +
+    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
+    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(needsReviewStatus)}; ` +
+    `})() }}`
+  );
+}
 
 /** Build the Marketing Pipeline n8n main workflow export. Source of truth per ADR-006. */
 export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nWorkflowExport {
@@ -122,7 +135,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
           conditions: [
             {
               id: conditionId("Needs Review?", 0),
-              leftValue: needsReviewIfExpression(fieldMapping),
+              leftValue: legacyNeedsReviewIfExpression(fieldMapping),
               rightValue: "",
               operator: { type: "boolean", operation: "true", singleValue: true },
             },

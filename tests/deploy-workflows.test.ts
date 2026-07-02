@@ -59,7 +59,7 @@ describe("mergeLiveBindings", () => {
         name: "ClickUp Webhook",
         type: "n8n-nodes-base.webhook",
         webhookId: "placeholder-webhook-id",
-        parameters: { path: "marketing-pipeline-ready-to-work" },
+        parameters: { path: "marketing-pipeline-staged-ingress" },
       },
       {
         name: "Message GPT-4.1-MINI",
