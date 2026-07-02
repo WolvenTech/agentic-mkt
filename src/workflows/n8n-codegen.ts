@@ -10,6 +10,7 @@ export interface N8nCodeNodeContext {
   executionId?: string;
   staticData?: Record<string, unknown>;
   now?: number;
+  console?: Pick<Console, "log" | "warn" | "error">;
 }
 
 /** Run generated n8n Code node jsCode in tests (mocks $input, $, $execution, staticData). */
@@ -28,8 +29,10 @@ export function runN8nCodeNode(jsCode: string, context: N8nCodeNodeContext = {})
   const staticStore = context.staticData ?? {};
   const $getWorkflowStaticData = () => staticStore;
   const DateLike = context.now !== undefined ? { now: () => context.now! } : Date;
+  const consoleLike = context.console ?? { log: () => undefined, warn: () => undefined, error: () => undefined };
 
-  const fn = new Function(
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as typeof Function;
+  const fn = new AsyncFunction(
     "$input",
     "$",
     "$execution",
@@ -45,7 +48,7 @@ export function runN8nCodeNode(jsCode: string, context: N8nCodeNodeContext = {})
     $,
     $execution,
     $getWorkflowStaticData,
-    { log: () => undefined },
+    consoleLike,
     Buffer,
     DateLike
   );

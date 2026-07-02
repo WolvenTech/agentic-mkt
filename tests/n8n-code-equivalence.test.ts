@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assembleSystemPrompt,
   parseStageOutput,
@@ -20,9 +20,11 @@ import {
   loadFieldMapping,
 } from "../src/marketing-pipeline/logic.js";
 import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/marketing-pipeline/logic.js";
+import { AGENT_BLOCKED_TAG, AGENT_WORKING_TAG } from "../src/marketing-pipeline/stages.js";
 import { firstCodeNodeJson, runN8nCodeNode } from "../src/workflows/n8n-codegen.js";
 import {
   collectTaskCommentsJs,
+  cleanupStageTagsJs,
   extractTaskFieldsJs,
   extractWebhookContextJs,
   formatDraftCommentJs,
@@ -31,6 +33,8 @@ import {
   prepareCallAgentInputJs,
   prepareRevisionCallAgentInputJs,
   setIngressModeJs,
+  stageStartWorkingTagJs,
+  swapBlockerTagsJs,
 } from "../src/workflows/marketing-pipeline-n8n.js";
 import { assemblePromptJs, parseAgentConfigJs, parseStageOutputJs } from "../src/workflows/call-agent-n8n.js";
 
@@ -51,15 +55,33 @@ function fixtureFieldMapping() {
   return mapping;
 }
 
+function captureWarnings() {
+  const warnings: string[] = [];
+  return {
+    warnings,
+    console: {
+      log: vi.fn(),
+      warn: (...args: unknown[]) => {
+        warnings.push(args.map((value) => String(value)).join(" "));
+      },
+      error: vi.fn(),
+    },
+  };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("marketing pipeline n8n code equivalence", () => {
   const mapping = fixtureFieldMapping();
   const webhookPayload = readJson<ClickUpWebhookPayload>(WEBHOOK_FIXTURE_PATH);
   const task = readJson<ClickUpTask>(TASK_GET_FIXTURE_PATH);
   const commentsFixture = readJson<{ comments: ClickUpComment[] }>(TASK_COMMENTS_FIXTURE_PATH);
 
-  it("extractWebhookContext jsCode matches TypeScript logic", () => {
+  it("extractWebhookContext jsCode matches TypeScript logic", async () => {
     const fixedNow = 1_700_000_000_000;
-    const jsResult = firstCodeNodeJson(runN8nCodeNode(extractWebhookContextJs(), { input: webhookPayload, now: fixedNow }));
+    const jsResult = firstCodeNodeJson(await runN8nCodeNode(extractWebhookContextJs(), { input: webhookPayload, now: fixedNow }));
     const tsResult = extractWebhookContext(webhookPayload);
 
     expect(jsResult).toMatchObject({
@@ -72,18 +94,18 @@ describe("marketing pipeline n8n code equivalence", () => {
     });
   });
 
-  it("setIngressMode jsCode stamps first_draft or revision before branches merge", () => {
-    expect(firstCodeNodeJson(runN8nCodeNode(setIngressModeJs("first_draft"), { input: { task_id: "t1" } }))).toMatchObject({
+  it("setIngressMode jsCode stamps first_draft or revision before branches merge", async () => {
+    expect(firstCodeNodeJson(await runN8nCodeNode(setIngressModeJs("first_draft"), { input: { task_id: "t1" } }))).toMatchObject({
       task_id: "t1",
       ingress_mode: "first_draft",
     });
-    expect(firstCodeNodeJson(runN8nCodeNode(setIngressModeJs("revision"), { input: { task_id: "t1" } }))).toMatchObject({
+    expect(firstCodeNodeJson(await runN8nCodeNode(setIngressModeJs("revision"), { input: { task_id: "t1" } }))).toMatchObject({
       task_id: "t1",
       ingress_mode: "revision",
     });
   });
 
-  it("logIngressSkipped jsCode matches TypeScript skip records", () => {
+  it("logIngressSkipped jsCode matches TypeScript skip records", async () => {
     const selfEcho = readJson<ClickUpWebhookPayload>(WEBHOOK_FIXTURE_PATH);
     const historyItem = selfEcho.history_items?.[0];
     const after = historyItem?.after as Record<string, unknown>;
@@ -92,22 +114,22 @@ describe("marketing pipeline n8n code equivalence", () => {
     before.status = mapping.statuses.ready;
 
     const tsRecord = describeIngressSkipReason(selfEcho, { fieldMapping: mapping });
-    const jsRecord = firstCodeNodeJson(runN8nCodeNode(logIngressSkippedJs(mapping), { input: selfEcho }));
+    const jsRecord = firstCodeNodeJson(await runN8nCodeNode(logIngressSkippedJs(mapping), { input: selfEcho }));
     expect(jsRecord).toEqual(tsRecord);
 
     const revisionSkip = firstCodeNodeJson(
-      runN8nCodeNode(logIngressSkippedJs(mapping), {
+      await runN8nCodeNode(logIngressSkippedJs(mapping), {
         input: { ...selfEcho, target_status_key: "needs_review" },
       })
     );
     expect(revisionSkip?.reason).toBe("not_entering_needs_review");
   });
 
-  it("extractTaskFields jsCode matches TypeScript fields and omits revision_count", () => {
+  it("extractTaskFields jsCode matches TypeScript fields and omits revision_count", async () => {
     const webhookContext = extractWebhookContext(webhookPayload);
     const tsFields = extractTaskFields(task, mapping);
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(extractTaskFieldsJs(mapping), {
+      await runN8nCodeNode(extractTaskFieldsJs(mapping), {
         input: task,
         nodeOutputs: { "Extract Webhook Context": webhookContext as unknown as Record<string, unknown> },
       })
@@ -126,11 +148,11 @@ describe("marketing pipeline n8n code equivalence", () => {
     expect(jsResult).not.toHaveProperty("revision_count");
   });
 
-  it("prepareCallAgentInput jsCode preserves first-draft input contract", () => {
+  it("prepareCallAgentInput jsCode preserves first-draft input contract", async () => {
     const fields = extractTaskFields(task, mapping);
     const expected = buildCallAgentInput(fields);
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(prepareCallAgentInputJs(), {
+      await runN8nCodeNode(prepareCallAgentInputJs(), {
         input: {},
         nodeOutputs: { "Extract Task Fields": fields as unknown as Record<string, unknown> },
       })
@@ -138,7 +160,7 @@ describe("marketing pipeline n8n code equivalence", () => {
     expect(jsResult).toEqual({ ...expected, task_id: fields.task_id });
   });
 
-  it("collectTaskComments jsCode filters generated draft comments out of feedback", () => {
+  it("collectTaskComments jsCode filters generated draft comments out of feedback", async () => {
     const fields = { ...extractTaskFields(task, mapping), ingress_mode: "revision" };
     const generated: ClickUpComment = {
       id: "generated",
@@ -146,7 +168,7 @@ describe("marketing pipeline n8n code equivalence", () => {
       user: { username: "Lead" },
     };
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(collectTaskCommentsJs(), {
+      await runN8nCodeNode(collectTaskCommentsJs(), {
         allInputs: [generated, ...commentsFixture.comments] as unknown as Array<Record<string, unknown>>,
         nodeOutputs: { "Extract Task Fields": fields as unknown as Record<string, unknown> },
       })
@@ -158,7 +180,7 @@ describe("marketing pipeline n8n code equivalence", () => {
     expect(JSON.stringify(jsResult?.feedback_comments)).not.toContain("Generated post");
   });
 
-  it("collectTaskComments jsCode filters [CQ-AI] pointer and [CQ-BLOCKER] blocker comments", () => {
+  it("collectTaskComments jsCode filters [CQ-AI] pointer and [CQ-BLOCKER] blocker comments", async () => {
     const fields = { ...extractTaskFields(task, mapping), ingress_mode: "revision" };
     const pointerComment: ClickUpComment = {
       id: "pointer",
@@ -177,7 +199,7 @@ describe("marketing pipeline n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(collectTaskCommentsJs(), {
+      await runN8nCodeNode(collectTaskCommentsJs(), {
         allInputs: [pointerComment, blockerComment, humanComment] as unknown as Array<Record<string, unknown>>,
         nodeOutputs: { "Extract Task Fields": fields as unknown as Record<string, unknown> },
       })
@@ -190,14 +212,14 @@ describe("marketing pipeline n8n code equivalence", () => {
     expect(JSON.stringify(jsResult?.feedback_comments)).not.toContain("[CQ-BLOCKER]");
   });
 
-  it("prepareRevisionCallAgentInput jsCode embeds original brief, filtered feedback, and simple instructions", () => {
+  it("prepareRevisionCallAgentInput jsCode embeds original brief, filtered feedback, and simple instructions", async () => {
     const fields = { ...extractTaskFields(task, mapping), ingress_mode: "revision" };
     const feedback = commentsFixture.comments.filter((comment) => String(comment.comment_text ?? "").includes("Shorten"));
     const thread = formatCommentThread(feedback);
     const expectedDescription = buildRevisionTaskDescription(fields.task_description, thread);
 
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(prepareRevisionCallAgentInputJs(), {
+      await runN8nCodeNode(prepareRevisionCallAgentInputJs(), {
         input: {},
         nodeOutputs: {
           "Extract Task Fields": fields as unknown as Record<string, unknown>,
@@ -216,10 +238,10 @@ describe("marketing pipeline n8n code equivalence", () => {
     expect(String(jsResult?.task_description)).not.toContain("revision round");
   });
 
-  it("formatGuidanceComment jsCode posts a blocker comment for empty human feedback", () => {
+  it("formatGuidanceComment jsCode posts a blocker comment for empty human feedback", async () => {
     const fields = extractTaskFields(task, mapping);
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(formatGuidanceCommentJs(), {
+      await runN8nCodeNode(formatGuidanceCommentJs(), {
         input: {},
         nodeOutputs: { "Extract Task Fields": fields as unknown as Record<string, unknown> },
       })
@@ -231,7 +253,7 @@ describe("marketing pipeline n8n code equivalence", () => {
     });
   });
 
-  it("formatDraftComment jsCode matches TypeScript comment formatter", () => {
+  it("formatDraftComment jsCode matches TypeScript comment formatter", async () => {
     const fields = extractTaskFields(task, mapping);
     const agentOutput = {
       deliverable_markdown: "Draft body",
@@ -239,7 +261,7 @@ describe("marketing pipeline n8n code equivalence", () => {
       autochecagem: "- Criterion met",
     };
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(formatDraftCommentJs(), {
+      await runN8nCodeNode(formatDraftCommentJs(), {
         input: {},
         nodeOutputs: {
           "Extract Task Fields": fields as unknown as Record<string, unknown>,
@@ -250,6 +272,192 @@ describe("marketing pipeline n8n code equivalence", () => {
     expect(jsResult?.comment_text).toBe(
       formatClickupComment(agentOutput, { agentId: fields.agent_id, model: "gpt-4.1-mini" })
     );
+  });
+});
+
+describe("tag helper code equivalence", () => {
+  function setClickUpToken(): () => void {
+    const previousApiToken = process.env.CLICKUP_API_TOKEN;
+    const previousFallbackToken = process.env.CLICKUP_TOKEN;
+    process.env.CLICKUP_API_TOKEN = "pk_test_token";
+    delete process.env.CLICKUP_TOKEN;
+
+    return () => {
+      if (previousApiToken === undefined) {
+        delete process.env.CLICKUP_API_TOKEN;
+      } else {
+        process.env.CLICKUP_API_TOKEN = previousApiToken;
+      }
+      if (previousFallbackToken === undefined) {
+        delete process.env.CLICKUP_TOKEN;
+      } else {
+        process.env.CLICKUP_TOKEN = previousFallbackToken;
+      }
+    };
+  }
+
+  it("stageStartWorkingTagJs attempts to add agent-working for the current task", async () => {
+    const restoreEnv = setClickUpToken();
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe("https://api.clickup.com/api/v2/task/task-123/tag/agent-working");
+      expect(init.method).toBe("POST");
+      expect((init.headers as Record<string, string>).Authorization).toBe("pk_test_token");
+      expect(init.body).toBeUndefined();
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { warnings, console } = captureWarnings();
+
+    try {
+      const result = await runN8nCodeNode(stageStartWorkingTagJs(), {
+        input: { task_id: "task-123", preserved: "yes" },
+        nodeOutputs: { "Extract Task Fields": { task_id: "task-123" } },
+        console,
+      });
+
+      expect(firstCodeNodeJson(result)).toEqual({ task_id: "task-123", preserved: "yes" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(warnings).toHaveLength(0);
+    } finally {
+      restoreEnv();
+    }
+  });
+
+  it("cleanupStageTagsJs removes both activity tags on successful stage exit", async () => {
+    const restoreEnv = setClickUpToken();
+    let callNumber = 0;
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      callNumber += 1;
+      if (callNumber === 1) {
+        expect(url).toBe(`https://api.clickup.com/api/v2/task/task-123/tag/${AGENT_WORKING_TAG}`);
+        expect(init.method).toBe("DELETE");
+      } else {
+        expect(url).toBe(`https://api.clickup.com/api/v2/task/task-123/tag/${AGENT_BLOCKED_TAG}`);
+        expect(init.method).toBe("DELETE");
+      }
+      expect((init.headers as Record<string, string>).Authorization).toBe("pk_test_token");
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { warnings, console } = captureWarnings();
+
+    try {
+      const result = await runN8nCodeNode(cleanupStageTagsJs(), {
+        input: { task_id: "task-123", preserved: "yes" },
+        nodeOutputs: { "Extract Task Fields": { task_id: "task-123" } },
+        console,
+      });
+
+      expect(firstCodeNodeJson(result)).toEqual({ task_id: "task-123", preserved: "yes" });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(warnings).toHaveLength(0);
+    } finally {
+      restoreEnv();
+    }
+  });
+
+  it("swapBlockerTagsJs removes agent-working and adds agent-blocked on blocker output", async () => {
+    const restoreEnv = setClickUpToken();
+    let callNumber = 0;
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      callNumber += 1;
+      if (callNumber === 1) {
+        expect(url).toBe(`https://api.clickup.com/api/v2/task/task-123/tag/${AGENT_WORKING_TAG}`);
+        expect(init.method).toBe("DELETE");
+      } else {
+        expect(url).toBe(`https://api.clickup.com/api/v2/task/task-123/tag/${AGENT_BLOCKED_TAG}`);
+        expect(init.method).toBe("POST");
+      }
+      expect((init.headers as Record<string, string>).Authorization).toBe("pk_test_token");
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { warnings, console } = captureWarnings();
+
+    try {
+      const result = await runN8nCodeNode(swapBlockerTagsJs(), {
+        input: { task_id: "task-123", preserved: "yes" },
+        nodeOutputs: { "Extract Task Fields": { task_id: "task-123" } },
+        console,
+      });
+
+      expect(firstCodeNodeJson(result)).toEqual({ task_id: "task-123", preserved: "yes" });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(warnings).toHaveLength(0);
+    } finally {
+      restoreEnv();
+    }
+  });
+
+  it("logs a warning payload and returns the original item when a tag API call fails", async () => {
+    const restoreEnv = setClickUpToken();
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ err: "Rate limited" }), {
+        status: 429,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { warnings, console } = captureWarnings();
+
+    try {
+      const result = await runN8nCodeNode(stageStartWorkingTagJs(), {
+        input: { task_id: "task-123", preserved: "yes" },
+        nodeOutputs: { "Extract Task Fields": { task_id: "task-123" } },
+        console,
+      });
+
+      expect(firstCodeNodeJson(result)).toEqual({ task_id: "task-123", preserved: "yes" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(warnings).toHaveLength(1);
+      expect(JSON.parse(warnings[0])).toMatchObject({
+        event: "clickup_tag_warning",
+        reason: "clickup_tag_request_failed",
+        action: "add",
+        tag_name: AGENT_WORKING_TAG,
+        task_id: "task-123",
+        status: 429,
+      });
+    } finally {
+      restoreEnv();
+    }
+  });
+
+  it("runs without requiring any n8n credential beyond ClickUp token access", async () => {
+    const previousApiToken = process.env.CLICKUP_API_TOKEN;
+    const previousFallbackToken = process.env.CLICKUP_TOKEN;
+    delete process.env.CLICKUP_API_TOKEN;
+    delete process.env.CLICKUP_TOKEN;
+    const { warnings, console } = captureWarnings();
+
+    try {
+      const result = await runN8nCodeNode(stageStartWorkingTagJs(), {
+        input: { task_id: "task-123", preserved: "yes" },
+        nodeOutputs: { "Extract Task Fields": { task_id: "task-123" } },
+        console,
+      });
+
+      expect(firstCodeNodeJson(result)).toEqual({ task_id: "task-123", preserved: "yes" });
+      expect(warnings).toHaveLength(1);
+      expect(JSON.parse(warnings[0])).toMatchObject({
+        event: "clickup_tag_warning",
+        reason: "missing_clickup_token",
+        action: "add",
+        tag_name: AGENT_WORKING_TAG,
+        task_id: "task-123",
+      });
+    } finally {
+      if (previousApiToken === undefined) {
+        delete process.env.CLICKUP_API_TOKEN;
+      } else {
+        process.env.CLICKUP_API_TOKEN = previousApiToken;
+      }
+      if (previousFallbackToken === undefined) {
+        delete process.env.CLICKUP_TOKEN;
+      } else {
+        process.env.CLICKUP_TOKEN = previousFallbackToken;
+      }
+    }
   });
 });
 
@@ -338,7 +546,7 @@ describe("Call Agent n8n code equivalence", () => {
     expect(refContents["agents/references/example-brief.md"]).toContain("Sample brief format");
   });
 
-  it("parseStageOutputJs accepts valid investigate stage output", () => {
+  it("parseStageOutputJs accepts valid investigate stage output", async () => {
     const stageOutput = {
       stage: "investigate",
       artifact_markdown: "## Brief\n\nKey findings from research.",
@@ -348,7 +556,7 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(parseStageOutputJs(), {
+      await runN8nCodeNode(parseStageOutputJs(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
@@ -361,7 +569,7 @@ describe("Call Agent n8n code equivalence", () => {
     expect(jsResult?.artifact_markdown).toContain("Brief");
   });
 
-  it("parseStageOutputJs accepts valid stage output with blocker_question", () => {
+  it("parseStageOutputJs accepts valid stage output with blocker_question", async () => {
     const stageOutput = {
       stage: "investigate",
       artifact_markdown: "## Brief\n\nPartial research.",
@@ -372,7 +580,7 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(parseStageOutputJs(), {
+      await runN8nCodeNode(parseStageOutputJs(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
@@ -383,7 +591,7 @@ describe("Call Agent n8n code equivalence", () => {
     expect(jsResult?.blocker_question).toBe("Can you provide additional sources?");
   });
 
-  it("parseStageOutputJs rejects unknown stage", () => {
+  it("parseStageOutputJs rejects unknown stage", async () => {
     const stageOutput = {
       stage: "unknown",
       artifact_markdown: "Brief",
@@ -393,7 +601,7 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(parseStageOutputJs(), {
+      await runN8nCodeNode(parseStageOutputJs(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
@@ -404,7 +612,7 @@ describe("Call Agent n8n code equivalence", () => {
     expect(jsResult?.error).toContain("Unknown stage");
   });
 
-  it("parseStageOutputJs rejects mismatched next_gate for stage", () => {
+  it("parseStageOutputJs rejects mismatched next_gate for stage", async () => {
     const stageOutput = {
       stage: "investigate",
       artifact_markdown: "Brief",
@@ -414,7 +622,7 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(parseStageOutputJs(), {
+      await runN8nCodeNode(parseStageOutputJs(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
@@ -426,9 +634,9 @@ describe("Call Agent n8n code equivalence", () => {
     expect(jsResult?.error).toContain("investigate");
   });
 
-  it("parseStageOutputJs returns error envelope for malformed JSON", () => {
+  it("parseStageOutputJs returns error envelope for malformed JSON", async () => {
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(parseStageOutputJs(), {
+      await runN8nCodeNode(parseStageOutputJs(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: "not-json-at-all" }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
@@ -440,7 +648,7 @@ describe("Call Agent n8n code equivalence", () => {
     expect(jsResult?.raw_response).toBe("not-json-at-all");
   });
 
-  it("parseStageOutputJs rejects missing required keys", () => {
+  it("parseStageOutputJs rejects missing required keys", async () => {
     const partial = {
       stage: "investigate",
       artifact_markdown: "Brief",
@@ -448,7 +656,7 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(parseStageOutputJs(), {
+      await runN8nCodeNode(parseStageOutputJs(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(partial) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
@@ -459,7 +667,7 @@ describe("Call Agent n8n code equivalence", () => {
     expect(jsResult?.error).toContain("Missing required keys");
   });
 
-  it("parseStageOutputJs rejects empty artifact_markdown", () => {
+  it("parseStageOutputJs rejects empty artifact_markdown", async () => {
     const stageOutput = {
       stage: "investigate",
       artifact_markdown: "   ",
@@ -469,7 +677,7 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(parseStageOutputJs(), {
+      await runN8nCodeNode(parseStageOutputJs(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },

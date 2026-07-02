@@ -1,4 +1,6 @@
 import { DEFAULT_AGENT_ID, DEFAULT_MODEL, fieldId } from "../marketing-pipeline/logic.js";
+import { AGENT_BLOCKED_TAG, AGENT_WORKING_TAG } from "../marketing-pipeline/stages.js";
+import { CLICKUP_API_BASE } from "../clickup/client.js";
 import type { FieldMapping } from "../types/field-mapping.js";
 import { joinN8nJs } from "./n8n-codegen.js";
 
@@ -327,6 +329,138 @@ export function formatDraftCommentJs(): string {
     "    autochecagem: agentOutput.autochecagem,",
     "  },",
     "}];",
+  ]);
+}
+
+/** Shared ClickUp task tag helpers — best-effort and warning-only on failure. */
+export const CLICKUP_TAG_HELPERS_JS = [
+  `const CLICKUP_API_BASE = ${JSON.stringify(CLICKUP_API_BASE)};`,
+  "const CLICKUP_TAG_WARNING_EVENT = 'clickup_tag_warning';",
+  "",
+  "function logTagWarning(details) {",
+  "  console.warn(JSON.stringify({",
+  "    event: CLICKUP_TAG_WARNING_EVENT,",
+  "    ...details,",
+  "  }));",
+  "}",
+  "",
+  "async function requestClickUpTag(action, taskId, tagName, token) {",
+  "  const method = action === 'remove' ? 'DELETE' : 'POST';",
+  "  const path = `/task/${encodeURIComponent(taskId)}/tag/${encodeURIComponent(tagName)}`;",
+  "  try {",
+  "    const response = await fetch(`${CLICKUP_API_BASE}${path}`, {",
+  "      method,",
+  "      headers: {",
+  "        Authorization: token,",
+  "        Accept: 'application/json',",
+  "      },",
+  "    });",
+  "    if (!response.ok) {",
+  "      const body = await response.text().catch(() => '');",
+  "      return {",
+  "        ok: false,",
+  "        status: response.status,",
+  "        body: body.slice(0, 200),",
+  "      };",
+  "    }",
+  "    return { ok: true };",
+  "  } catch (error) {",
+  "    return {",
+  "      ok: false,",
+  "      error: String(error),",
+  "    };",
+  "  }",
+  "}",
+  "",
+  "async function bestEffortTagChange(item, taskId, action, tagName, context) {",
+  "  const normalizedTaskId = String(taskId ?? '').trim();",
+  "  if (!normalizedTaskId) {",
+  "    logTagWarning({",
+  "      reason: 'missing_task_id',",
+  "      action,",
+  "      tag_name: tagName,",
+  "      context,",
+  "    });",
+  "    return item;",
+  "  }",
+  "",
+  "  const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;",
+  "  if (!token) {",
+  "    logTagWarning({",
+  "      reason: 'missing_clickup_token',",
+  "      action,",
+  "      tag_name: tagName,",
+  "      task_id: normalizedTaskId,",
+  "      context,",
+  "    });",
+  "    return item;",
+  "  }",
+  "",
+  "  const result = await requestClickUpTag(action, normalizedTaskId, tagName, token);",
+  "  if (!result.ok) {",
+  "    logTagWarning({",
+  "      reason: 'clickup_tag_request_failed',",
+  "      action,",
+  "      tag_name: tagName,",
+  "      task_id: normalizedTaskId,",
+  "      context,",
+  "      ...result,",
+  "    });",
+  "  }",
+  "",
+  "  return item;",
+  "}",
+  "",
+  "async function bestEffortTagSequence(item, taskId, operations, context) {",
+  "  for (const operation of operations) {",
+  "    await bestEffortTagChange(item, taskId, operation.action, operation.tagName, context);",
+  "  }",
+  "  return item;",
+  "}",
+].join("\n");
+
+/** n8n Code node: Add agent-working on stage start. */
+export function stageStartWorkingTagJs(): string {
+  return joinN8nJs([
+    CLICKUP_TAG_HELPERS_JS,
+    "",
+    "const item = $input.first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const taskId = taskFields.task_id || item.task_id || '';",
+    `await bestEffortTagChange(item, taskId, 'add', ${JSON.stringify(AGENT_WORKING_TAG)}, 'stage_start');`,
+    "return [{ json: item }];",
+  ]);
+}
+
+/** n8n Code node: Remove agent-working and agent-blocked on successful stage exit. */
+export function cleanupStageTagsJs(): string {
+  return joinN8nJs([
+    CLICKUP_TAG_HELPERS_JS,
+    "",
+    "const item = $input.first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const taskId = taskFields.task_id || item.task_id || '';",
+    `await bestEffortTagSequence(item, taskId, [`,
+    `  { action: 'remove', tagName: ${JSON.stringify(AGENT_WORKING_TAG)} },`,
+    `  { action: 'remove', tagName: ${JSON.stringify(AGENT_BLOCKED_TAG)} },`,
+    "], 'stage_exit_cleanup');",
+    "return [{ json: item }];",
+  ]);
+}
+
+/** n8n Code node: Swap agent-working for agent-blocked on blocker output. */
+export function swapBlockerTagsJs(): string {
+  return joinN8nJs([
+    CLICKUP_TAG_HELPERS_JS,
+    "",
+    "const item = $input.first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const taskId = taskFields.task_id || item.task_id || '';",
+    `await bestEffortTagSequence(item, taskId, [`,
+    `  { action: 'remove', tagName: ${JSON.stringify(AGENT_WORKING_TAG)} },`,
+    `  { action: 'add', tagName: ${JSON.stringify(AGENT_BLOCKED_TAG)} },`,
+    "], 'blocker_swap');",
+    "return [{ json: item }];",
   ]);
 }
 

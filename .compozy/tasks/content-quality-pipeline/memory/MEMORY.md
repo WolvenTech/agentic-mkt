@@ -17,6 +17,8 @@ Keep only durable, cross-task context here. Do not duplicate facts that are obvi
 - Blocker outputs carry optional blocker_question field; when absent, all three artifact fields must be non-empty
 - Coverage target 80%+ achieved: parseStageOutput at 81.91% branches, 100% functions
 - Marketing Pipeline now uses the staged-only webhook path `marketing-pipeline-staged-ingress` and a linear post-status chain of `GET Task Comments` -> `Collect Task Comments` -> `Read Current Page` -> `Extract Latest Lead Feedback` -> `Prepare Staged Call Agent Input`.
+- The n8n code-node test harness now executes generated snippets as async functions and accepts injected `console.warn` capture, so future codegen tasks can safely test top-level `await` and warning-only side effects.
+- Best-effort tag helper snippets should return the original item unchanged and log ClickUp failures as warnings instead of throwing, so status/Doc mutations can continue.
 
 ## Open Risks
 - Task 20 (Call Agent workflow tests) will need n8n parser equivalence tests using the stage output fixtures
