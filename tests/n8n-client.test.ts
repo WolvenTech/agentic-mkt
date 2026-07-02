@@ -474,4 +474,16 @@ describe("summarizeExecution", () => {
     const client = createN8nClient(OPTIONS);
     await expect(client.deactivateWorkflow("wf-456")).resolves.toBeUndefined();
   });
+
+  it("deletes a workflow via DELETE", async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(`${N8N_API_URL_DEFAULT}/api/v1/workflows/wf-del`);
+      expect(init.method).toBe("DELETE");
+      return jsonResponse({ ok: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createN8nClient(OPTIONS);
+    await expect(client.deleteWorkflow("wf-del")).resolves.toBeUndefined();
+  });
 });

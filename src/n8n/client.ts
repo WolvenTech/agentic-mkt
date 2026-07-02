@@ -82,6 +82,7 @@ export interface N8nClient {
   createWorkflow(body: Record<string, unknown>): Promise<{ id: string }>;
   activateWorkflow(id: string): Promise<void>;
   deactivateWorkflow(id: string): Promise<void>;
+  deleteWorkflow(id: string): Promise<void>;
   getExecution(id: string, includeData?: boolean): Promise<N8nExecution>;
   listExecutions(options?: { workflowId?: string; limit?: number }): Promise<N8nExecution[]>;
 }
@@ -193,6 +194,10 @@ export function createN8nClient(options: N8nClientOptions): N8nClient {
 
     async deactivateWorkflow(id: string): Promise<void> {
       await request<void>("POST", `/api/v1/workflows/${id}/deactivate`, options);
+    },
+
+    async deleteWorkflow(id: string): Promise<void> {
+      await request<void>("DELETE", `/api/v1/workflows/${id}`, options);
     },
 
     async getExecution(id: string, includeData = false): Promise<N8nExecution> {
