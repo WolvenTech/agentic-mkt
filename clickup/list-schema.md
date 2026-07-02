@@ -49,6 +49,7 @@ Configure statuses on the list in the order above. Status **display names must m
 |----------------------------|--------------|------|---------|-------------------------|
 | `criterios_de_aceite` | Critérios de Aceite | Text | — | **Yes** |
 | `agent_id` | agent_id | Short text | `linkedin-writer` | No (defaults apply) |
+| `editorial_doc_url` | Editorial Doc URL | URL | — | No (written by workflow) |
 
 Custom fields must be created in the ClickUp UI — the public API cannot create new field definitions ([ClickUp custom fields API](https://developer.clickup.com/reference/getaccessiblecustomfields)).
 

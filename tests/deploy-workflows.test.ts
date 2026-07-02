@@ -3,8 +3,11 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   allowedSettings,
+  applyCredentialsByType,
+  collectCredentialsByType,
   deployWorkflows,
   mergeLiveBindings,
+  publishNewWorkflows,
   type N8nDeployNode,
 } from "../src/n8n/deploy-workflows.js";
 
@@ -217,5 +220,181 @@ describe("deployWorkflows", () => {
         fetchImpl: fetchMock as unknown as typeof fetch,
       })
     ).rejects.toThrow('Workflow "Call Agent" not found on n8n');
+  });
+});
+
+describe("collectCredentialsByType", () => {
+  it("collects one credential per type from multiple nodes", () => {
+    const nodes: N8nDeployNode[] = [
+      {
+        name: "ClickUp 1",
+        credentials: { clickUpApi: { id: "cred-1", name: "ClickUp Marketing Pipeline" } },
+      },
+      {
+        name: "ClickUp 2",
+        credentials: { clickUpApi: { id: "cred-2", name: "ClickUp Other" } },
+      },
+      {
+        name: "GitHub",
+        credentials: { githubApi: { id: "cred-3", name: "GitHub PAT" } },
+      },
+    ];
+
+    const creds = collectCredentialsByType(nodes);
+    expect(creds.clickUpApi?.id).toBe("cred-1");
+    expect(creds.githubApi?.id).toBe("cred-3");
+  });
+
+  it("returns empty object when no credentials found", () => {
+    const nodes: N8nDeployNode[] = [{ name: "Node 1" }, { name: "Node 2", parameters: {} }];
+    const creds = collectCredentialsByType(nodes);
+    expect(creds).toEqual({});
+  });
+});
+
+describe("applyCredentialsByType", () => {
+  it("applies live credentials to nodes by type", () => {
+    const localNodes: N8nDeployNode[] = [
+      {
+        name: "ClickUp 1",
+        credentials: { clickUpApi: { id: "PLACEHOLDER", name: "placeholder" } },
+      },
+      {
+        name: "OpenAI",
+        credentials: { openAiApi: { id: "OPENAI_PLACEHOLDER", name: "placeholder" } },
+      },
+    ];
+    const credMap = {
+      clickUpApi: { id: "live-cred-1", name: "Live ClickUp" },
+      openAiApi: { id: "live-openai", name: "Live OpenAI" },
+    };
+
+    const { nodes, unresolvedCredentials } = applyCredentialsByType(localNodes, credMap);
+    expect(nodes[0]?.credentials?.clickUpApi?.id).toBe("live-cred-1");
+    expect(nodes[1]?.credentials?.openAiApi?.id).toBe("live-openai");
+    expect(unresolvedCredentials).toHaveLength(0);
+  });
+
+  it("records unresolved credentials when not in map", () => {
+    const localNodes: N8nDeployNode[] = [
+      {
+        name: "Node",
+        credentials: { githubApi: { id: "GITHUB_PLACEHOLDER" }, someOtherCred: { id: "OTHER" } },
+      },
+    ];
+    const credMap: Record<string, { id?: string; name?: string }> = {};
+
+    const { unresolvedCredentials } = applyCredentialsByType(localNodes, credMap);
+    expect(unresolvedCredentials).toContain("githubApi");
+    expect(unresolvedCredentials).toContain("someOtherCred");
+  });
+});
+
+describe("publishNewWorkflows", () => {
+  it("creates new workflows, renames and deactivates old ones, activates new Marketing Pipeline", async () => {
+    const callAgentLocal = readFileSync(resolve(REPO_ROOT, "marketing-pipelines/call-agent-subworkflow.json"), "utf-8");
+    const marketingLocal = readFileSync(resolve(REPO_ROOT, "marketing-pipelines/marketing-pipeline-main.json"), "utf-8");
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/v1/workflows?limit=100") && init?.method !== "POST") {
+        return jsonResponse({
+          data: [
+            { id: "old-call-agent", name: "Call Agent" },
+            { id: "old-marketing", name: "Marketing Pipeline" },
+          ],
+        });
+      }
+      if (url.endsWith("/api/v1/workflows/old-call-agent") && init?.method !== "POST" && init?.method !== "PUT") {
+        return jsonResponse({
+          id: "old-call-agent",
+          name: "Call Agent",
+          active: true,
+          nodes: [{ name: "GitHub", credentials: { githubApi: { id: "live-github", name: "Live GitHub" } } }],
+          connections: {},
+        });
+      }
+      if (url.endsWith("/api/v1/workflows/old-marketing") && init?.method !== "POST" && init?.method !== "PUT") {
+        return jsonResponse({
+          id: "old-marketing",
+          name: "Marketing Pipeline",
+          active: true,
+          nodes: [
+            { name: "ClickUp 1", credentials: { clickUpApi: { id: "live-clickup", name: "Live ClickUp" } } },
+            { name: "ClickUp 2", credentials: { clickUpApi: { id: "live-clickup", name: "Live ClickUp" } } },
+          ],
+          connections: {},
+        });
+      }
+      if (url.endsWith("/api/v1/workflows") && init?.method === "POST") {
+        const body = JSON.parse(init.body as string);
+        const isCallAgent = body.name === "Call Agent";
+        const id = isCallAgent ? "new-call-agent" : "new-marketing";
+        return jsonResponse({ id });
+      }
+      if (url.includes("/api/v1/workflows/") && init?.method === "PUT") {
+        return jsonResponse({ ok: true });
+      }
+      if (url.includes("/api/v1/workflows/") && init?.method === "POST") {
+        if (url.includes("/activate") || url.includes("/deactivate")) {
+          return jsonResponse({ ok: true });
+        }
+      }
+      if ((url.includes("/api/v1/workflows/new-call-agent") || url.includes("/api/v1/workflows/new-marketing")) && init?.method !== "POST" && init?.method !== "PUT") {
+        const isCallAgent = url.includes("/new-call-agent");
+        return jsonResponse({
+          id: isCallAgent ? "new-call-agent" : "new-marketing",
+          name: isCallAgent ? "Call Agent" : "Marketing Pipeline",
+          active: !isCallAgent,
+          nodes: [],
+          connections: {},
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url} ${init?.method ?? "GET"}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const report = await publishNewWorkflows({
+      apiUrl: "https://n8n.example.test",
+      apiKey: "test-key",
+      repoRoot: REPO_ROOT,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    expect(report.newCallAgent.id).toBe("new-call-agent");
+    expect(report.newMarketingPipeline.id).toBe("new-marketing");
+    expect(report.newMarketingPipeline.active).toBe(true);
+    expect(report.oldCallAgent.name).toBe("Call Agent (old)");
+    expect(report.oldMarketingPipeline.name).toBe("Marketing Pipeline (old)");
+    expect(report.oldCallAgent.active).toBe(false);
+    expect(report.oldMarketingPipeline.active).toBe(false);
+
+    const putCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT");
+    expect(putCalls.length).toBeGreaterThanOrEqual(2);
+
+    const deactivateCalls = fetchMock.mock.calls.filter(([url, init]) => String(url).includes("/deactivate") && init?.method === "POST");
+    expect(deactivateCalls).toHaveLength(2);
+
+    const activateCalls = fetchMock.mock.calls.filter(([url, init]) => String(url).includes("/activate") && init?.method === "POST");
+    expect(activateCalls).toHaveLength(2);
+  });
+
+  it("throws when existing workflows not found", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/api/v1/workflows?limit=100")) {
+        return jsonResponse({ data: [{ id: "wf-other", name: "Some Other Workflow" }] });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      publishNewWorkflows({
+        apiUrl: "https://n8n.example.test",
+        apiKey: "test-key",
+        repoRoot: REPO_ROOT,
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      })
+    ).rejects.toThrow("Existing workflows not found");
   });
 });

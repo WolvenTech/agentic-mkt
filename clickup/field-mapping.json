@@ -16,7 +16,7 @@
     "editorial_doc_url": {
       "name": "Editorial Doc URL",
       "type": "url",
-      "clickup_field_id": "<TBD>"
+      "clickup_field_id": "fc421386-3bc8-4dca-adce-836a8f3d4d6d"
     }
   },
   "statuses": {
