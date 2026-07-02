@@ -20,8 +20,17 @@ This document guides manual validation of the staged Content Quality Pipeline in
 - ✅ `pnpm build:workflows:check` passes
 - ✅ `pnpm vendor:gate` passes
 - ✅ ClickUp list configured with staged statuses
-- ✅ Custom fields present: `Critérios de Aceite`, `Editorial Doc URL`
+- ✅ Custom fields present: `ACs`, `Editorial Doc Url`
 - ✅ n8n workflows exported and ready to import
+
+**Activity Tags Reference** ([ADR-008](../../.compozy/tasks/content-quality-pipeline/adrs/adr-008.md)):
+
+The workflow uses two task tags to signal AI activity at a glance:
+- **`agent-working`**: Set when a stage begins (before Call Agent execution). Visible as a colored chip on ClickUp card.
+- **`agent-blocked`**: Set when a blocker output is detected (swapped from `agent-working`). Indicates the stage needs human input before retrying.
+- **Both tags cleared** when a stage completes (advances to next gate or returns to previous gate on blocker recovery).
+
+These tags are **orthogonal to status** — they answer "is AI actively on this?" without adding more status columns.
 
 ## Phase 1: Call Agent Sub-Workflow Isolation Test
 
@@ -141,7 +150,7 @@ Initial Status: Backlog
 
 **Expected (within ~60s)**:
 - [ ] Doc created
-- [ ] URL appears in **Editorial Doc URL** custom field
+- [ ] URL appears in **Editorial Doc Url** custom field
 - [ ] "Brief" page created with investigation artifact markdown
 - [ ] Comment posted with `[CQ-AI]` prefix, resumo, and `next_gate: "brief review"`
 - [ ] Status auto-advances to **Brief Review**
@@ -351,6 +360,19 @@ Before production rollout, verify:
 
 ---
 
+## Proof Script Exit Codes
+
+Local verification scripts report their status via exit codes (per [ADR-010](../../.compozy/tasks/content-quality-pipeline/adrs/adr-010.md)). When running tasks 23+ validation, you may encounter these codes:
+
+| Exit code | Meaning | Action |
+|-----------|---------|--------|
+| **0** | Fully verified pass | Live run completed and passed; production ready |
+| **1** | Local check failed | Fix the issue per stderr message; re-run script |
+| **2** | Blocked (missing prerequisite) | Verify ClickUp credentials, n8n workflow status, field IDs; re-run |
+| **3** | Ready but unverified | Preflight passed but live execution not run. Run with: `GREEN_RUN_EXECUTE=1 pnpm green-run` |
+
+**Important:** Exit code **3** is *not* a success. It means the code is structurally valid locally but hasn't been exercised end-to-end in live environment. Always run with `GREEN_RUN_EXECUTE=1` to get exit 0 before declaring production readiness.
+
 ## Troubleshooting
 
 ### Webhook not reaching n8n
@@ -375,7 +397,7 @@ Before production rollout, verify:
 
 **Check**:
 1. ClickUp Docs API working (test manually via API)
-2. Editorial Doc URL field populated (visible in task custom fields)
+2. Editorial Doc Url field populated (visible in task custom fields)
 3. n8n code node error logs (check "Create Doc" or "Create Page" nodes)
 
 **Fix**: Verify ClickUp v3 API credentials; check field ID mapping in code nodes

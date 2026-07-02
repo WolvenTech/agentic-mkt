@@ -79,10 +79,12 @@ describe("io-contract.md", () => {
   });
 
   it("documents the ClickUp comment template sections and placeholders", () => {
-    for (const section of ["LinkedIn Draft", "Resumo", "Autochecagem"]) {
+    // Pointer comment format (task 31 revision: staged workflow)
+    for (const section of ["Pointer comment", "Blocker comment", "[CQ-AI]", "[CQ-BLOCKER]", "Resumo", "Self-Check"]) {
       expect(contract).toContain(section);
     }
-    for (const placeholder of ["{deliverable_markdown}", "{resumo}", "{autochecagem}"]) {
+    // Placeholders for stage artifact pages and output fields
+    for (const placeholder of ["{artifact_markdown}", "{resumo}", "{self_check}", "{next_gate_display_name}", "{blocker_question}"]) {
       expect(contract).toContain(placeholder);
     }
   });

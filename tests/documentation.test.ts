@@ -124,7 +124,7 @@ describe("troubleshooting", () => {
       "webhook url",
       "clickup webhook",
       "listen for test event",
-      "task-status-updated-ready-to-work.json",
+      "field-mapping.json",
     ]) {
       expect(contract).toContain(step);
     }
@@ -219,8 +219,8 @@ describe("troubleshooting simulated webhook walkthrough", () => {
   const n8nReadme = loadText(DOMAIN_READMES.n8n);
 
   it("references the simulated-failure fixture and replay step", () => {
-    expect(contract).toContain("task-status-updated-ready-to-work.json");
     expect(contract.toLowerCase()).toContain("listen for test event");
+    expect(n8nReadme.toLowerCase()).toContain("webhook replay test");
   });
 
   it("n8n README cross-links the webhook replay test to the troubleshooting doc", () => {
@@ -286,7 +286,7 @@ describe("live proof and rollout readiness (task_22–23)", () => {
       expect(lower).toContain("format");
     });
 
-    it("task_23.md requires validation of the Editorial Doc URL custom field", () => {
+    it("task_23.md requires validation of the Editorial Doc Url custom field", () => {
       const lower = task23.toLowerCase();
       expect(lower).toContain("editorial doc");
       expect(lower).toContain("custom field");
@@ -362,6 +362,119 @@ describe("live proof and rollout readiness (task_22–23)", () => {
       const lower = listSchema.toLowerCase();
       expect(lower).toContain("decision tree");
       expect(lower).toContain("option");
+    });
+  });
+});
+
+describe("staged-only rollout documentation (task_31)", () => {
+  const webhookContract = loadText(resolve(REPO_ROOT, "clickup", "webhook-contract.md"));
+  const ioContract = loadText(resolve(REPO_ROOT, "agents", "harness", "io-contract.md"));
+  const n8nReadme = loadText(DOMAIN_READMES.n8n);
+  const listSchema = loadText(resolve(REPO_ROOT, "clickup", "list-schema.md"));
+
+  describe("no stale old-flow references in production sections", () => {
+    it("webhook-contract.md describes staged ingress (investigate/write/format) not ready/needs review", () => {
+      const lower = webhookContract.toLowerCase();
+      // Should mention staged statuses in ingress section
+      const ingresSection = webhookContract.slice(webhookContract.indexOf("## Ingress filters"), webhookContract.indexOf("## Self-echo"));
+      expect(ingresSection.toLowerCase()).toContain("investigate");
+      expect(ingresSection.toLowerCase()).toContain("write");
+      expect(ingresSection.toLowerCase()).toContain("format");
+      // Should not describe old ingress as current flow
+      expect(lower).not.toContain("first-draft ingress");
+      expect(lower).not.toContain("revision ingress");
+    });
+
+    it("n8n/README.md webhook path uses staged-ingress not ready-to-work", () => {
+      expect(n8nReadme).toContain("marketing-pipeline-staged-ingress");
+      expect(n8nReadme).not.toContain("marketing-pipeline-ready-to-work");
+    });
+
+    it("io-contract.md Live ClickUp status section documents staged flow only", () => {
+      const lower = ioContract.toLowerCase();
+      expect(lower).toContain("investigate");
+      expect(lower).toContain("brief_review");
+      expect(lower).toContain("write");
+      expect(lower).toContain("format");
+      // Old statuses should not be in the primary flow table
+      const statusesSection = ioContract.slice(ioContract.indexOf("## Live ClickUp status"), ioContract.indexOf("## M1 green run") || ioContract.length);
+      expect(statusesSection.toLowerCase()).not.toMatch(/^ready\s*\|/m);
+      expect(statusesSection.toLowerCase()).not.toMatch(/^needs review\s*\|/m);
+    });
+  });
+
+  describe("activity tag documentation (ADR-008)", () => {
+    it("io-contract.md documents agent-working and agent-blocked tags", () => {
+      expect(ioContract.toLowerCase()).toContain("agent-working");
+      expect(ioContract.toLowerCase()).toContain("agent-blocked");
+      expect(ioContract.toLowerCase()).toContain("activity tag");
+    });
+
+    it("io-contract.md explains when tags are set and cleared", () => {
+      const lower = ioContract.toLowerCase();
+      expect(lower).toContain("set when");
+      expect(lower).toContain("cleared when");
+      expect(lower).toContain("blocker");
+    });
+
+    it("n8n README documents activity tags in main workflow test procedure", () => {
+      expect(n8nReadme.toLowerCase()).toContain("agent-working");
+      expect(n8nReadme.toLowerCase()).toContain("tag");
+    });
+
+    it("LIVE-PROOF-RUNBOOK.md includes activity tag reference", () => {
+      const runbook = loadText(resolve(REPO_ROOT, "agents", "harness", "LIVE-PROOF-RUNBOOK.md"));
+      expect(runbook.toLowerCase()).toContain("activity tag");
+      expect(runbook.toLowerCase()).toContain("agent-working");
+    });
+  });
+
+  describe("proof exit-code contract documentation (ADR-010)", () => {
+    it("io-contract.md documents proof and green-run exit codes", () => {
+      expect(ioContract).toContain("Exit-code meanings");
+      expect(ioContract).toContain("Proof and green-run exit-code contract");
+      expect(ioContract).toContain("| **0** |");
+      expect(ioContract).toContain("| **2** |");
+      expect(ioContract).toContain("| **3** |");
+    });
+
+    it("io-contract.md documents that exit 3 means ready but unverified (not success)", () => {
+      expect(ioContract).toContain("Ready but unverified");
+      expect(ioContract).toContain("not");
+      expect(ioContract).toContain("success");
+    });
+
+    it("io-contract.md failure output includes concrete remediation steps", () => {
+      const lower = ioContract.toLowerCase();
+      expect(lower).toContain("failure output");
+      expect(lower).toContain("remediation");
+      expect(lower).toContain("check id");
+    });
+
+    it("LIVE-PROOF-RUNBOOK.md documents exit codes and when to use them", () => {
+      const runbook = loadText(resolve(REPO_ROOT, "agents", "harness", "LIVE-PROOF-RUNBOOK.md"));
+      const lower = runbook.toLowerCase();
+      expect(lower).toContain("exit code");
+      expect(lower).toContain("green_run_execute");
+    });
+  });
+
+  describe("staged webhook path documented where operators need it", () => {
+    it("webhook-contract.md references staged ingress in ingress filters section", () => {
+      expect(webhookContract.toLowerCase()).toContain("investigate");
+      expect(webhookContract.toLowerCase()).toContain("write");
+      expect(webhookContract.toLowerCase()).toContain("format");
+    });
+
+    it("io-contract.md troubleshooting references webhook path", () => {
+      expect(ioContract.toLowerCase()).toContain("marketing-pipeline-staged-ingress");
+    });
+
+    it("n8n README step-by-step setup includes webhook path", () => {
+      expect(n8nReadme).toContain("marketing-pipeline-staged-ingress");
+      const stepIdx = n8nReadme.indexOf("### Step 3");
+      expect(stepIdx).toBeGreaterThan(0);
+      expect(n8nReadme.slice(stepIdx, stepIdx + 500)).toContain("marketing-pipeline-staged-ingress");
     });
   });
 });

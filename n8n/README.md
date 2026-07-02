@@ -101,8 +101,8 @@ Import [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelin
 | ClickUp Webhook | Public HTTPS ingress (`POST /webhook/...`) |
 | Investigate? / Write? / Format? | IF filters: entering a stage ingress status |
 | GET ClickUp Task | Fetch title, description, and custom fields |
-| Extract Task Fields | Map `Critérios de Aceite`, `Editorial Doc URL`, and stage metadata via `clickup/field-mapping.json` |
-| Create/Fetch Editorial Doc | Create list-scoped Doc if needed; store Doc URL in `Editorial Doc URL` custom field |
+| Extract Task Fields | Map `ACs`, `Editorial Doc Url`, and stage metadata via `clickup/field-mapping.json` |
+| Create/Fetch Editorial Doc | Create list-scoped Doc if needed; store Doc URL in `Editorial Doc Url` custom field |
 | Fetch Doc Pages | Read prior stage page (if exists) to pass to agent as context |
 | Execute Call Agent | Calls sub-workflow with `StageInput` for the current stage |
 | Create/Replace Doc Page | Write the stage's artifact page to the Doc (`artifact_markdown`) |
@@ -124,44 +124,47 @@ Ensure `clickup/field-mapping.json` has real field IDs (run `pnpm clickup:sync` 
 1. Import [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelines/marketing-pipeline-main.json) into `n8n.wolven.com.br`.
 2. Bind **ClickUp** credential on all ClickUp nodes and set **Execute Call Agent** → workflow = **Call Agent**.
 3. **Activate** the Marketing Pipeline workflow.
-4. Copy the production webhook URL from the **ClickUp Webhook** node (format: `https://n8n.wolven.com.br/webhook/marketing-pipeline-ready-to-work`).
+4. Copy the production webhook URL from the **ClickUp Webhook** node (format: `https://n8n.wolven.com.br/webhook/marketing-pipeline-staged-ingress`).
 5. In ClickUp (Marketing Pipeline list): **Integrations → Webhooks → Create webhook**
    - Event: **Task Status Updated**
    - Endpoint: n8n webhook URL from step 4
-6. Confirm webhook deliveries appear in ClickUp webhook log when a test task moves to **ready**.
+6. Confirm webhook deliveries appear in ClickUp webhook log when a test task moves to **investigate**, **write**, or **format**.
 
 ### Main workflow test procedure
 
 **Full staged workflow test (happy path):**
 
-1. Create a ClickUp task with title, description, and **Critérios de Aceite** populated.
-2. Move the task to **Investigate**.
+1. Create a ClickUp task with title, description, and **ACs** populated.
+2. Move the task to **Investigate** (stage 1).
 3. Within ~60 seconds:
-   - A ClickUp Doc is created and the Doc URL appears in the **Editorial Doc URL** custom field.
+   - A ClickUp Doc is created and the Doc URL appears in the **Editorial Doc Url** custom field.
    - A page named "Brief" is created in the Doc with the investigation artifact.
-   - A pointer comment appears with the resumo and what's needed next.
+   - A pointer comment `[CQ-AI]` appears with the resumo and next gate reference.
+   - `agent-working` tag is set on the task (visible on the card).
    - Status auto-advances to **Brief Review**.
-4. Review the brief in the Doc. Leave a comment selecting/refining the angle.
-5. Move the task to **Write**.
+4. Review the brief in the Doc. Leave a comment with feedback or approval.
+5. Move the task to **Write** (stage 2).
 6. Within ~60 seconds:
    - A page named "Argument" is created in the Doc with the channel-neutral argument.
-   - A pointer comment appears with the resumo.
+   - A pointer comment `[CQ-AI]` appears with the resumo.
    - Status auto-advances to **Content Review**.
-7. Review the argument in the Doc. Leave a comment approving or correcting it.
-8. Move the task to **Format**.
+7. Review the argument in the Doc. Leave a comment with feedback or approval.
+8. Move the task to **Format** (stage 3).
 9. Within ~60 seconds:
    - A page named "Final Draft" is created in the Doc with the Wolven-voice LinkedIn post and self-check.
-   - A pointer comment appears with the resumo and self-check summary.
+   - A pointer comment `[CQ-AI]` appears with the resumo and self-check summary.
    - Status auto-advances to **Final Review**.
-10. Review the final draft (target: under 10 minutes of editing), then move to **Publish** and **Closed**.
+10. Review the final draft (target: under 10 minutes of editing). All stage artifacts are in the Doc for reference.
+11. Move to **Publish** and **Closed** (human-only gates, no AI workflow).
 
-**Webhook replay test (no ClickUp):** use **Listen for test event** on the webhook node and POST a sample webhook payload to the test URL; confirm the appropriate ingress filter (`Investigate?`, `Write?`, or `Format?`) executes.
+**Webhook replay test (no ClickUp):** use **Listen for test event** on the webhook node and POST a staged ingress payload to the test URL; confirm the appropriate ingress filter (`Investigate?`, `Write?`, or `Format?`) executes. See [`clickup/webhook-contract.md`](../clickup/webhook-contract.md) for fixture examples.
 
 **Failure paths:**
 
 - **ClickUp API failure:** disable ClickUp credential temporarily; move task to a stage; confirm execution shows error in n8n Executions (not silent).
 - **Agent parse failure:** use Call Agent isolation test to confirm error envelope; main workflow **Agent Parse Failure** node must throw and must not post comment or advance status.
-- **Blocker test:** use Call Agent isolation test to confirm blocker output; main workflow must post blocker comment and return to previous gate (not advance to next gate).
+- **Blocker test:** use Call Agent isolation test to confirm blocker output; main workflow must post `[CQ-BLOCKER]` comment and return to previous gate (not advance to next gate).
+- **Activity tag failures:** tag write errors are logged as warnings (best-effort, non-blocking). Confirm status advances even if tag write fails — the tag is a UX aid, not the source of truth.
 
 Re-export the workflow from n8n after credential binding and commit to `marketing-pipelines/marketing-pipeline-main.json` if the live graph differs from repo export.
 
@@ -192,15 +195,16 @@ Validated during M1/M2. An operator can re-import and activate both workflows us
 2. Bind **ClickUp** credential on all ClickUp nodes.
 3. On **Execute Call Agent**, select workflow = **Call Agent** (imported sub-workflow).
 4. **Activate** the Marketing Pipeline workflow.
-5. Copy the production webhook URL from **ClickUp Webhook** node: `https://n8n.wolven.com.br/webhook/marketing-pipeline-ready-to-work`.
+5. Copy the production webhook URL from **ClickUp Webhook** node: `https://n8n.wolven.com.br/webhook/marketing-pipeline-staged-ingress`.
 
 ### Step 3 — Register ClickUp webhook
 
 1. ClickUp → Integrations → Webhooks → Create webhook.
 2. Event: **Task Status Updated**; scope: Marketing Pipeline list.
-3. Endpoint: production URL from Step 2.
-4. Test first-draft ingress: move a task to **ready** and confirm an execution appears in n8n within ~5 s.
-5. Test revision ingress after Phase 2 is deployed: leave feedback in comments, move the task from **approval** to **needs review**, and confirm a revision execution appears.
+3. Endpoint: production URL from Step 2 (`https://n8n.wolven.com.br/webhook/marketing-pipeline-staged-ingress`).
+4. Test Investigate ingress: move a task to **Investigate** and confirm an execution appears in n8n within ~5 s.
+5. Test Write ingress: from **Brief Review**, move to **Write** and confirm another execution appears.
+6. Test Format ingress: from **Content Review**, move to **Format** and confirm another execution appears.
 
 ### Step 4 — Verify stage timing
 
