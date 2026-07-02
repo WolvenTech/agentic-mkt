@@ -28,7 +28,7 @@
 | 22 | Add live proof follow-up task and rollout readiness notes | completed | low | task_21 |
 | 23 | Live proof of staged content quality pipeline and rollout readiness validation | completed | high | task_22 |
 | 24 | Add ClickUp task-tag client support and stage tag constants | completed | medium | task_23 |
-| 25 | Remove legacy single-agent ingress helper surface | pending | medium | task_23 |
+| 25 | Remove legacy single-agent ingress helper surface | completed | medium | task_23 |
 | 26 | Rebuild Marketing Pipeline as staged-only topology | pending | medium | task_25 |
 | 27 | Add best-effort n8n tag helper code nodes | pending | medium | task_24 |
 | 28 | Wire AI activity tag lifecycle into staged workflow | pending | medium | task_26, task_27 |
