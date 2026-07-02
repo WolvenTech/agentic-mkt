@@ -5,10 +5,12 @@ import {
   CLICKUP_API_BASE,
   ClickUpHttpError,
   ClickUpRequestError,
+  addTaskTag,
   clickupDelete,
   clickupGet,
   clickupPost,
   clickupPut,
+  removeTaskTag,
 } from "../src/clickup/client.js";
 
 const FIXTURES_DIR = resolve(__dirname, "..", "clickup", "fixtures");
@@ -169,6 +171,72 @@ describe("clickupPost", () => {
   });
 });
 
+describe("clickup error constructors", () => {
+  it("formats ClickUpHttpError without a body snippet", () => {
+    const error = new ClickUpHttpError(500, "");
+    expect(error.message).toBe("ClickUp API error: HTTP 500");
+    expect(error.status).toBe(500);
+    expect(error.bodySnippet).toBe("");
+  });
+
+  it("formats ClickUpRequestError without an explicit cause", () => {
+    const error = new ClickUpRequestError("ClickUp request failed: GET /task/1");
+    expect(error.message).toBe("ClickUp request failed: GET /task/1");
+    expect(error.name).toBe("ClickUpRequestError");
+  });
+});
+
+describe("task tag helpers", () => {
+  it("adds a named tag with POST /task/{task_id}/tag/{tag_name}", async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(`${CLICKUP_API_BASE}/task/task-123/tag/agent-working`);
+      expect(init.method).toBe("POST");
+      expect((init.headers as Record<string, string>).Authorization).toBe("pk_test_token");
+      expect(init.body).toBeUndefined();
+      return jsonResponse({ tag: "agent-working" }, 200);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(addTaskTag("task-123", "agent-working", OPTIONS)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes a named tag with DELETE /task/{task_id}/tag/{tag_name} and treats 204 as success", async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(`${CLICKUP_API_BASE}/task/task-123/tag/agent-blocked`);
+      expect(init.method).toBe("DELETE");
+      expect((init.headers as Record<string, string>).Authorization).toBe("pk_test_token");
+      expect(init.body).toBeUndefined();
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(removeTaskTag("task-123", "agent-blocked", OPTIONS)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves ClickUpHttpError diagnostics when tag updates fail", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ err: "Rate limited" }, 429))
+    );
+
+    await expect(addTaskTag("task-123", "agent-working", OPTIONS)).rejects.toMatchObject({
+      name: "ClickUpHttpError",
+      status: 429,
+    });
+    try {
+      await addTaskTag("task-123", "agent-working", OPTIONS);
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toBeInstanceOf(ClickUpHttpError);
+      const httpErr = err as ClickUpHttpError;
+      expect(httpErr.status).toBe(429);
+      expect(httpErr.bodySnippet).toContain("Rate limited");
+    }
+  });
+});
+
 describe("clickupPut and clickupDelete", () => {
   it("clickupPut sends a JSON body and parses the response", async () => {
     vi.stubGlobal(
@@ -205,6 +273,8 @@ describe("module boundary", () => {
     expect(typeof moduleExports.clickupPost).toBe("function");
     expect(typeof moduleExports.clickupPut).toBe("function");
     expect(typeof moduleExports.clickupDelete).toBe("function");
+    expect(typeof moduleExports.addTaskTag).toBe("function");
+    expect(typeof moduleExports.removeTaskTag).toBe("function");
     expect(moduleExports.CLICKUP_API_BASE).toBe("https://api.clickup.com/api/v2");
   });
 });

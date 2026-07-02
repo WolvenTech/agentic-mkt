@@ -2,6 +2,37 @@
   "recorded_at": "2026-07-02",
   "session": "task_23-staged-workflow-validation",
   "validation_status": "ready",
+  "main_workflow": {
+    "verified": false,
+    "n8n_execution_id": "",
+    "n8n_host": "n8n.wolven.com.br",
+    "clickup_task_id": "",
+    "clickup_task_url": "",
+    "clickup_task_name": "Live Proof - Happy Path Test",
+    "status_path": [
+      "investigate",
+      "brief review",
+      "write",
+      "content review",
+      "format",
+      "final review",
+      "publish",
+      "Closed"
+    ],
+    "latency_seconds": null,
+    "latency_breakdown": {},
+    "comment_sections_verified": [],
+    "marketing_lead_usability": "pending — run live proof after operator setup",
+    "silent_failures": null
+  },
+  "call_agent_subworkflow": {
+    "n8n_execution_id": "",
+    "latency_ms": null,
+    "parse_success": null,
+    "agent_id": "linkedin-writer",
+    "model": "gpt-4.1-mini"
+  },
+  "failure_observations": {},
   "phase": "preflight_and_planning",
   "description": "Live proof of staged content quality pipeline (Task 23). Four validation phases: (1) Call Agent sub-workflow isolation, (2) ClickUp/Doc integration happy path, (3) blocker handling, (4) self-echo filtering.",
   "preflight_checklist": {

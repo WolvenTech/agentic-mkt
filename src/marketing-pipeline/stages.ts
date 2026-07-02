@@ -7,6 +7,8 @@
 export type StageName = "investigate" | "write" | "format";
 export type PageName = "Brief" | "Argument" | "Final Draft";
 export type HumanGate = "backlog" | "brief review" | "content review" | "final review";
+export const AGENT_WORKING_TAG = "agent-working";
+export const AGENT_BLOCKED_TAG = "agent-blocked";
 
 /**
  * Canonical stage definition mapping each stage to its agent, page, and gate transitions.

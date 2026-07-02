@@ -41,6 +41,7 @@ import {
   detectBlockerJs,
   extractLatestLeadFeedbackJs,
   extractTaskFieldsJs,
+  extractStageJs,
   formatBlockerCommentJs,
   formatPointerCommentJs,
   getOrCreateStagePage,
@@ -48,12 +49,15 @@ import {
   readCurrentPageJs,
   replacePageJs,
   selectPriorDocPageJs,
+  stagedIngressIfExpression,
   updateStatusToNextGateJs,
   updateStatusToPreviousGateJs,
 } from "../src/workflows/marketing-pipeline-n8n.js";
 import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/marketing-pipeline/logic.js";
 import type { FieldMapping } from "../src/types/field-mapping.js";
 import {
+  AGENT_BLOCKED_TAG,
+  AGENT_WORKING_TAG,
   INVESTIGATE_STAGE,
   WRITE_STAGE,
   FORMAT_STAGE,
@@ -139,6 +143,12 @@ describe("marketing pipeline ingress logic", () => {
     expect(ingressMatchesInvestigate(formatPayload, mapping)).toBe(false);
     expect(ingressMatchesWrite(formatPayload, mapping)).toBe(false);
     expect(ingressMatchesFormat(formatPayload, mapping)).toBe(true);
+  });
+
+  it("exports canonical activity tags alongside the stage model", () => {
+    expect(AGENT_WORKING_TAG).toBe("agent-working");
+    expect(AGENT_BLOCKED_TAG).toBe("agent-blocked");
+    expect(typeof buildMarketingPipelineWorkflow).toBe("function");
   });
 
   it("extracts stage name from webhook payload", () => {
@@ -428,7 +438,7 @@ describe("Doc pointer extraction and validation", () => {
       custom_fields: [
         {
           id: "cf_editorial_doc_url_001",
-          name: "Editorial Doc URL",
+          name: "Editorial Doc Url",
           type: "url",
           value: "",
         },
@@ -1019,6 +1029,23 @@ describe("Marketing Pipeline stage routing", () => {
     expect(taskFieldsCode).toContain("linkedin-format");
   });
 
+  it("falls back to canonical stage and agent defaults when mapping entries are missing", () => {
+    const sparseMapping = {
+      custom_fields: {},
+      statuses: {},
+    } as FieldMapping;
+
+    const taskFieldsCode = extractTaskFieldsJs(sparseMapping);
+    const stageCode = extractStageJs(sparseMapping);
+    const stageIfExpression = stagedIngressIfExpression(sparseMapping);
+
+    expect(taskFieldsCode).toContain("linkedin-writer");
+    expect(stageCode).toContain("stage");
+    expect(stageIfExpression).toContain("investigate");
+    expect(stageIfExpression).toContain("write");
+    expect(stageIfExpression).toContain("format");
+  });
+
   it("staged success path reaches Status → Next Gate (investigate)", () => {
     expect(workflowConnectionPath(workflow, "Update Status to Next Gate", "Status → Next Gate")).not.toBeNull();
     expect(workflowConnectionPath(workflow, "POST Pointer Comment", "Update Status to Next Gate")).not.toBeNull();
@@ -1422,4 +1449,3 @@ describe("blocker output handling (task_18)", () => {
     });
   });
 });
-
