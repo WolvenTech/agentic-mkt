@@ -60,7 +60,7 @@ Record actuals in [`agents/harness/green-run-evidence.json`](../agents/harness/g
 ### Key workflow characteristics
 
 - **Three independent stages** — investigate, write, format — each runs in the Call Agent sub-workflow and returns typed output.
-- **One ClickUp Doc per task** — the workflow creates a Doc with one page per stage (Brief, Argument, Final Draft) and stores the Doc URL in the **Editorial Doc URL** custom field.
+- **One ClickUp Doc per task** — the workflow creates a Doc with one page per stage (Brief, Argument, Final Draft) and stores the Doc URL in the **Editorial Doc Url** custom field.
 - **Auto-advance to the next human gate** — when a stage succeeds, the workflow posts a pointer comment and moves status to the next human column.
 - **Blocker handling** — if a stage lacks material, it posts a blocker question and returns to the previous human column.
 - **Preservation of downstream artifacts** — re-running an earlier stage preserves later artifacts until they are re-run.

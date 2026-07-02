@@ -375,7 +375,7 @@ describe("field mapping", () => {
     const fieldMapping = readFieldMapping();
     expect(fieldMapping.custom_fields, "missing editorial_doc_url field").toHaveProperty("editorial_doc_url");
     const docUrlField = fieldMapping.custom_fields.editorial_doc_url;
-    expect(docUrlField.name).toBe("Editorial Doc URL");
+    expect(docUrlField.name).toBe("Editorial Doc Url");
     expect(docUrlField.clickup_field_id).toBeDefined();
   });
 
@@ -385,9 +385,9 @@ describe("field mapping", () => {
     expect(fieldMapping.custom_fields).toHaveProperty("agent_id");
     const criteriosField = fieldMapping.custom_fields.criterios_de_aceite;
     const agentField = fieldMapping.custom_fields.agent_id;
-    expect(criteriosField.name).toBe("Critérios de Aceite");
+    expect(criteriosField.name).toBe("ACs");
     expect(criteriosField.clickup_field_id).toBe("bd2e7a51-3e9e-4d6a-9729-770fac44a504");
-    expect(agentField.name).toBe("agent_id");
+    expect(agentField.name).toBe("Agent");
     expect(agentField.clickup_field_id).toBe("a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0");
   });
 

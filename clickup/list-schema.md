@@ -47,9 +47,9 @@ Configure statuses on the list in the order above. Status **display names must m
 
 | Key (`field-mapping.json`) | ClickUp name | Type | Default | Required for brief gate |
 |----------------------------|--------------|------|---------|-------------------------|
-| `criterios_de_aceite` | Critérios de Aceite | Text | — | **Yes** |
-| `agent_id` | agent_id | Short text | `linkedin-writer` | No (defaults apply) |
-| `editorial_doc_url` | Editorial Doc URL | URL | — | No (written by workflow) |
+| `criterios_de_aceite` | ACs | Text | — | **Yes** |
+| `agent_id` | Agent | Short text | `linkedin-writer` | No (defaults apply) |
+| `editorial_doc_url` | Editorial Doc Url | URL | — | No (written by workflow) |
 
 Custom fields must be created in the ClickUp UI — the public API cannot create new field definitions ([ClickUp custom fields API](https://developer.clickup.com/reference/getaccessiblecustomfields)).
 
@@ -59,7 +59,7 @@ Before moving a task to **Investigate**, the marketing lead must ensure:
 
 1. **Task title** — present and descriptive
 2. **Task description** — the content brief (topic, angle, audience, constraints)
-3. **Critérios de Aceite** — custom field populated with acceptance criteria the agent must satisfy
+3. **ACs** — custom field populated with acceptance criteria the agent must satisfy
 
 **V1 enforcement:** Manual only. ClickUp does not block the status transition; the lead self-checks before moving to Investigate. n8n may still run if the field is empty — note behavior during validation.
 
@@ -86,7 +86,7 @@ Before activating the staged workflow in production:
 - [ ] All local tests pass: `pnpm test`
 - [ ] Workflow topology tests pass: `pnpm build:workflows:check`
 - [ ] Staged statuses exist in the Marketing Pipeline list (exactly as named above)
-- [ ] Custom field `Editorial Doc URL` exists and is type Short Text
+- [ ] Custom field `Editorial Doc Url` exists and is type Short Text
 - [ ] n8n credentials configured: ClickUp (OAuth or PAT), GitHub (read-only), OpenAI
 - [ ] GitHub repo pushed to `main` branch (Call Agent fetches at runtime)
 - [ ] n8n workflows imported and active (Call Agent and Marketing Pipeline main)

@@ -1,10 +1,10 @@
 ---
-status: pending
+status: completed
 title: Enforce green-run ready/unverified exit-code contract
 type: backend
 complexity: medium
 dependencies:
-  - task_23
+    - task_23
 ---
 
 # Task 29: Enforce green-run ready/unverified exit-code contract

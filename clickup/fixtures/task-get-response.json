@@ -9,19 +9,19 @@
   "custom_fields": [
     {
       "id": "cf_criterios_001",
-      "name": "Critérios de Aceite",
+      "name": "ACs",
       "type": "text",
       "value": "- Mention the dashboard\n- CTA to sign up\n- Under 300 words"
     },
     {
       "id": "cf_agent_id_001",
-      "name": "agent_id",
+      "name": "Agent",
       "type": "short_text",
       "value": "linkedin-writer"
     },
     {
       "id": "cf_editorial_doc_url_001",
-      "name": "Editorial Doc URL",
+      "name": "Editorial Doc Url",
       "type": "url",
       "value": "https://doc.clickup.com/p/h/a1b2c3d4e5f6g7h8"
     }

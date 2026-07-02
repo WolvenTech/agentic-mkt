@@ -11,7 +11,7 @@ import {
 export { N8N_API_URL_DEFAULT };
 export const CLICKUP_API = "https://api.clickup.com/api/v2";
 
-const REQUIRED_CUSTOM_FIELDS = ["Critérios de Aceite", "agent_id"];
+const REQUIRED_CUSTOM_FIELDS = ["ACs", "Agent"];
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export interface GateCheck {

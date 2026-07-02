@@ -36,11 +36,11 @@ On the Marketing Pipeline list, create:
 
 | Field name | Type | Default |
 |------------|------|---------|
-| Critérios de Aceite | Text | — |
-| Editorial Doc URL | URL | — |
-| agent_id | Short text | `linkedin-writer` |
+| ACs | Text | — |
+| Editorial Doc Url | URL | — |
+| Agent | Short text | `linkedin-writer` |
 
-Names must match exactly (including `Critérios de Aceite` accent). The **Editorial Doc URL** field stores the machine-readable pointer to the ClickUp Doc for this task's editorial artifacts.
+Names must match exactly. The **Editorial Doc Url** field stores the machine-readable pointer to the ClickUp Doc for this task's editorial artifacts.
 
 ### 3. Record IDs in the repo
 
@@ -68,7 +68,7 @@ pnpm test
 
 ### 4. Brief gate (operational)
 
-Before moving any task to **Investigate**, ensure title, description, and **Critérios de Aceite** are filled. The workflow relies on manual discipline — no ClickUp automation blocks the transition. See [`list-schema.md` → Brief gate](list-schema.md#brief-gate-prd-f2).
+Before moving any task to **Investigate**, ensure title, description, and **ACs** are filled. The workflow relies on manual discipline — no ClickUp automation blocks the transition. See [`list-schema.md` → Brief gate](list-schema.md#brief-gate-prd-f2).
 
 ### 5. Webhook registration (task_07)
 
@@ -89,7 +89,7 @@ The webhook triggers the n8n workflow whenever a task's status changes. Key ingr
 
 **Comments are the instruction channel.** All human feedback flows through free-form task comments only — not Doc comments. Use comments to select angles at Brief Review, correct arguments at Content Review, and approve or edit the final draft at Final Review.
 
-**The ClickUp Doc is the artifact workspace.** Each stage writes its full output to a dedicated Doc page (Brief, Argument, Final Draft). One ClickUp Doc per task stores the complete editorial history, readable in one place. The Doc also stores a machine-readable pointer to its own URL in the **Editorial Doc URL** custom field.
+**The ClickUp Doc is the artifact workspace.** Each stage writes its full output to a dedicated Doc page (Brief, Argument, Final Draft). One ClickUp Doc per task stores the complete editorial history, readable in one place. The Doc also stores a machine-readable pointer to its own URL in the **Editorial Doc Url** custom field.
 
 **Pointer comments keep reviews fast.** When a stage completes, it posts a short pointer comment summarizing what changed, the resumo, a self-check, and what's needed next. You can scan the task-level summary without opening the Doc every time, but the full artifacts live in the Doc.
 
@@ -134,12 +134,12 @@ Confirm `field-mapping.json` has no `<TBD>` values before n8n deployment.
 
 ### Brief gate (operator discipline)
 
-Before moving any task to **Investigate**, confirm title, description, and **Critérios de Aceite** are populated. No ClickUp automation blocks empty briefs — manual discipline only.
+Before moving any task to **Investigate**, confirm title, description, and **ACs** are populated. No ClickUp automation blocks empty briefs — manual discipline only.
 
 ### Workflow operation
 
 1. **Create task in Backlog** with title, description, and acceptance criteria.
-2. **Move to Investigate** to start the investigation stage. The workflow creates a ClickUp Doc and stores the Doc URL in the **Editorial Doc URL** custom field.
+2. **Move to Investigate** to start the investigation stage. The workflow creates a ClickUp Doc and stores the Doc URL in the **Editorial Doc Url** custom field.
 3. **AI investigates** — the workflow reads the task description and runs the investigation stage. When complete, the AI writes the investigative brief to the Doc, posts a pointer comment summarizing what changed, and status auto-advances to **Brief Review**.
 4. **Review brief and select angle** — the lead reads the brief in the Doc, then posts a comment selecting or refining the strongest angle. Move the task to **Write** to trigger the next stage.
 5. **AI writes argument** — after the brief is approved, the workflow runs the write stage. The argument lands in the Doc, and status auto-advances to **Content Review**.
