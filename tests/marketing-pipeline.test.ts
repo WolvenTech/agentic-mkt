@@ -462,6 +462,12 @@ describe("Marketing Pipeline topology", () => {
     expect(workflow.connections["Collect Task Comments"]?.main).toEqual([
       [{ node: "Read Current Page", type: "main", index: 0 }],
     ]);
+    expect(workflow.connections["Prepare Staged Call Agent Input"]?.main).toEqual([
+      [{ node: "Add agent-working", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["Add agent-working"]?.main).toEqual([
+      [{ node: "Execute Call Agent", type: "main", index: 0 }],
+    ]);
   });
 
   it("keeps dedup filtering before staged processing starts", () => {
@@ -487,6 +493,9 @@ describe("Marketing Pipeline topology", () => {
     ]) {
       expect(nodes.has(removedNode), removedNode).toBe(false);
     }
+    for (const tagNode of ["Add agent-working", "Clear activity tags", "Swap activity tags"]) {
+      expect(nodes.has(tagNode), tagNode).toBe(true);
+    }
   });
 
   it("fetches review comments through the built-in ClickUp comment getAll operation", () => {
@@ -511,10 +520,11 @@ describe("Marketing Pipeline topology", () => {
       "Read Current Page",
       "Extract Latest Lead Feedback",
       "Prepare Staged Call Agent Input",
+      "Add agent-working",
       "Execute Call Agent",
     ]);
     expect(workflowConnectionPath(workflow, "Prepare Staged Call Agent Input", "Status → Review")).toContain(
-      "Execute Call Agent"
+      "Add agent-working"
     );
   });
 
@@ -1056,7 +1066,12 @@ describe("Marketing Pipeline stage routing", () => {
 
   it("staged success path reaches Status → Next Gate (investigate)", () => {
     expect(workflowConnectionPath(workflow, "Update Status to Next Gate", "Status → Next Gate")).not.toBeNull();
-    expect(workflowConnectionPath(workflow, "POST Pointer Comment", "Update Status to Next Gate")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "POST Pointer Comment", "Status → Next Gate")).toEqual([
+      "POST Pointer Comment",
+      "Clear activity tags",
+      "Update Status to Next Gate",
+      "Status → Next Gate",
+    ]);
   });
 
   it("staged success path replaces Doc page before posting comment", () => {
@@ -1145,7 +1160,14 @@ describe("staged success output handling (task_17)", () => {
   });
 
   it("pointer path chains: Format -> Replace -> POST -> Update -> Set Status", () => {
-    const nodes = ["Format Pointer Comment", "Replace Doc Page", "POST Pointer Comment", "Update Status to Next Gate", "Status → Next Gate"];
+    const nodes = [
+      "Format Pointer Comment",
+      "Replace Doc Page",
+      "POST Pointer Comment",
+      "Clear activity tags",
+      "Update Status to Next Gate",
+      "Status → Next Gate",
+    ];
     for (let i = 0; i < nodes.length - 1; i += 1) {
       const from = nodes[i];
       const to = nodes[i + 1];
@@ -1350,6 +1372,12 @@ describe("blocker output handling (task_18)", () => {
       expect(node?.type).toBe("n8n-nodes-base.clickUp");
     });
 
+    it("has activity tag lifecycle nodes in workflow", () => {
+      expect(nodeByName(workflow, "Add agent-working")?.type).toBe("n8n-nodes-base.code");
+      expect(nodeByName(workflow, "Clear activity tags")?.type).toBe("n8n-nodes-base.code");
+      expect(nodeByName(workflow, "Swap activity tags")?.type).toBe("n8n-nodes-base.code");
+    });
+
     it("routes Staged Success to Detect Blocker for staged outputs", () => {
       const branches = workflow.connections["Staged Success?"]?.main ?? [];
       expect(branches[0]?.[0]?.node).toBe("Detect Blocker");
@@ -1370,12 +1398,31 @@ describe("blocker output handling (task_18)", () => {
       expect(branches[1]?.[0]?.node).toBe("Format Pointer Comment");
     });
 
+    it("routes success cleanup before next-gate status return", () => {
+      expect(workflow.connections["POST Pointer Comment"]?.main).toEqual([
+        [{ node: "Clear activity tags", type: "main", index: 0 }],
+      ]);
+      expect(workflow.connections["Clear activity tags"]?.main).toEqual([
+        [{ node: "Update Status to Next Gate", type: "main", index: 0 }],
+      ]);
+    });
+
+    it("routes blocker tag swap before previous-gate status return", () => {
+      expect(workflow.connections["POST Blocker Comment"]?.main).toEqual([
+        [{ node: "Swap activity tags", type: "main", index: 0 }],
+      ]);
+      expect(workflow.connections["Swap activity tags"]?.main).toEqual([
+        [{ node: "Update Status to Previous Gate", type: "main", index: 0 }],
+      ]);
+    });
+
     it("blocker path chains: Detect -> Has Blocker -> Format -> POST -> Update -> Set Status", () => {
       const nodes = [
         "Detect Blocker",
         "Has Blocker?",
         "Format Blocker Comment",
         "POST Blocker Comment",
+        "Swap activity tags",
         "Update Status to Previous Gate",
         "Status → Previous Gate",
       ];
@@ -1409,6 +1456,12 @@ describe("blocker output handling (task_18)", () => {
     it("pointer comment path is still available for non-blocker success cases", () => {
       const path = workflowConnectionPath(workflow, "Format Pointer Comment", "Replace Doc Page");
       expect(path).not.toBeNull();
+    });
+
+    it("tag lifecycle nodes are unreachable from removed ready and needs review paths", () => {
+      expect(workflowConnectionPath(workflow, "Staged or Ready?", "Add agent-working")).toBeNull();
+      expect(workflowConnectionPath(workflow, "Needs Review?", "Clear activity tags")).toBeNull();
+      expect(workflowConnectionPath(workflow, "Needs Review?", "Swap activity tags")).toBeNull();
     });
 
     it("Agent Output OK branches to Staged Success on success", () => {

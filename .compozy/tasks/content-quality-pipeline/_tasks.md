@@ -31,7 +31,7 @@
 | 25 | Remove legacy single-agent ingress helper surface | completed | medium | task_23 |
 | 26 | Rebuild Marketing Pipeline as staged-only topology | completed | medium | task_25 |
 | 27 | Add best-effort n8n tag helper code nodes | completed | medium | task_24 |
-| 28 | Wire AI activity tag lifecycle into staged workflow | pending | medium | task_26, task_27 |
+| 28 | Wire AI activity tag lifecycle into staged workflow | completed | medium | task_26, task_27 |
 | 29 | Enforce green-run ready/unverified exit-code contract | pending | medium | task_23 |
 | 30 | Enforce content-quality proof failure exit-code contract | pending | medium | task_23 |
 | 31 | Update staged-only rollout and webhook documentation | pending | medium | task_26, task_28, task_29, task_30 |

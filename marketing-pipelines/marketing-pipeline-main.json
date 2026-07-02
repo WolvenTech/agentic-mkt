@@ -372,13 +372,26 @@
       }
     },
     {
+      "id": "db6df28b-aac2-bc2e-9ca8-5b30e7f7af2d",
+      "name": "Add agent-working",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        60
+      ],
+      "parameters": {
+        "jsCode": "const CLICKUP_API_BASE = \"https://api.clickup.com/api/v2\";\nconst CLICKUP_TAG_WARNING_EVENT = 'clickup_tag_warning';\n\nfunction logTagWarning(details) {\n  console.warn(JSON.stringify({\n    event: CLICKUP_TAG_WARNING_EVENT,\n    ...details,\n  }));\n}\n\nasync function requestClickUpTag(action, taskId, tagName, token) {\n  const method = action === 'remove' ? 'DELETE' : 'POST';\n  const path = `/task/${encodeURIComponent(taskId)}/tag/${encodeURIComponent(tagName)}`;\n  try {\n    const response = await fetch(`${CLICKUP_API_BASE}${path}`, {\n      method,\n      headers: {\n        Authorization: token,\n        Accept: 'application/json',\n      },\n    });\n    if (!response.ok) {\n      const body = await response.text().catch(() => '');\n      return {\n        ok: false,\n        status: response.status,\n        body: body.slice(0, 200),\n      };\n    }\n    return { ok: true };\n  } catch (error) {\n    return {\n      ok: false,\n      error: String(error),\n    };\n  }\n}\n\nasync function bestEffortTagChange(item, taskId, action, tagName, context) {\n  const normalizedTaskId = String(taskId ?? '').trim();\n  if (!normalizedTaskId) {\n    logTagWarning({\n      reason: 'missing_task_id',\n      action,\n      tag_name: tagName,\n      context,\n    });\n    return item;\n  }\n\n  const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;\n  if (!token) {\n    logTagWarning({\n      reason: 'missing_clickup_token',\n      action,\n      tag_name: tagName,\n      task_id: normalizedTaskId,\n      context,\n    });\n    return item;\n  }\n\n  const result = await requestClickUpTag(action, normalizedTaskId, tagName, token);\n  if (!result.ok) {\n    logTagWarning({\n      reason: 'clickup_tag_request_failed',\n      action,\n      tag_name: tagName,\n      task_id: normalizedTaskId,\n      context,\n      ...result,\n    });\n  }\n\n  return item;\n}\n\nasync function bestEffortTagSequence(item, taskId, operations, context) {\n  for (const operation of operations) {\n    await bestEffortTagChange(item, taskId, operation.action, operation.tagName, context);\n  }\n  return item;\n}\n\nconst item = $input.first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst taskId = taskFields.task_id || item.task_id || '';\nawait bestEffortTagChange(item, taskId, 'add', \"agent-working\", 'stage_start');\nreturn [{ json: item }];"
+      }
+    },
+    {
       "id": "6f193e3b-4b47-04d0-301b-315ca22ec5f3",
       "name": "Execute Call Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        3840,
-        300
+        4320,
+        60
       ],
       "parameters": {
         "source": "database",
@@ -633,12 +646,25 @@
       }
     },
     {
+      "id": "596cc118-dc98-8739-9e30-d12625029d5b",
+      "name": "Swap activity tags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5520,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const CLICKUP_API_BASE = \"https://api.clickup.com/api/v2\";\nconst CLICKUP_TAG_WARNING_EVENT = 'clickup_tag_warning';\n\nfunction logTagWarning(details) {\n  console.warn(JSON.stringify({\n    event: CLICKUP_TAG_WARNING_EVENT,\n    ...details,\n  }));\n}\n\nasync function requestClickUpTag(action, taskId, tagName, token) {\n  const method = action === 'remove' ? 'DELETE' : 'POST';\n  const path = `/task/${encodeURIComponent(taskId)}/tag/${encodeURIComponent(tagName)}`;\n  try {\n    const response = await fetch(`${CLICKUP_API_BASE}${path}`, {\n      method,\n      headers: {\n        Authorization: token,\n        Accept: 'application/json',\n      },\n    });\n    if (!response.ok) {\n      const body = await response.text().catch(() => '');\n      return {\n        ok: false,\n        status: response.status,\n        body: body.slice(0, 200),\n      };\n    }\n    return { ok: true };\n  } catch (error) {\n    return {\n      ok: false,\n      error: String(error),\n    };\n  }\n}\n\nasync function bestEffortTagChange(item, taskId, action, tagName, context) {\n  const normalizedTaskId = String(taskId ?? '').trim();\n  if (!normalizedTaskId) {\n    logTagWarning({\n      reason: 'missing_task_id',\n      action,\n      tag_name: tagName,\n      context,\n    });\n    return item;\n  }\n\n  const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;\n  if (!token) {\n    logTagWarning({\n      reason: 'missing_clickup_token',\n      action,\n      tag_name: tagName,\n      task_id: normalizedTaskId,\n      context,\n    });\n    return item;\n  }\n\n  const result = await requestClickUpTag(action, normalizedTaskId, tagName, token);\n  if (!result.ok) {\n    logTagWarning({\n      reason: 'clickup_tag_request_failed',\n      action,\n      tag_name: tagName,\n      task_id: normalizedTaskId,\n      context,\n      ...result,\n    });\n  }\n\n  return item;\n}\n\nasync function bestEffortTagSequence(item, taskId, operations, context) {\n  for (const operation of operations) {\n    await bestEffortTagChange(item, taskId, operation.action, operation.tagName, context);\n  }\n  return item;\n}\n\nconst item = $input.first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst taskId = taskFields.task_id || item.task_id || '';\nawait bestEffortTagSequence(item, taskId, [\n  { action: 'remove', tagName: \"agent-working\" },\n  { action: 'add', tagName: \"agent-blocked\" },\n], 'blocker_swap');\nreturn [{ json: item }];"
+      }
+    },
+    {
       "id": "3a72cbb7-70c7-d152-33e5-be6d1c6657e7",
       "name": "Update Status to Previous Gate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5520,
+        5760,
         300
       ],
       "parameters": {
@@ -721,12 +747,25 @@
       }
     },
     {
+      "id": "f1c2c529-b820-3261-4337-64dc4f555b46",
+      "name": "Clear activity tags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const CLICKUP_API_BASE = \"https://api.clickup.com/api/v2\";\nconst CLICKUP_TAG_WARNING_EVENT = 'clickup_tag_warning';\n\nfunction logTagWarning(details) {\n  console.warn(JSON.stringify({\n    event: CLICKUP_TAG_WARNING_EVENT,\n    ...details,\n  }));\n}\n\nasync function requestClickUpTag(action, taskId, tagName, token) {\n  const method = action === 'remove' ? 'DELETE' : 'POST';\n  const path = `/task/${encodeURIComponent(taskId)}/tag/${encodeURIComponent(tagName)}`;\n  try {\n    const response = await fetch(`${CLICKUP_API_BASE}${path}`, {\n      method,\n      headers: {\n        Authorization: token,\n        Accept: 'application/json',\n      },\n    });\n    if (!response.ok) {\n      const body = await response.text().catch(() => '');\n      return {\n        ok: false,\n        status: response.status,\n        body: body.slice(0, 200),\n      };\n    }\n    return { ok: true };\n  } catch (error) {\n    return {\n      ok: false,\n      error: String(error),\n    };\n  }\n}\n\nasync function bestEffortTagChange(item, taskId, action, tagName, context) {\n  const normalizedTaskId = String(taskId ?? '').trim();\n  if (!normalizedTaskId) {\n    logTagWarning({\n      reason: 'missing_task_id',\n      action,\n      tag_name: tagName,\n      context,\n    });\n    return item;\n  }\n\n  const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;\n  if (!token) {\n    logTagWarning({\n      reason: 'missing_clickup_token',\n      action,\n      tag_name: tagName,\n      task_id: normalizedTaskId,\n      context,\n    });\n    return item;\n  }\n\n  const result = await requestClickUpTag(action, normalizedTaskId, tagName, token);\n  if (!result.ok) {\n    logTagWarning({\n      reason: 'clickup_tag_request_failed',\n      action,\n      tag_name: tagName,\n      task_id: normalizedTaskId,\n      context,\n      ...result,\n    });\n  }\n\n  return item;\n}\n\nasync function bestEffortTagSequence(item, taskId, operations, context) {\n  for (const operation of operations) {\n    await bestEffortTagChange(item, taskId, operation.action, operation.tagName, context);\n  }\n  return item;\n}\n\nconst item = $input.first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst taskId = taskFields.task_id || item.task_id || '';\nawait bestEffortTagSequence(item, taskId, [\n  { action: 'remove', tagName: \"agent-working\" },\n  { action: 'remove', tagName: \"agent-blocked\" },\n], 'stage_exit_cleanup');\nreturn [{ json: item }];"
+      }
+    },
+    {
       "id": "4277f30c-fa71-ec74-8323-0540f7ebb102",
       "name": "Update Status to Next Gate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5280,
+        5520,
         100
       ],
       "parameters": {
@@ -739,7 +778,7 @@
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        5520,
+        5760,
         100
       ],
       "credentials": {
@@ -972,6 +1011,17 @@
       "main": [
         [
           {
+            "node": "Add agent-working",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add agent-working": {
+      "main": [
+        [
+          {
             "node": "Execute Call Agent",
             "type": "main",
             "index": 0
@@ -1070,6 +1120,17 @@
       "main": [
         [
           {
+            "node": "Swap activity tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Swap activity tags": {
+      "main": [
+        [
+          {
             "node": "Update Status to Previous Gate",
             "type": "main",
             "index": 0
@@ -1111,6 +1172,17 @@
       ]
     },
     "POST Pointer Comment": {
+      "main": [
+        [
+          {
+            "node": "Clear activity tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear activity tags": {
       "main": [
         [
           {

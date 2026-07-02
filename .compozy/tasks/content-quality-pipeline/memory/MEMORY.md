@@ -19,6 +19,7 @@ Keep only durable, cross-task context here. Do not duplicate facts that are obvi
 - Marketing Pipeline now uses the staged-only webhook path `marketing-pipeline-staged-ingress` and a linear post-status chain of `GET Task Comments` -> `Collect Task Comments` -> `Read Current Page` -> `Extract Latest Lead Feedback` -> `Prepare Staged Call Agent Input`.
 - The n8n code-node test harness now executes generated snippets as async functions and accepts injected `console.warn` capture, so future codegen tasks can safely test top-level `await` and warning-only side effects.
 - Best-effort tag helper snippets should return the original item unchanged and log ClickUp failures as warnings instead of throwing, so status/Doc mutations can continue.
+- Staged marketing workflow topology now includes `Add agent-working` before `Execute Call Agent`, `Clear activity tags` before `Update Status to Next Gate`, and `Swap activity tags` before `Update Status to Previous Gate`; topology tests and path constants must account for those nodes.
 
 ## Open Risks
 - Task 20 (Call Agent workflow tests) will need n8n parser equivalence tests using the stage output fixtures
