@@ -3,8 +3,9 @@
 Keep only durable, cross-task context here. Do not duplicate facts that are obvious from the repository, PRD documents, or git history.
 
 ## Current State
-- Tasks 01-26: Complete (staged workflow implementation and staged-only topology rebuild documented)
-- Tasks 27-31: Pending (tag lifecycle, green-run exit-code contract, proof exit-code contract, rollout docs)
+- Tasks 01-36: Complete (staged workflow implementation, topology rebuild, tag lifecycle, exit-code contracts, staged prompt generation, Call Agent parser switch, contract parity fixtures, and fail-closed artifact validation)
+- Task 35: Pending (Doc pointer persistence — blocked on task_36 completion)
+- Tasks 37-38: Pending (workflow regeneration and ADR-011 live proof)
 
 ## Shared Decisions
 - Stage output validation pattern: Use stages.ts helpers (isKnownStage, getStageDefinition) for deterministic validation
@@ -21,10 +22,10 @@ Keep only durable, cross-task context here. Do not duplicate facts that are obvi
 - The n8n code-node test harness now executes generated snippets as async functions and accepts injected `console.warn` capture, so future codegen tasks can safely test top-level `await` and warning-only side effects.
 - Best-effort tag helper snippets should return the original item unchanged and log ClickUp failures as warnings instead of throwing, so status/Doc mutations can continue.
 - Staged marketing workflow topology now includes `Add agent-working` before `Execute Call Agent`, `Clear activity tags` before `Update Status to Next Gate`, and `Swap activity tags` before `Update Status to Previous Gate`; topology tests and path constants must account for those nodes.
+- Workflow-side fail-closed validation for artifact_markdown: Success path (no blocker) routes through `Validate Staged Artifact` node before `Format Pointer Comment` and `PUT Replace Doc Page Content`. Blocker path (has_blocker=true) bypasses validation and goes directly to `Format Blocker Comment`. Empty or missing artifact_markdown throws error with task_id and stage context, preventing Doc writes and status advancement (ADR-011).
 
 ## Open Risks
-- Task 20 (Call Agent workflow tests) will need n8n parser equivalence tests using the stage output fixtures
-- n8n code nodes (task_13+) must mirror parseStageOutput validation logic exactly
+- None currently identified. Stage output validation, parser equivalence, and fail-closed artifact checks are all complete.
 
 ## Handoffs
 - For task_23 (Live proof validation): Four validation phases documented in task_23.md: (1) Call Agent isolation test, (2) ClickUp/Doc integration, (3) blocker handling, (4) self-echo filtering. Green-run-evidence.json captures production readiness proof. Migration of old-status tasks required before deployment (see list-schema.md).
