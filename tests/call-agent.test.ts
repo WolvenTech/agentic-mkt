@@ -1263,3 +1263,199 @@ describe("end-to-end prompt assembly + parse", () => {
     }
   });
 });
+
+describe("staged prompt and parser output parity (ADR-011)", () => {
+  const stagedAgentIds = ["investigative-brief", "long-form-argument", "linkedin-format"] as const;
+
+  it("staged agent system prompts include all required staged output keys in the output schema example", () => {
+    for (const agentId of stagedAgentIds) {
+      const agentPath = resolve(REPO_ROOT, "agents", `${agentId}.json`);
+      const agent = JSON.parse(readFileSync(agentPath, "utf-8")) as AgentConfig;
+      const skillContent = readSkill("wolven-voice");
+      const secondarySkillName = agentId.includes("investigative") ? "investigative-brief" : agentId.includes("long-form") ? "long-form-argument" : "linkedin-format";
+      const secondarySkill = readSkill(secondarySkillName);
+
+      const systemPrompt = assembleSystemPrompt(
+        agent,
+        { "wolven-voice": skillContent, [secondarySkillName]: secondarySkill }
+      );
+
+      // Verify prompt includes staged keys
+      for (const key of REQUIRED_STAGE_OUTPUT_KEYS) {
+        expect(systemPrompt, `${agentId} prompt should include staged key: ${key}`).toContain(key);
+      }
+    }
+  });
+
+  it("staged agent system prompts do not mention legacy-only keys: deliverable_markdown or autochecagem", () => {
+    for (const agentId of stagedAgentIds) {
+      const agentPath = resolve(REPO_ROOT, "agents", `${agentId}.json`);
+      const agent = JSON.parse(readFileSync(agentPath, "utf-8")) as AgentConfig;
+      const skillContent = readSkill("wolven-voice");
+      const secondarySkillName = agentId.includes("investigative") ? "investigative-brief" : agentId.includes("long-form") ? "long-form-argument" : "linkedin-format";
+      const secondarySkill = readSkill(secondarySkillName);
+
+      const systemPrompt = assembleSystemPrompt(
+        agent,
+        { "wolven-voice": skillContent, [secondarySkillName]: secondarySkill }
+      );
+
+      // Staged prompts should not suggest legacy output keys
+      expect(systemPrompt, `${agentId} prompt should not include legacy key: deliverable_markdown`).not.toContain('"deliverable_markdown"');
+      expect(systemPrompt, `${agentId} prompt should not include legacy key: autochecagem`).not.toContain('"autochecagem"');
+    }
+  });
+
+  it("investigative-brief prompt output schema includes stage: investigate", () => {
+    const agent = readStagedAgentConfig();
+    const skillContent = readSkill("wolven-voice");
+    const investigativeBriefSkill = readSkill("investigative-brief");
+
+    const systemPrompt = assembleSystemPrompt(
+      agent,
+      { "wolven-voice": skillContent, "investigative-brief": investigativeBriefSkill }
+    );
+
+    expect(systemPrompt).toContain('"stage": "investigate"');
+  });
+
+  it("long-form-argument prompt output schema includes stage: write", () => {
+    const agentPath = resolve(REPO_ROOT, "agents", "long-form-argument.json");
+    const agent = JSON.parse(readFileSync(agentPath, "utf-8")) as AgentConfig;
+    const skillContent = readSkill("wolven-voice");
+    const longFormSkill = readSkill("long-form-argument");
+
+    const systemPrompt = assembleSystemPrompt(
+      agent,
+      { "wolven-voice": skillContent, "long-form-argument": longFormSkill }
+    );
+
+    expect(systemPrompt).toContain('"stage": "write"');
+  });
+
+  it("linkedin-format prompt output schema includes stage: format", () => {
+    const agentPath = resolve(REPO_ROOT, "agents", "linkedin-format.json");
+    const agent = JSON.parse(readFileSync(agentPath, "utf-8")) as AgentConfig;
+    const skillContent = readSkill("wolven-voice");
+    const formatSkill = readSkill("linkedin-format");
+
+    const systemPrompt = assembleSystemPrompt(
+      agent,
+      { "wolven-voice": skillContent, "linkedin-format": formatSkill }
+    );
+
+    expect(systemPrompt).toContain('"stage": "format"');
+  });
+
+  it("legacy linkedin-writer system prompt still includes legacy-only keys", () => {
+    const agent = readAgentConfig();
+    const skillContent = readSkill("wolven-voice");
+    const formatSkill = readSkill("linkedin-format");
+
+    const systemPrompt = assembleSystemPrompt(
+      agent,
+      { "wolven-voice": skillContent, "linkedin-format": formatSkill }
+    );
+
+    expect(systemPrompt, "legacy agent prompt should include deliverable_markdown").toContain('"deliverable_markdown"');
+    expect(systemPrompt, "legacy agent prompt should include autochecagem").toContain('"autochecagem"');
+    expect(systemPrompt, "legacy agent prompt should NOT include staged key stage").not.toContain('"stage"');
+  });
+
+  it("parseCallAgentOutput returns StageParsedResult (with next_gate) for staged agent output", () => {
+    const stagedAgent = readStagedAgentConfig();
+    const stagedOutput = {
+      stage: "investigate",
+      artifact_markdown: "## Brief\n\nFindings.",
+      resumo: "Summary of findings.",
+      self_check: "- Research documented",
+      next_gate: "brief review",
+    };
+
+    const result = parseCallAgentOutput(stagedAgent, JSON.stringify(stagedOutput));
+
+    expect(isStageError(result)).toBe(false);
+    if (!isStageError(result)) {
+      expect(result).toHaveProperty("stage");
+      expect(result).toHaveProperty("artifact_markdown");
+      expect(result).toHaveProperty("self_check");
+      expect(result).toHaveProperty("next_gate");
+      expect("deliverable_markdown" in result).toBe(false);
+      expect("autochecagem" in result).toBe(false);
+    }
+  });
+
+  it("parseCallAgentOutput returns ParseResult (with deliverable_markdown, no next_gate) for legacy agent output", () => {
+    const legacyAgent = readAgentConfig();
+    const legacyOutput = {
+      deliverable_markdown: "## LinkedIn Post\n\nContent.",
+      resumo: "Summary.",
+      autochecagem: "- Facts verified",
+    };
+
+    const result = parseCallAgentOutput(legacyAgent, JSON.stringify(legacyOutput));
+
+    expect(isAgentError(result)).toBe(false);
+    if (!isAgentError(result)) {
+      expect(result).toHaveProperty("deliverable_markdown");
+      expect(result).toHaveProperty("resumo");
+      expect(result).toHaveProperty("autochecagem");
+      expect("stage" in result).toBe(false);
+      expect("artifact_markdown" in result).toBe(false);
+      expect("next_gate" in result).toBe(false);
+    }
+  });
+
+  it("rejects staged agent output missing artifact_markdown with descriptive error", () => {
+    const stagedAgent = readStagedAgentConfig();
+    const invalidOutput = {
+      stage: "investigate",
+      resumo: "Summary.",
+      self_check: "Checks.",
+      next_gate: "brief review",
+      // Missing artifact_markdown
+    };
+
+    const result = parseStageOutput(JSON.stringify(invalidOutput));
+
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("artifact_markdown");
+    }
+  });
+
+  it("rejects staged agent output missing self_check with descriptive error", () => {
+    const stagedAgent = readStagedAgentConfig();
+    const invalidOutput = {
+      stage: "investigate",
+      artifact_markdown: "Brief.",
+      resumo: "Summary.",
+      next_gate: "brief review",
+      // Missing self_check
+    };
+
+    const result = parseStageOutput(JSON.stringify(invalidOutput));
+
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("self_check");
+    }
+  });
+
+  it("validates that staged output contract cannot drift back to legacy keys", () => {
+    const stagedAgent = readStagedAgentConfig();
+    // Attempt to pass legacy output to a staged agent
+    const legacyOutput = {
+      deliverable_markdown: "## Brief\n\nContent.",
+      resumo: "Summary.",
+      autochecagem: "- Checks",
+    };
+
+    const result = parseCallAgentOutput(stagedAgent, JSON.stringify(legacyOutput));
+
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toMatch(/stage|artifact_markdown|self_check|next_gate/i);
+    }
+  });
+});

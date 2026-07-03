@@ -25,6 +25,13 @@ const OPTIONAL_AGENT_KEYS = ["references"] as const;
 
 const OUTPUT_SCHEMA_KEYS = ["deliverable_markdown", "resumo", "autochecagem"] as const;
 
+// Staged agent output schema keys per ADR-006 and ADR-011
+const REQUIRED_STAGED_OUTPUT_KEYS = ["stage", "artifact_markdown", "resumo", "self_check", "next_gate"] as const;
+const OPTIONAL_STAGED_OUTPUT_KEYS = ["blocker_question"] as const;
+const LEGACY_ONLY_OUTPUT_KEYS = ["deliverable_markdown", "autochecagem"] as const;
+
+const STAGED_AGENT_IDS = ["investigative-brief", "long-form-argument", "linkedin-format"] as const;
+
 function readAgentConfig(): AgentConfig {
   return JSON.parse(readFileSync(AGENT_JSON_PATH, "utf-8")) as AgentConfig;
 }
@@ -298,7 +305,105 @@ describe("agent config", () => {
     expect(referenceContent).toMatch(/Implication|Direction/i);
     expect(referenceContent).toMatch(/Formatting Guidance/i);
   });
+});
 
+describe("staged config contract parity (ADR-006, ADR-011)", () => {
+  it("all three staged agents declare complete staged output key set in output_schema", () => {
+    for (const agentId of STAGED_AGENT_IDS) {
+      const path = resolve(REPO_ROOT, "agents", `${agentId}.json`);
+      const agent = JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+      for (const key of REQUIRED_STAGED_OUTPUT_KEYS) {
+        expect(agent.output_schema, `${agentId} missing staged key: ${key}`).toHaveProperty(key);
+        const value = agent.output_schema[key as keyof typeof agent.output_schema];
+        expect(typeof value).toBe("string");
+        expect((value ?? "").trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("staged configs never declare legacy-only keys: deliverable_markdown or autochecagem", () => {
+    for (const agentId of STAGED_AGENT_IDS) {
+      const path = resolve(REPO_ROOT, "agents", `${agentId}.json`);
+      const agent = JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+      for (const legacyKey of LEGACY_ONLY_OUTPUT_KEYS) {
+        expect(agent.output_schema).not.toHaveProperty(legacyKey, `${agentId} should not declare legacy key: ${legacyKey}`);
+      }
+    }
+  });
+
+  it("investigative-brief output_schema declares stage: investigate", () => {
+    const path = resolve(REPO_ROOT, "agents", "investigative-brief.json");
+    const agent = JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+    expect(agent.output_schema.stage).toBe("investigate", "investigative-brief.output_schema.stage must be 'investigate'");
+  });
+
+  it("long-form-argument output_schema declares stage: write", () => {
+    const path = resolve(REPO_ROOT, "agents", "long-form-argument.json");
+    const agent = JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+    expect(agent.output_schema.stage).toBe("write", "long-form-argument.output_schema.stage must be 'write'");
+  });
+
+  it("linkedin-format output_schema declares stage: format", () => {
+    const path = resolve(REPO_ROOT, "agents", "linkedin-format.json");
+    const agent = JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+    expect(agent.output_schema.stage).toBe("format", "linkedin-format.output_schema.stage must be 'format'");
+  });
+
+  it("investigative-brief next_gate maps to brief review", () => {
+    const path = resolve(REPO_ROOT, "agents", "investigative-brief.json");
+    const agent = JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+    expect(agent.output_schema.next_gate).toBe("brief review", "investigative-brief.output_schema.next_gate must be 'brief review'");
+  });
+
+  it("long-form-argument next_gate maps to content review", () => {
+    const path = resolve(REPO_ROOT, "agents", "long-form-argument.json");
+    const agent = JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+    expect(agent.output_schema.next_gate).toBe("content review", "long-form-argument.output_schema.next_gate must be 'content review'");
+  });
+
+  it("linkedin-format next_gate maps to final review", () => {
+    const path = resolve(REPO_ROOT, "agents", "linkedin-format.json");
+    const agent = JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+    expect(agent.output_schema.next_gate).toBe("final review", "linkedin-format.output_schema.next_gate must be 'final review'");
+  });
+
+  it("legacy linkedin-writer config uses legacy output schema only (no staged keys)", () => {
+    const agent = readAgentConfig();
+    expect(agent.output_schema).toHaveProperty("deliverable_markdown");
+    expect(agent.output_schema).toHaveProperty("resumo");
+    expect(agent.output_schema).toHaveProperty("autochecagem");
+    expect(agent.output_schema).not.toHaveProperty("stage", "linkedin-writer should remain legacy and not declare stage");
+    expect(agent.output_schema).not.toHaveProperty("artifact_markdown", "linkedin-writer should remain legacy and not declare artifact_markdown");
+    expect(agent.output_schema).not.toHaveProperty("self_check", "linkedin-writer should remain legacy and not declare self_check");
+    expect(agent.output_schema).not.toHaveProperty("next_gate", "linkedin-writer should remain legacy and not declare next_gate");
+  });
+
+  it("output_schema examples for staged configs describe actual expected output, not placeholders", () => {
+    for (const agentId of STAGED_AGENT_IDS) {
+      const path = resolve(REPO_ROOT, "agents", `${agentId}.json`);
+      const agent = JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+      // Verify artifact_markdown value describes the stage artifact, not generic placeholder
+      const artifactDesc = agent.output_schema.artifact_markdown ?? "";
+      expect(artifactDesc.length).toBeGreaterThan(20, `${agentId}.output_schema.artifact_markdown should describe the stage artifact`);
+      // Verify self_check value describes validation steps, not generic placeholder
+      const selfCheckDesc = agent.output_schema.self_check ?? "";
+      expect(selfCheckDesc.length).toBeGreaterThan(20, `${agentId}.output_schema.self_check should describe validation steps`);
+    }
+  });
+
+  it("validates that staged configs cannot be confused with legacy-contract agents at a glance", () => {
+    const legacy = readAgentConfig();
+    const staged = JSON.parse(readFileSync(resolve(REPO_ROOT, "agents", "investigative-brief.json"), "utf-8")) as AgentConfig;
+    // Legacy uses OLD keys; staged uses NEW keys
+    expect(Object.keys(legacy.output_schema).sort()).toEqual([...OUTPUT_SCHEMA_KEYS].sort());
+    expect(Object.keys(staged.output_schema).sort()).not.toEqual([...OUTPUT_SCHEMA_KEYS].sort());
+    // Staged schema has stage field, legacy does not
+    expect("stage" in staged.output_schema).toBe(true);
+    expect("stage" in legacy.output_schema).toBe(false);
+  });
+});
+
+describe("legacy config boundary (backward compatibility)", () => {
   it("validates that references, when present, must be strings", () => {
     function validateReferences(config: AgentConfig): boolean {
       if (!config.references) {
