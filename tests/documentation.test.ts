@@ -31,7 +31,7 @@ const PRD_F5_REQUIREMENTS = [
   "green run evidence",
   "skill copy",
   "sync script",
-  "adr-005",
+  "adr-003",
 ];
 
 // Grep-tested READMEs only — `agents/harness/io-contract.md`, `.env.example`, and
@@ -195,7 +195,7 @@ describe("domain READMEs", () => {
 
   it("agents README documents skill copy and drift risk", () => {
     const readme = loadText(DOMAIN_READMES.agents).toLowerCase();
-    for (const topic of ["skill-vault", "drift risk", "sync script", "adr-005"]) {
+    for (const topic of ["skill-vault", "drift risk", "sync script", "adr-003"]) {
       expect(readme).toContain(topic);
     }
   });

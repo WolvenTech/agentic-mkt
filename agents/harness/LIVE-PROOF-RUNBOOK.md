@@ -1,29 +1,26 @@
-# Live Proof Runbook: Staged Content Quality Pipeline (Task 23)
+# Live Proof Runbook: Staged Content Quality Pipeline
 
-**Last Updated:** 2026-07-02  
-**Status:** Ready for manual execution  
-**Preflight:** ✅ All checks pass
+**Status:** Live proof has passed; pipeline is in production (see [`clickup/list-schema.md` → Production Status](../../clickup/list-schema.md#production-status)). Use this runbook to re-validate after a significant workflow change.
 
 This document guides manual validation of the staged Content Quality Pipeline in the live ClickUp/n8n environment.
 
 ## Quick Links
 
-- **Task Spec**: `.compozy/tasks/content-quality-pipeline/task_23.md`
 - **Evidence Tracking**: `agents/harness/green-run-evidence.json`
 - **ClickUp List**: [Linkedin Post Creator](https://app.clickup.com/901327635891)
 - **n8n Instance**: https://n8n.wolven.com.br
 - **Workflow Exports**: `marketing-pipelines/`
 
-## Prerequisites Verified ✅
+## Prerequisites
 
-- ✅ `pnpm test` passes (519 tests)
-- ✅ `pnpm build:workflows:check` passes
-- ✅ `pnpm vendor:gate` passes
-- ✅ ClickUp list configured with staged statuses
-- ✅ Custom fields present: `ACs`, `Editorial Doc Url`
-- ✅ n8n workflows exported and ready to import
+- `pnpm test` passes
+- `pnpm build:workflows:check` passes
+- `pnpm vendor:gate` passes
+- ClickUp list configured with staged statuses
+- Custom fields present: `ACs`, `Editorial Doc Url`
+- n8n workflows exported and ready to import
 
-**Activity Tags Reference** (ADR-008):
+**Activity Tags Reference** ([ADR-007](../../adrs/adr-007.md)):
 
 The workflow uses two task tags to signal AI activity at a glance:
 - **`agent-working`**: Set when a stage begins (before Call Agent execution). Visible as a colored chip on ClickUp card.
@@ -312,20 +309,9 @@ pnpm deploy:workflows      # Push to n8n.wolven.com.br (requires N8N_API_KEY)
 
 Or manually re-import and re-bind credentials if API deploy is unavailable.
 
-### Step 2: Migrate Old-Status Tasks
+### Step 2: Old-Status Migration
 
-Review the live Marketing Pipeline list for any tasks in old statuses:
-- `Ready`
-- `Writing`
-- `Approval`
-- `Needs Review`
-
-**Decision tree** (see `clickup/list-schema.md`):
-- **Ready**: Move to **Investigate** (for staged re-run) or **Backlog**
-- **Writing**: Paste artifact link in description, move to **Investigate**
-- **Approval/Needs Review**: Decide if re-running or keeping as-is
-
-**Record**: Count of migrated tasks and their new statuses
+Already complete — `Ready`, `Writing`, `Approval`, and `Needs Review` no longer exist on the live Marketing Pipeline list (see [`clickup/list-schema.md`](../../clickup/list-schema.md#production-status)). If this runbook is re-run after a future workflow change, re-check the live list for any tasks stuck in a non-staged status before proceeding.
 
 ### Step 3: Record Green-Run Evidence
 
@@ -346,7 +332,7 @@ Document:
 
 ## Rollout Gate Checklist
 
-Before production rollout, verify:
+The staged pipeline is live and this gate has been satisfied (see [`clickup/list-schema.md` → Production Status](../../clickup/list-schema.md#production-status)). If re-running this runbook after a significant workflow change, re-verify each item before the next rollout:
 
 - [ ] **Phase 1 passed**: Call Agent isolation test confirms parsing and blocker outputs
 - [ ] **Phase 2 passed**: Happy path completes with Doc creation, comments, and status auto-advances
@@ -354,7 +340,6 @@ Before production rollout, verify:
 - [ ] **Phase 4 passed**: Self-echo filtering confirmed; no duplicate executions
 - [ ] **Latency verified**: All stages ≤60s (record actuals in green-run-evidence.json)
 - [ ] **n8n deployed**: Workflows active and webhook registered
-- [ ] **Old tasks migrated**: No tasks left in deprecated statuses
 - [ ] **Team review complete**: Sign-off from marketing lead + engineering
 - [ ] **Evidence recorded**: green-run-evidence.json fully populated
 
@@ -362,7 +347,7 @@ Before production rollout, verify:
 
 ## Proof Script Exit Codes
 
-Local verification scripts report their status via exit codes (per ADR-010). When running tasks 23+ validation, you may encounter these codes:
+Local verification scripts report their status via exit codes (per [ADR-008](../../adrs/adr-008.md)). When running live-proof validation, you may encounter these codes:
 
 | Exit code | Meaning | Action |
 |-----------|---------|--------|

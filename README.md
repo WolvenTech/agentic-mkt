@@ -20,6 +20,7 @@ ClickUp: backlog → investigate → brief review → write → content review �
 
 | Path | Purpose |
 |------|---------|
+| [`adrs/`](adrs/README.md) | Architecture Decision Records — durable rationale for major design choices |
 | [`n8n/`](n8n/README.md) | Host runbook, credentials, MCP stub |
 | [`marketing-pipelines/`](marketing-pipelines/README.md) | Workflow JSON exports, import/deploy runbook |
 | [`clickup/`](clickup/README.md) | List schema, field mapping, webhook contract |
@@ -102,11 +103,11 @@ Each top-level folder has a README with purpose, key files, and manual setup:
 - [n8n](n8n/README.md) — credentials, GitHub PAT, MCP stub
 - [marketing-pipelines](marketing-pipelines/README.md) — import workflows, activation, deploy
 - [clickup](clickup/README.md) — list creation, field sync, webhook binding
-- [agents/harness](agents/harness/README.md) — I/O envelopes, M2 operational runbook
+- [agents/harness](agents/harness/README.md) — I/O envelopes, operational runbook
 - [agents](agents/README.md) — agent config, skill copy from skill-vault
 
 ## Production
 
 - n8n host: `n8n.wolven.com.br`
 - Runtime config repo: `WolvenTech/agentic-mkt`, branch `main`
-- M1 model: OpenAI `gpt-4.1-mini` via n8n OpenAI Chat Model node (see [`src/call-agent/logic.ts`](src/call-agent/logic.ts))
+- Model: OpenAI `gpt-4.1-mini` via n8n OpenAI Chat Model node (see [`src/call-agent/logic.ts`](src/call-agent/logic.ts))

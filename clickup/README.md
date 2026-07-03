@@ -14,7 +14,7 @@ Schema, webhook contract, and field mapping for the **staged editorial workflow*
 | `pnpm vendor:gate` | **Run first** — verifies ClickUp + n8n connectivity before live scripts or integration tests |
 | `pnpm clickup:sync` | Pull field IDs from ClickUp API into `field-mapping.json` |
 | `pnpm clickup:verify` | Integration check — create test task and verify custom fields via GET |
-| `pnpm green-run` | M1 green run preflight + execution; writes `logs/green-run/<timestamp>/evidence.json` (see [`logs/README.md`](../logs/README.md)) |
+| `pnpm green-run` | Green run preflight + execution; writes `logs/green-run/<timestamp>/evidence.json` (see [`logs/README.md`](../logs/README.md)) |
 | [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) | Sample first-draft webhook payload for contract tests |
 | [`fixtures/task-status-updated-needs-review.json`](fixtures/task-status-updated-needs-review.json) | Sample revision webhook payload for contract tests |
 
@@ -70,7 +70,7 @@ pnpm test
 
 Before moving any task to **Investigate**, ensure title, description, and **ACs** are filled. The workflow relies on manual discipline — no ClickUp automation blocks the transition. See [`list-schema.md` → Brief gate](list-schema.md#brief-gate-prd-f2).
 
-### 5. Webhook registration (task_07)
+### 5. Webhook registration
 
 Do **not** register the webhook until the n8n workflow HTTPS URL exists. When ready:
 
@@ -178,12 +178,3 @@ Answer the blocker question in the comment thread, then move the task forward ag
 | Task stuck In Progress | n8n Executions for main workflow run |
 
 Full diagnostics: [`agents/harness/io-contract.md` → Troubleshooting](../agents/harness/io-contract.md#troubleshooting).
-
-## Manual setup
-
-This section duplicates the checklist above for README scaffold compatibility (task_01 required sections).
-
-1. Create list and fields per [`list-schema.md`](list-schema.md).
-2. Run `pnpm vendor:gate`, then `pnpm clickup:sync` with API credentials.
-3. Run `pnpm clickup:verify` and `pnpm test`.
-4. Register webhook in task_07 per [`webhook-contract.md`](webhook-contract.md).

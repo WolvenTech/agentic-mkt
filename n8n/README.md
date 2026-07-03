@@ -9,11 +9,11 @@ n8n host configuration, credentials runbook, and MCP stub for the **staged conte
 | Path | Purpose |
 |------|---------|
 | [`../marketing-pipelines/`](../marketing-pipelines/README.md) | Workflow JSON exports (import/deploy from there) |
-| `mcp-config.stub.json` | MCP stub only — no implementation in M1 |
+| `mcp-config.stub.json` | MCP stub only — no implementation yet |
 
 ## GitHub repository (Call Agent config fetch)
 
-Runtime agent configs and skills are loaded from this repository via the n8n GitHub node (ADR-004).
+Runtime agent configs and skills are loaded from this repository via the n8n GitHub node ([ADR-002](../adrs/adr-002.md)).
 
 | Setting | Value |
 |---------|-------|
@@ -39,11 +39,11 @@ Create a **fine-grained personal access token** scoped to this repository only:
 5. In n8n (`n8n.wolven.com.br`), add a **GitHub** credential using the PAT.
 6. Test the credential by fetching `agents/linkedin-writer.json` from the default branch.
 
-The Call Agent sub-workflow depends on this repo being pushed before isolation testing (task_06).
+The Call Agent sub-workflow depends on this repo being pushed before isolation testing.
 
-## Call Agent sub-workflow (multi-stage)
+## Call Agent sub-workflow
 
-Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) into `n8n.wolven.com.br` before the main workflow. This sub-workflow is a pure function: it accepts `StageInput` (stage name, task fields, prior Doc page, latest lead comment), fetches the appropriate agent config and reference/template files from GitHub, invokes OpenAI, and returns `StageAgentOutput` (artifact, resumo, self-check, next gate, optional blocker) or an error envelope — no ClickUp writes.
+Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) into `n8n.wolven.com.br` before the main workflow. This sub-workflow is a single, stage-parameterized pure function — the main workflow invokes it once per AI stage (investigate, write, format), passing `stage` as part of its input rather than the sub-workflow having separate paths per stage. It accepts `StageInput` (stage name, task fields, prior Doc page, latest lead comment), fetches the appropriate agent config and reference/template files from GitHub, invokes OpenAI, and returns `StageAgentOutput` (artifact, resumo, self-check, next gate, optional blocker) or an error envelope — no ClickUp writes.
 
 | Node | Purpose |
 |------|---------|
@@ -117,7 +117,7 @@ After import, replace placeholder credential and workflow IDs:
 | `CLICKUP_CREDENTIAL_ID` | Select ClickUp OAuth or Personal API token credential |
 | `CALL_AGENT_WORKFLOW_ID` | Select the imported **Call Agent** sub-workflow |
 
-Ensure `clickup/field-mapping.json` has real field IDs (run `pnpm clickup:sync` after list setup in task_04).
+Ensure `clickup/field-mapping.json` has real field IDs (run `pnpm clickup:sync` after ClickUp list setup).
 
 ### Main workflow activation and ClickUp webhook
 
@@ -170,9 +170,9 @@ Re-export the workflow from n8n after credential binding and commit to `marketin
 
 Regenerate repo export: `pnpm build:workflows`.
 
-## M2 operational runbook (import and activate)
+## Operational runbook (import and activate)
 
-Validated during M1/M2. An operator can re-import and activate both workflows using this section alone.
+An operator can re-import and activate both workflows using this section alone.
 
 ### Prerequisites
 

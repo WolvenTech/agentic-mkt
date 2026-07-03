@@ -1,6 +1,6 @@
 # ClickUp Webhook Contract
 
-Ingress contract for the Marketing Pipeline n8n main workflow. Webhook registration happens in task_07 after the n8n HTTPS URL is available.
+Ingress contract for the Marketing Pipeline n8n main workflow. Webhook registration happens after the n8n HTTPS URL is available.
 
 ## Trigger
 
@@ -8,9 +8,9 @@ Ingress contract for the Marketing Pipeline n8n main workflow. Webhook registrat
 |----------|-------|
 | **ClickUp event** | `Task Status Updated` (`taskStatusUpdated`) |
 | **Scope** | Marketing Pipeline list only |
-| **Target URL** | n8n main workflow webhook URL (configured in task_07) |
+| **Target URL** | n8n main workflow webhook URL |
 
-ClickUp may also emit `taskUpdated` for the same status change. Subscribe to **Task Status Updated** for M1 ingress.
+ClickUp may also emit `taskUpdated` for the same status change. Subscribe to **Task Status Updated** for staged ingress.
 
 ## Ingress filters
 
@@ -124,10 +124,10 @@ Reviewed against ClickUp developer docs (2026-06):
 | Duplicate events | `taskCreated` also fires `taskStatusUpdated`; filter on entering a stage status avoids creation noise |
 | Self-echo | Workflow status PATCHes emit transitions between statuses (e.g., `investigate → brief_review`); ingress filters correctly ignore them since they don't enter a stage status (see [Self-echo webhooks](#self-echo-webhooks-expected-noise)) |
 | Subscription filtering | ClickUp list webhooks cannot scope to multiple target statuses; self-echo filtering at n8n ingress is required |
-| Idempotency | None in M1; duplicate deliveries may produce duplicate comments |
+| Idempotency | None currently; duplicate deliveries may produce duplicate comments |
 
 ## Verification
 
 - **Unit:** `tests/clickup.test.ts` validates fixtures against ingress filter logic and payload shape
-- **Integration (task_07+):** Register webhook → move test task to Ready or Needs Review → confirm n8n receives payload matching this contract
+- **Integration:** Register webhook → move test task to Investigate, Write, or Format → confirm n8n receives payload matching this contract
 - **Pre-registration:** Use ClickUp webhook test tool or replay [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) and [`fixtures/task-status-updated-needs-review.json`](fixtures/task-status-updated-needs-review.json) into n8n test webhook
