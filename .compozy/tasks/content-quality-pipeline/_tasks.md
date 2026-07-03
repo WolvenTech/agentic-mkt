@@ -35,3 +35,10 @@
 | 29 | Enforce green-run ready/unverified exit-code contract | completed | medium | task_23 |
 | 30 | Enforce content-quality proof failure exit-code contract | completed | medium | task_23 |
 | 31 | Update staged-only rollout and webhook documentation | completed | medium | task_26, task_28, task_29, task_30 |
+| 32 | Generate staged Call Agent prompt examples from output_schema | completed | medium | task_31 |
+| 33 | Switch generated Call Agent parsing to the staged-aware dispatcher | pending | low | task_32 |
+| 34 | Harden staged Call Agent contract parity fixtures | pending | medium | task_33 |
+| 35 | Persist and normalize the Editorial Doc pointer before page work | pending | medium | task_31 |
+| 36 | Fail closed on missing staged artifact content before Doc writes | pending | medium | task_33 |
+| 37 | Regenerate workflows and assert strict staged Doc topology | pending | medium | task_33, task_35, task_36 |
+| 38 | Run ADR-011 live proof for one-Doc reuse and non-placeholder pages | pending | high | task_37 |

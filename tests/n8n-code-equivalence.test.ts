@@ -366,6 +366,104 @@ describe("Call Agent n8n code equivalence", () => {
     expect(refContents["agents/references/example-brief.md"]).toContain("Sample brief format");
   });
 
+  it("assemblePromptJs generates staged agent prompt examples with staged keys, not legacy keys", async () => {
+    const stagedAgentConfigWithStage: AgentConfig = {
+      id: "investigative-brief",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["wolven-voice", "investigative-brief"],
+      references: ["agents/references/editorial-brief.md"],
+      output_schema: {
+        stage: "investigate",
+        artifact_markdown: "The investigative brief with narrowed topic and evidence inventory",
+        resumo: "2-3 sentence summary of the brief",
+        self_check: "Bullet list validating the brief",
+        next_gate: "brief review",
+        blocker_question: "One highest-impact question when research is incomplete",
+      },
+    };
+
+    const skillContents = {
+      "wolven-voice": "## Wolven Voice Skill\n\nPreserve all facts.",
+      "investigative-brief": "## Investigative Brief Skill\n\nCreate a research brief.",
+    };
+
+    const referenceContents = {
+      "agents/references/editorial-brief.md": "## Editorial Brief Template\n\nStructure: angles, evidence.",
+    };
+
+    const jsResult = firstCodeNodeJson(
+      await runN8nCodeNode(assemblePromptJs(), {
+        input: { all: [{ json: { agent_config: stagedAgentConfigWithStage } }] },
+        nodeOutputs: {
+          "Parse Agent Config": [],
+          "Merge Agent Files Fetch": [{ json: { agent_config: stagedAgentConfigWithStage } }],
+        },
+      })
+    );
+
+    if (jsResult?.system_prompt && typeof jsResult.system_prompt === "string") {
+      const prompt = jsResult.system_prompt;
+      // Verify staged keys are present
+      expect(prompt).toContain("stage");
+      expect(prompt).toContain("artifact_markdown");
+      expect(prompt).toContain("self_check");
+      expect(prompt).toContain("next_gate");
+      // Verify legacy keys are NOT present in the output schema example
+      expect(prompt).not.toContain("deliverable_markdown");
+      expect(prompt).not.toContain("autochecagem");
+      // Verify references are included
+      expect(prompt).toContain("# References");
+      expect(prompt).toContain("agents/references/editorial-brief.md");
+    }
+  });
+
+  it("assemblePromptJs generates legacy agent prompt examples with legacy keys only", async () => {
+    const legacyAgentConfig: AgentConfig = {
+      id: "linkedin-writer",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      max_output_tokens: 1024,
+      skills: ["wolven-voice", "linkedin-format"],
+      output_schema: {
+        deliverable_markdown: "One valid deliverable in markdown",
+        resumo: "2-3 sentence summary",
+        autochecagem: "Bullet list validating the output",
+      },
+    };
+
+    const skillContents = {
+      "wolven-voice": "## Wolven Voice Skill\n\nPreserve facts.",
+      "linkedin-format": "## LinkedIn Format Skill\n\nFormat for LinkedIn.",
+    };
+
+    const jsResult = firstCodeNodeJson(
+      await runN8nCodeNode(assemblePromptJs(), {
+        input: { all: [{ json: { agent_config: legacyAgentConfig } }] },
+        nodeOutputs: {
+          "Parse Agent Config": [],
+          "Merge Agent Files Fetch": [{ json: { agent_config: legacyAgentConfig } }],
+        },
+      })
+    );
+
+    if (jsResult?.system_prompt && typeof jsResult.system_prompt === "string") {
+      const prompt = jsResult.system_prompt;
+      // Verify legacy keys are present
+      expect(prompt).toContain("deliverable_markdown");
+      expect(prompt).toContain("resumo");
+      expect(prompt).toContain("autochecagem");
+      // Verify staged keys are NOT present
+      expect(prompt).not.toContain('"stage"');
+      expect(prompt).not.toContain("artifact_markdown");
+      expect(prompt).not.toContain("self_check");
+      expect(prompt).not.toContain("next_gate");
+    }
+  });
+
   it("parseStageOutputJs accepts valid investigate stage output", async () => {
     const stageOutput = {
       stage: "investigate",
