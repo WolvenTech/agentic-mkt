@@ -52,7 +52,9 @@ return [{
     user_message: userMessage,
     temperature: agentConfig.temperature ?? @@DEFAULT_TEMPERATURE@@,
     max_output_tokens: agentConfig.max_output_tokens ?? @@DEFAULT_MAX_OUTPUT_TOKENS@@,
-    provider: agentConfig.provider ?? '@@DEFAULT_PROVIDER@@',
-    model: agentConfig.model ?? '@@DEFAULT_MODEL@@',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    provider: agentConfig.provider ?? @@DEFAULT_PROVIDER@@,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    model: agentConfig.model ?? @@DEFAULT_MODEL@@,
   },
 }];

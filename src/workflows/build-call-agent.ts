@@ -1,15 +1,13 @@
 import { deterministicWorkflowId } from "./deterministic-id.js";
+import { loadCodeNodeSource } from "./n8n-codegen.js";
 import {
-  assemblePromptJs,
-  parseAgentConfigJs,
-  parseAgentOutputJs,
-  storeInputContextJs,
-  unsupportedProviderJs,
-} from "./call-agent-n8n.js";
-import {
+  DEFAULT_MAX_OUTPUT_TOKENS,
   DEFAULT_MODEL,
+  DEFAULT_PROVIDER,
+  DEFAULT_TEMPERATURE,
   GITHUB_REPO_NAME,
   GITHUB_REPO_OWNER,
+  REQUIRED_OUTPUT_KEYS,
   agentConfigPath,
 } from "../call-agent/logic.js";
 import type { CallAgentInput } from "../types/call-agent-io.js";
@@ -95,7 +93,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [480, 200],
-      parameters: { jsCode: storeInputContextJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "call-agent", nodeSlug: "store-input-context" }) },
     },
     {
       id: nodeId("Fetch Agent Config"),
@@ -122,7 +120,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [960, 200],
-      parameters: { jsCode: parseAgentConfigJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "call-agent", nodeSlug: "parse-agent-config" }) },
     },
     {
       id: nodeId("Fetch Skill Markdown"),
@@ -161,7 +159,18 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [1560, 200],
-      parameters: { jsCode: assemblePromptJs() },
+      parameters: {
+        jsCode: loadCodeNodeSource({
+          workflowSlug: "call-agent",
+          nodeSlug: "assemble-prompt",
+          tokens: {
+            DEFAULT_TEMPERATURE,
+            DEFAULT_MAX_OUTPUT_TOKENS,
+            DEFAULT_PROVIDER,
+            DEFAULT_MODEL,
+          },
+        }),
+      },
     },
     {
       id: nodeId("Route Provider"),
@@ -224,7 +233,13 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [2280, 120],
-      parameters: { jsCode: parseAgentOutputJs() },
+      parameters: {
+        jsCode: loadCodeNodeSource({
+          workflowSlug: "call-agent",
+          nodeSlug: "parse-agent-output",
+          tokens: { REQUIRED_OUTPUT_KEYS },
+        }),
+      },
     },
     {
       id: nodeId("Unsupported Provider Error"),
@@ -232,7 +247,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [2040, 320],
-      parameters: { jsCode: unsupportedProviderJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "call-agent", nodeSlug: "unsupported-provider-error" }) },
     },
   ];
 
