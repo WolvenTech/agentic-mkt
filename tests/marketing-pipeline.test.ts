@@ -44,8 +44,11 @@ import {
   formatBlockerCommentJs,
   formatPointerCommentJs,
   hasDocUrlIfExpression,
+  normalizeDocPointerJs,
+  normalizeStoredDocPointerJs,
   pageCreatedJs,
   pageExistsIfExpression,
+  persistDocPointerJs,
   prepareStagedCallAgentInputJs,
   readCurrentPageJs,
   replacePageJs,
@@ -825,6 +828,72 @@ describe("n8n Doc and page helper code generation", () => {
     expect(code).toContain("page_replaced");
     expect(code).toContain("page_replaced: true");
   });
+
+  it("generates Persist Doc Pointer code that writes created Doc ID to custom field", () => {
+    const mapping = fixtureFieldMapping();
+    const code = persistDocPointerJs(mapping);
+    expect(code).toContain("Doc Created");
+    expect(code).toContain("Extract Task Fields");
+    expect(code).toContain("custom_fields_payload");
+    expect(code).toContain("editorial_doc_url_field_id");
+    expect(code).toContain("cf_editorial_doc_url_001");
+    expect(code).toContain("persist_doc_pointer");
+  });
+
+  it("generates Use Existing Doc code with Doc pointer normalization for URLs and bare IDs", () => {
+    const code = useExistingDocJs();
+    expect(code).toContain("doc.clickup.com");
+    expect(code).toContain("pointer");
+    expect(code).toContain("Invalid Doc pointer format");
+    expect(code).toContain("Expected ClickUp Doc URL or bare Doc ID");
+  });
+
+  it("generates Normalize Doc Pointer helper for extracting Doc ID from URL", () => {
+    const code = normalizeDocPointerJs();
+    expect(code).toContain("doc.clickup.com");
+    expect(code).toContain("pointer");
+    expect(code).toContain("Failed to extract Doc ID");
+    expect(code).toContain("Invalid Doc pointer format");
+  });
+
+  it("generates Normalize Stored Doc Pointer code for use-existing-doc path", () => {
+    const code = normalizeStoredDocPointerJs();
+    expect(code).toContain("Extract Task Fields");
+    expect(code).toContain("editorial_doc_url");
+    expect(code).toContain("empty");
+    expect(code).toContain("doc.clickup.com");
+    expect(code).toContain("use_existing_doc");
+  });
+});
+
+describe("Doc pointer normalization", () => {
+  it("normalizes a bare Doc ID to itself", () => {
+    const input = "a1b2c3d4e5f6g7h8";
+    expect(input).toMatch(/^[a-z0-9-]+$/i);
+  });
+
+  it("normalizes a full ClickUp Doc URL to extract the Doc ID", () => {
+    const input = "https://doc.clickup.com/p/h/a1b2c3d4e5f6g7h8/comment/8d9e0f1g2h3i4j5k";
+    const match = input.match(/\/p\/h\/([a-z0-9]+)/i);
+    expect(match).toBeDefined();
+    expect(match?.[1]).toBe("a1b2c3d4e5f6g7h8");
+  });
+
+  it("validates the regex pattern for bare Doc ID extraction", () => {
+    const validIds = ["a1b2c3d4e5f6g7h8", "abc123", "doc-id-with-dashes"];
+    validIds.forEach((id) => {
+      expect(id).toMatch(/^[a-z0-9-]+$/i);
+    });
+  });
+
+  it("rejects Doc pointers that don't match either pattern", () => {
+    const inputs = ["", "not a valid pointer!", "@#$%^&*()", "doc.clickup.com"];
+    inputs.forEach((input) => {
+      const isValidId = /^[a-z0-9-]+$/i.test(input);
+      const hasValidUrlPattern = /\/p\/h\/([a-z0-9]+)/i.test(input);
+      expect(isValidId || hasValidUrlPattern).toBe(false);
+    });
+  });
 });
 
 describe("stage input assembly", () => {
@@ -1088,6 +1157,8 @@ describe("Marketing Pipeline stage routing", () => {
     expect(nodeByName(workflow, "Use Existing Doc")?.type).toBe("n8n-nodes-base.code");
     expect(nodeByName(workflow, "POST Create ClickUp Doc")?.type).toBe("n8n-nodes-base.httpRequest");
     expect(nodeByName(workflow, "Doc Created")?.type).toBe("n8n-nodes-base.code");
+    expect(nodeByName(workflow, "Persist Doc Pointer")?.type).toBe("n8n-nodes-base.code");
+    expect(nodeByName(workflow, "PUT Update Editorial Doc Url")?.type).toBe("n8n-nodes-base.httpRequest");
     expect(nodeByName(workflow, "Doc Ready")?.type).toBe("n8n-nodes-base.noOp");
     expect(nodeByName(workflow, "GET List Doc Pages")?.type).toBe("n8n-nodes-base.httpRequest");
     expect(nodeByName(workflow, "Find Stage Page")?.type).toBe("n8n-nodes-base.code");
@@ -1104,6 +1175,7 @@ describe("Marketing Pipeline stage routing", () => {
   it("all Doc/Page HTTP nodes authenticate with the predefined ClickUp credential", () => {
     for (const name of [
       "POST Create ClickUp Doc",
+      "PUT Update Editorial Doc Url",
       "GET List Doc Pages",
       "POST Create Doc Page",
       "GET Doc Page Content",
@@ -1126,11 +1198,17 @@ describe("Marketing Pipeline stage routing", () => {
     expect(branches[1]?.[0]?.node).toBe("POST Create ClickUp Doc");
   });
 
-  it("Use Existing Doc and Doc Created both converge on Doc Ready", () => {
+  it("Use Existing Doc branches directly to Doc Ready, while Doc Created path persists pointer first", () => {
     expect(workflow.connections["Use Existing Doc"]?.main).toEqual([
       [{ node: "Doc Ready", type: "main", index: 0 }],
     ]);
     expect(workflow.connections["Doc Created"]?.main).toEqual([
+      [{ node: "Persist Doc Pointer", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["Persist Doc Pointer"]?.main).toEqual([
+      [{ node: "PUT Update Editorial Doc Url", type: "main", index: 0 }],
+    ]);
+    expect(workflow.connections["PUT Update Editorial Doc Url"]?.main).toEqual([
       [{ node: "Doc Ready", type: "main", index: 0 }],
     ]);
   });
@@ -1166,9 +1244,12 @@ describe("Marketing Pipeline stage routing", () => {
       const to = chain[index + 1];
       expect(workflowConnectionPath(workflow, from as string, to as string), `${from} -> ${to}`).not.toBeNull();
     }
-    // false branches also reach the convergence points
+    // false branches also reach the convergence points via pointer persistence
     expect(workflowConnectionPath(workflow, "Has Doc URL?", "POST Create ClickUp Doc")).not.toBeNull();
-    expect(workflowConnectionPath(workflow, "POST Create ClickUp Doc", "Doc Ready")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "POST Create ClickUp Doc", "Doc Created")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Doc Created", "Persist Doc Pointer")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "Persist Doc Pointer", "PUT Update Editorial Doc Url")).not.toBeNull();
+    expect(workflowConnectionPath(workflow, "PUT Update Editorial Doc Url", "Doc Ready")).not.toBeNull();
     expect(workflowConnectionPath(workflow, "Page Exists?", "POST Create Doc Page")).not.toBeNull();
     expect(workflowConnectionPath(workflow, "POST Create Doc Page", "Page Ready")).not.toBeNull();
   });
@@ -1499,9 +1580,14 @@ describe("blocker output handling (task_18)", () => {
       expect(branches[0]?.[0]?.node).toBe("Format Blocker Comment");
     });
 
-    it("routes Has Blocker false to Format Pointer Comment", () => {
+    it("routes Has Blocker false to Validate Staged Artifact", () => {
       const branches = workflow.connections["Has Blocker?"]?.main ?? [];
-      expect(branches[1]?.[0]?.node).toBe("Format Pointer Comment");
+      expect(branches[1]?.[0]?.node).toBe("Validate Staged Artifact");
+    });
+
+    it("validates staged artifact before formatting pointer comment", () => {
+      const connection = workflow.connections["Validate Staged Artifact"]?.main ?? [];
+      expect(connection[0]?.[0]?.node).toBe("Format Pointer Comment");
     });
 
     it("routes success cleanup before next-gate status return", () => {

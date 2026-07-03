@@ -31,6 +31,7 @@ import {
   prepareCallAgentInputJs,
   prepareRevisionCallAgentInputJs,
   setIngressModeJs,
+  validateStagedArtifactJs,
 } from "../src/workflows/marketing-pipeline-n8n.js";
 import {
   assemblePromptJs,
@@ -691,5 +692,125 @@ describe("Call Agent n8n code equivalence", () => {
 
     expect(jsResult?.error).toContain("Missing required keys");
     expect(jsResult?.error).toContain("next_gate");
+  });
+});
+
+describe("validateStagedArtifactJs", () => {
+  it("validates non-empty artifact_markdown and passes it through", async () => {
+    const stageOutput = {
+      stage: "investigate",
+      artifact_markdown: "## Brief\n\nKey findings from research.",
+      resumo: "Summary of findings.",
+      self_check: "- All research documented",
+      next_gate: "brief review",
+    };
+
+    const jsResult = firstCodeNodeJson(
+      await runN8nCodeNode(validateStagedArtifactJs(), {
+        input: stageOutput,
+        nodeOutputs: {
+          "Execute Call Agent": stageOutput,
+          "Extract Task Fields": { task_id: "test-123", stage: "investigate" },
+        },
+      })
+    );
+
+    expect(jsResult?.error).toBeUndefined();
+    expect(jsResult?.artifact_markdown).toBe(stageOutput.artifact_markdown);
+    expect(jsResult?.next_gate).toBe("brief review");
+  });
+
+  it("rejects empty artifact_markdown with descriptive error", async () => {
+    const stageOutput = {
+      stage: "investigate",
+      artifact_markdown: "",
+      resumo: "Summary of findings.",
+      self_check: "- All research documented",
+      next_gate: "brief review",
+    };
+
+    try {
+      await runN8nCodeNode(validateStagedArtifactJs(), {
+        input: stageOutput,
+        nodeOutputs: {
+          "Execute Call Agent": stageOutput,
+          "Extract Task Fields": { task_id: "test-123", stage: "investigate" },
+        },
+      });
+      expect.fail("Should have thrown an error");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      expect(errorMessage).toContain("artifact_markdown");
+      expect(errorMessage).toContain("Cannot proceed");
+    }
+  });
+
+  it("rejects whitespace-only artifact_markdown with descriptive error", async () => {
+    const stageOutput = {
+      stage: "investigate",
+      artifact_markdown: "   \n\t  ",
+      resumo: "Summary of findings.",
+      self_check: "- All research documented",
+      next_gate: "brief review",
+    };
+
+    try {
+      await runN8nCodeNode(validateStagedArtifactJs(), {
+        input: stageOutput,
+        nodeOutputs: {
+          "Execute Call Agent": stageOutput,
+          "Extract Task Fields": { task_id: "test-123", stage: "investigate" },
+        },
+      });
+      expect.fail("Should have thrown an error");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      expect(errorMessage).toContain("artifact_markdown");
+    }
+  });
+
+  it("rejects missing artifact_markdown with descriptive error", async () => {
+    const stageOutput = {
+      stage: "investigate",
+      resumo: "Summary of findings.",
+      self_check: "- All research documented",
+      next_gate: "brief review",
+    };
+
+    try {
+      await runN8nCodeNode(validateStagedArtifactJs(), {
+        input: stageOutput as any,
+        nodeOutputs: {
+          "Execute Call Agent": stageOutput,
+          "Extract Task Fields": { task_id: "test-123", stage: "investigate" },
+        },
+      });
+      expect.fail("Should have thrown an error");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      expect(errorMessage).toContain("artifact_markdown");
+    }
+  });
+
+  it("trims and normalizes artifact_markdown when valid", async () => {
+    const stageOutput = {
+      stage: "investigate",
+      artifact_markdown: "  \n## Brief\n\nContent.  \n  ",
+      resumo: "Summary",
+      self_check: "Checks",
+      next_gate: "brief review",
+    };
+
+    const jsResult = firstCodeNodeJson(
+      await runN8nCodeNode(validateStagedArtifactJs(), {
+        input: stageOutput,
+        nodeOutputs: {
+          "Execute Call Agent": stageOutput,
+          "Extract Task Fields": { task_id: "test-123", stage: "investigate" },
+        },
+      })
+    );
+
+    expect(jsResult?.artifact_markdown).toBe("## Brief\n\nContent.");
   });
 });

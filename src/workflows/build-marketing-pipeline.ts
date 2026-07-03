@@ -24,6 +24,7 @@ import {
   markHistoryItemSeenJs,
   pageCreatedJs,
   pageExistsIfExpression,
+  persistDocPointerJs,
   prepareStagedCallAgentInputJs,
   readCurrentPageJs,
   replacePageJs,
@@ -34,6 +35,7 @@ import {
   updateStatusToNextGateJs,
   updateStatusToPreviousGateJs,
   useExistingDocJs,
+  validateStagedArtifactJs,
 } from "./marketing-pipeline-n8n.js";
 
 const CLICKUP_CREDENTIALS = {
@@ -345,16 +347,31 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       parameters: { jsCode: docCreatedJs() },
     },
     {
+      id: nodeId("Persist Doc Pointer"),
+      name: "Persist Doc Pointer",
+      type: "n8n-nodes-base.code",
+      typeVersion: 2,
+      position: [4032, 448],
+      parameters: { jsCode: persistDocPointerJs(fieldMapping) },
+    },
+    clickUpHttpNode(
+      "PUT Update Editorial Doc Url",
+      [4256, 448],
+      "PUT",
+      "=https://api.clickup.com/api/v2/task/{{ $json.task_id }}",
+      "={{ { custom_fields: $json.custom_fields_payload } }}"
+    ),
+    {
       id: nodeId("Doc Ready"),
       name: "Doc Ready",
       type: "n8n-nodes-base.noOp",
       typeVersion: 1,
-      position: [4032, 352],
+      position: [4480, 352],
       parameters: {},
     },
     clickUpHttpNode(
       "GET List Doc Pages",
-      [4256, 352],
+      [4704, 352],
       "GET",
       "=https://api.clickup.com/api/v3/workspaces/{{ $json.workspace_id }}/docs/{{ $json.doc_id }}/pages"
     ),
@@ -363,7 +380,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       name: "Find Stage Page",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [4480, 352],
+      position: [4928, 352],
       parameters: { jsCode: findStagePageJs() },
     },
     {
@@ -371,7 +388,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       name: "Page Exists?",
       type: "n8n-nodes-base.if",
       typeVersion: 2.2,
-      position: [4704, 352],
+      position: [5152, 352],
       parameters: {
         conditions: {
           options: { version: 2, leftValue: "", caseSensitive: true, typeValidation: "loose" },
@@ -390,7 +407,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
     },
     clickUpHttpNode(
       "POST Create Doc Page",
-      [4928, 432],
+      [5376, 432],
       "POST",
       "=https://api.clickup.com/api/v3/workspaces/{{ $json.workspace_id }}/docs/{{ $json.doc_id }}/pages",
       "={{ { name: $json.page_name, content: \"# \" + $json.page_name + \"\\n\\n*Initial placeholder content for \" + $json.page_name + \".*\", content_format: \"text/md\" } }}"
@@ -400,7 +417,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       name: "Page Created",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [5152, 432],
+      position: [5600, 432],
       parameters: { jsCode: pageCreatedJs() },
     },
     {
@@ -408,12 +425,12 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       name: "Page Ready",
       type: "n8n-nodes-base.noOp",
       typeVersion: 1,
-      position: [5376, 352],
+      position: [5824, 352],
       parameters: {},
     },
     clickUpHttpNode(
       "GET Doc Page Content",
-      [5600, 352],
+      [6048, 352],
       "GET",
       "=https://api.clickup.com/api/v3/workspaces/{{ $json.workspace_id }}/docs/{{ $json.doc_id }}/pages/{{ $json.page_id }}?content_format=text/md"
     ),
@@ -422,7 +439,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       name: "Read Current Page",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [5824, 352],
+      position: [6272, 352],
       parameters: { jsCode: readCurrentPageJs() },
     },
     {
@@ -430,7 +447,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       name: "Extract Latest Lead Feedback",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [6048, 352],
+      position: [6496, 352],
       parameters: { jsCode: extractLatestLeadFeedbackJs() },
     },
     {
@@ -438,7 +455,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       name: "Prepare Staged Call Agent Input",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [6272, 352],
+      position: [6720, 352],
       parameters: { jsCode: prepareStagedCallAgentInputJs() },
     },
     clickUpTagNode("Add agent-working", [2688, 352], "add", AGENT_WORKING_TAG),
@@ -447,7 +464,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       name: "Execute Call Agent",
       type: "n8n-nodes-base.executeWorkflow",
       typeVersion: 1.2,
-      position: [6496, 352],
+      position: [6944, 352],
       parameters: {
         workflowId: { __rl: true, mode: "id", value: "CALL_AGENT_WORKFLOW_ID" },
         workflowInputs: {
@@ -640,6 +657,14 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       },
     },
     {
+      id: nodeId("Validate Staged Artifact"),
+      name: "Validate Staged Artifact",
+      type: "n8n-nodes-base.code",
+      typeVersion: 2,
+      position: [7392, 256],
+      parameters: { jsCode: validateStagedArtifactJs() },
+    },
+    {
       id: nodeId("Format Pointer Comment"),
       name: "Format Pointer Comment",
       type: "n8n-nodes-base.code",
@@ -754,7 +779,9 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
     },
     "Use Existing Doc": { main: [[{ node: "Doc Ready", type: "main", index: 0 }]] },
     "POST Create ClickUp Doc": { main: [[{ node: "Doc Created", type: "main", index: 0 }]] },
-    "Doc Created": { main: [[{ node: "Doc Ready", type: "main", index: 0 }]] },
+    "Doc Created": { main: [[{ node: "Persist Doc Pointer", type: "main", index: 0 }]] },
+    "Persist Doc Pointer": { main: [[{ node: "PUT Update Editorial Doc Url", type: "main", index: 0 }]] },
+    "PUT Update Editorial Doc Url": { main: [[{ node: "Doc Ready", type: "main", index: 0 }]] },
     "Doc Ready": { main: [[{ node: "GET List Doc Pages", type: "main", index: 0 }]] },
     "GET List Doc Pages": { main: [[{ node: "Find Stage Page", type: "main", index: 0 }]] },
     "Find Stage Page": { main: [[{ node: "Page Exists?", type: "main", index: 0 }]] },
@@ -788,7 +815,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
     "Has Blocker?": {
       main: [
         [{ node: "Format Blocker Comment", type: "main", index: 0 }],
-        [{ node: "Format Pointer Comment", type: "main", index: 0 }],
+        [{ node: "Validate Staged Artifact", type: "main", index: 0 }],
       ],
     },
     "Format Blocker Comment": { main: [[{ node: "POST Blocker Comment", type: "main", index: 0 }]] },
@@ -796,6 +823,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
     "Swap activity tags": { main: [[{ node: "Add agent-blocked tag", type: "main", index: 0 }]] },
     "Add agent-blocked tag": { main: [[{ node: "Update Status to Previous Gate", type: "main", index: 0 }]] },
     "Update Status to Previous Gate": { main: [[{ node: "Status → Previous Gate", type: "main", index: 0 }]] },
+    "Validate Staged Artifact": { main: [[{ node: "Format Pointer Comment", type: "main", index: 0 }]] },
     "Format Pointer Comment": { main: [[{ node: "PUT Replace Doc Page Content", type: "main", index: 0 }]] },
     "PUT Replace Doc Page Content": { main: [[{ node: "Replace Doc Page", type: "main", index: 0 }]] },
     "Replace Doc Page": { main: [[{ node: "POST Pointer Comment", type: "main", index: 0 }]] },

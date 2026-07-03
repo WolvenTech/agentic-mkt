@@ -445,7 +445,26 @@ export function hasDocUrlIfExpression(): string {
 export function useExistingDocJs(): string {
   return joinN8nJs([
     "const fields = $('Extract Task Fields').first().json;",
-    "const docId = String(fields.editorial_doc_url ?? '').trim();",
+    "const pointer = String(fields.editorial_doc_url ?? '').trim();",
+    "",
+    "if (!pointer) {",
+    "  throw new Error('Editorial Doc Url custom field is empty. Expected a Doc ID or ClickUp Doc URL.');",
+    "}",
+    "",
+    "// Normalize: extract Doc ID from ClickUp Doc URL or use bare ID",
+    "let docId;",
+    "if (pointer.includes('doc.clickup.com')) {",
+    "  const match = pointer.match(/\\/p\\/h\\/([a-z0-9]+)/i);",
+    "  if (match && match[1]) {",
+    "    docId = match[1];",
+    "  } else {",
+    "    throw new Error(`Failed to extract Doc ID from ClickUp Doc URL: ${pointer}`);",
+    "  }",
+    "} else if (/^[a-z0-9-]+$/i.test(pointer)) {",
+    "  docId = pointer;",
+    "} else {",
+    "  throw new Error(`Invalid Doc pointer format: ${pointer}. Expected ClickUp Doc URL or bare Doc ID`);",
+    "}",
     "",
     "return [{",
     "  json: {",
@@ -854,6 +873,118 @@ export function updateStatusToPreviousGateJs(): string {
     "    task_id: taskFields.task_id,",
     "    status_to_set: statusValue,",
     "    previous_gate: previousGate,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Persist Doc Pointer — write created Doc ID to Editorial Doc Url custom field. */
+export function persistDocPointerJs(fieldMapping: FieldMapping): string {
+  const docUrlFieldId = fieldId(fieldMapping, "editorial_doc_url");
+  return joinN8nJs([
+    "const docData = $('Doc Created').first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "",
+    "// Create the custom field update payload for ClickUp API v2",
+    "return [{",
+    "  json: {",
+    "    task_id: taskFields.task_id,",
+    "    doc_id: docData.doc_id,",
+    "    workspace_id: docData.workspace_id,",
+    `    editorial_doc_url_field_id: ${JSON.stringify(docUrlFieldId)},`,
+    "    custom_fields_payload: {",
+    `      ${JSON.stringify(docUrlFieldId)}: docData.doc_id,`,
+    "    },",
+    "    doc_created: true,",
+    "    operation: 'persist_doc_pointer',",
+    "    stage: docData.stage,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** Helper to normalize a stored Doc pointer (URL or bare ID) to a Doc ID. */
+export function normalizeDocPointerJs(): string {
+  return joinN8nJs([
+    "const pointer = String($json ?? '').trim();",
+    "",
+    "// Extract Doc ID from ClickUp Doc URL or return bare ID",
+    "// ClickUp Doc URLs typically look like: https://doc.clickup.com/p/h/{doc_id}/...",
+    "if (pointer.includes('doc.clickup.com')) {",
+    "  const match = pointer.match(/\\/p\\/h\\/([a-z0-9]+)/i);",
+    "  if (match && match[1]) {",
+    "    return match[1];",
+    "  }",
+    "  throw new Error(`Failed to extract Doc ID from ClickUp Doc URL: ${pointer}`);",
+    "}",
+    "",
+    "// Assume it's a bare Doc ID",
+    "if (/^[a-z0-9-]+$/i.test(pointer)) {",
+    "  return pointer;",
+    "}",
+    "",
+    "throw new Error(`Invalid Doc pointer format: ${pointer}. Expected ClickUp Doc URL or bare Doc ID`);",
+  ]);
+}
+
+/** n8n Code node: Normalize Doc Pointer — extract Doc ID from stored URL or bare ID. */
+export function normalizeStoredDocPointerJs(): string {
+  return joinN8nJs([
+    "const fields = $('Extract Task Fields').first().json;",
+    "const pointer = String(fields.editorial_doc_url ?? '').trim();",
+    "",
+    "if (!pointer) {",
+    "  throw new Error('Editorial Doc Url custom field is empty. Expected a Doc ID or ClickUp Doc URL.');",
+    "}",
+    "",
+    "// Extract Doc ID from ClickUp Doc URL or return bare ID",
+    "// ClickUp Doc URLs typically look like: https://doc.clickup.com/p/h/{doc_id}/...",
+    "let docId;",
+    "if (pointer.includes('doc.clickup.com')) {",
+    "  const match = pointer.match(/\\/p\\/h\\/([a-z0-9]+)/i);",
+    "  if (match && match[1]) {",
+    "    docId = match[1];",
+    "  } else {",
+    "    throw new Error(`Failed to extract Doc ID from ClickUp Doc URL: ${pointer}`);",
+    "  }",
+    "} else if (/^[a-z0-9-]+$/i.test(pointer)) {",
+    "  docId = pointer;",
+    "} else {",
+    "  throw new Error(`Invalid Doc pointer format: ${pointer}. Expected ClickUp Doc URL or bare Doc ID`);",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...$('{\"jsonata\": \"$.json\"}').json,",
+    "    doc_id: docId,",
+    "    doc_created: false,",
+    "    operation: 'use_existing_doc',",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Validate Staged Artifact — ensure artifact_markdown is non-empty before Doc operations. */
+export function validateStagedArtifactJs(): string {
+  return joinN8nJs([
+    "const agentOutput = $('Execute Call Agent').first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "",
+    "const artifact = agentOutput.artifact_markdown;",
+    "",
+    "// Validate artifact_markdown exists and is non-empty",
+    "if (!artifact || typeof artifact !== 'string' || artifact.trim().length === 0) {",
+    "  throw new Error(",
+    "    `Staged success output missing or empty artifact_markdown. ` +",
+    "    `Cannot proceed with Doc replacement or status advancement. ` +",
+    "    `Task: ${taskFields.task_id}, Stage: ${taskFields.stage}`",
+    "  );",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...agentOutput,",
+    "    artifact_markdown: artifact.trim(),",
     "  },",
     "}];",
   ]);

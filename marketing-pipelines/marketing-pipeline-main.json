@@ -352,7 +352,7 @@
         256
       ],
       "parameters": {
-        "jsCode": "const fields = $('Extract Task Fields').first().json;\nconst docId = String(fields.editorial_doc_url ?? '').trim();\n\nreturn [{\n  json: {\n    workspace_id: fields.workspace_id,\n    doc_id: docId,\n    doc_created: false,\n    operation: 'use_existing_doc',\n    stage: fields.stage,\n  },\n}];"
+        "jsCode": "const fields = $('Extract Task Fields').first().json;\nconst pointer = String(fields.editorial_doc_url ?? '').trim();\n\nif (!pointer) {\n  throw new Error('Editorial Doc Url custom field is empty. Expected a Doc ID or ClickUp Doc URL.');\n}\n\n// Normalize: extract Doc ID from ClickUp Doc URL or use bare ID\nlet docId;\nif (pointer.includes('doc.clickup.com')) {\n  const match = pointer.match(/\\/p\\/h\\/([a-z0-9]+)/i);\n  if (match && match[1]) {\n    docId = match[1];\n  } else {\n    throw new Error(`Failed to extract Doc ID from ClickUp Doc URL: ${pointer}`);\n  }\n} else if (/^[a-z0-9-]+$/i.test(pointer)) {\n  docId = pointer;\n} else {\n  throw new Error(`Invalid Doc pointer format: ${pointer}. Expected ClickUp Doc URL or bare Doc ID`);\n}\n\nreturn [{\n  json: {\n    workspace_id: fields.workspace_id,\n    doc_id: docId,\n    doc_created: false,\n    operation: 'use_existing_doc',\n    stage: fields.stage,\n  },\n}];"
       }
     },
     {
@@ -395,12 +395,51 @@
       }
     },
     {
+      "id": "81ed3a07-e1d8-f293-c44f-2d5eea7d21aa",
+      "name": "Persist Doc Pointer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4032,
+        448
+      ],
+      "parameters": {
+        "jsCode": "const docData = $('Doc Created').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\n\n// Create the custom field update payload for ClickUp API v2\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    doc_id: docData.doc_id,\n    workspace_id: docData.workspace_id,\n    editorial_doc_url_field_id: \"fc421386-3bc8-4dca-adce-836a8f3d4d6d\",\n    custom_fields_payload: {\n      \"fc421386-3bc8-4dca-adce-836a8f3d4d6d\": docData.doc_id,\n    },\n    doc_created: true,\n    operation: 'persist_doc_pointer',\n    stage: docData.stage,\n  },\n}];"
+      }
+    },
+    {
+      "id": "5f04b8e4-bc94-21ce-f917-388394d36b37",
+      "name": "PUT Update Editorial Doc Url",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4256,
+        448
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.clickup.com/api/v2/task/{{ $json.task_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "clickUpApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { custom_fields: $json.custom_fields_payload } }}",
+        "options": {}
+      }
+    },
+    {
       "id": "c939e909-7efb-dd59-4f3a-f08c539c3508",
       "name": "Doc Ready",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        4032,
+        4480,
         352
       ],
       "parameters": {}
@@ -411,7 +450,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4256,
+        4704,
         352
       ],
       "credentials": {
@@ -433,7 +472,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4480,
+        4928,
         352
       ],
       "parameters": {
@@ -446,7 +485,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        4704,
+        5152,
         352
       ],
       "parameters": {
@@ -480,7 +519,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4928,
+        5376,
         432
       ],
       "credentials": {
@@ -506,7 +545,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5152,
+        5600,
         432
       ],
       "parameters": {
@@ -519,7 +558,7 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        5376,
+        5824,
         352
       ],
       "parameters": {}
@@ -530,7 +569,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5600,
+        6048,
         352
       ],
       "credentials": {
@@ -552,7 +591,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5824,
+        6272,
         352
       ],
       "parameters": {
@@ -565,7 +604,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6048,
+        6496,
         352
       ],
       "parameters": {
@@ -578,7 +617,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6272,
+        6720,
         352
       ],
       "parameters": {
@@ -614,7 +653,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        6496,
+        6944,
         352
       ],
       "parameters": {
@@ -956,6 +995,19 @@
         "updateFields": {
           "status": "={{ $json.status_to_set }}"
         }
+      }
+    },
+    {
+      "id": "288bd820-9a03-5347-cd33-2ddafe53884c",
+      "name": "Validate Staged Artifact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7392,
+        256
+      ],
+      "parameters": {
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\n\nconst artifact = agentOutput.artifact_markdown;\n\n// Validate artifact_markdown exists and is non-empty\nif (!artifact || typeof artifact !== 'string' || artifact.trim().length === 0) {\n  throw new Error(\n    `Staged success output missing or empty artifact_markdown. ` +\n    `Cannot proceed with Doc replacement or status advancement. ` +\n    `Task: ${taskFields.task_id}, Stage: ${taskFields.stage}`\n  );\n}\n\nreturn [{\n  json: {\n    ...agentOutput,\n    artifact_markdown: artifact.trim(),\n  },\n}];"
       }
     },
     {
@@ -1354,6 +1406,28 @@
       "main": [
         [
           {
+            "node": "Persist Doc Pointer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Doc Pointer": {
+      "main": [
+        [
+          {
+            "node": "PUT Update Editorial Doc Url",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PUT Update Editorial Doc Url": {
+      "main": [
+        [
+          {
             "node": "Doc Ready",
             "type": "main",
             "index": 0
@@ -1558,7 +1632,7 @@
         ],
         [
           {
-            "node": "Format Pointer Comment",
+            "node": "Validate Staged Artifact",
             "type": "main",
             "index": 0
           }
@@ -1614,6 +1688,17 @@
         [
           {
             "node": "Status → Previous Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Staged Artifact": {
+      "main": [
+        [
+          {
+            "node": "Format Pointer Comment",
             "type": "main",
             "index": 0
           }
