@@ -60,6 +60,11 @@ function readAgentConfig(): AgentConfig {
   return JSON.parse(readFileSync(AGENT_JSON_PATH, "utf-8")) as AgentConfig;
 }
 
+function readStagedAgentConfig(): AgentConfig {
+  const path = resolve(REPO_ROOT, "agents", "investigative-brief.json");
+  return JSON.parse(readFileSync(path, "utf-8")) as AgentConfig;
+}
+
 function readSkill(name: string): string {
   return readFileSync(resolve(SKILLS_DIR, `${name}.md`), "utf-8");
 }
@@ -1010,16 +1015,22 @@ describe("buildCallAgentWorkflow (sub-workflow topology)", () => {
     expect(values).toEqual(["google", "openai"]);
   });
 
-  it("Parse Agent Output node validates the prod legacy contract and carries configured next_gate", () => {
+  it("Parse Agent Output node uses the staged-aware parser dispatcher", () => {
     const parseNode = nodesByName.get("Parse Agent Output");
     const code = String((parseNode?.parameters as { jsCode?: string }).jsCode ?? "");
+    // Dispatcher includes both legacy and staged validation
     for (const key of REQUIRED_OUTPUT_KEYS) {
       expect(code).toContain(key);
     }
-    expect(code).toContain("next_gate");
-    expect(code).toContain("Parse Agent Config");
-    expect(code).toContain("agent_config");
-    expect(code).not.toContain("REQUIRED_STAGE_KEYS");
+    for (const key of REQUIRED_STAGE_OUTPUT_KEYS) {
+      expect(code).toContain(key);
+    }
+    // Dispatcher checks output_schema.stage to decide which parser to use
+    expect(code).toContain("isStaged");
+    expect(code).toContain("output_schema");
+    expect(code).toContain("stage");
+    expect(code).toContain("REQUIRED_STAGE_KEYS");
+    expect(code).toContain("if (isStaged)");
   });
 
   it("pins a hardcoded test input for isolation runs", () => {
@@ -1063,6 +1074,99 @@ describe("buildCallAgentWorkflow (sub-workflow topology)", () => {
       expect(() => buildCallAgentWorkflow()).not.toThrow();
     } finally {
       process.env = restore;
+    }
+  });
+});
+
+describe("generated parser dispatcher (parseCallAgentOutputJs)", () => {
+  it("dispatches to staged parser for staged agent configs (stage field in output_schema)", () => {
+    const stagedAgent = readStagedAgentConfig();
+
+    const validStagedOutput = {
+      stage: "investigate",
+      artifact_markdown: "## Brief\n\nKey findings from research.",
+      resumo: "Summary of brief findings.",
+      self_check: "- All research documented\n- Key insights highlighted",
+      next_gate: "brief review",
+    };
+
+    const result = parseCallAgentOutput(stagedAgent, JSON.stringify(validStagedOutput));
+    expect(!isStageError(result)).toBe(true);
+    if (!isStageError(result)) {
+      expect(result.stage).toBe("investigate");
+      expect(result.artifact_markdown).toBe(validStagedOutput.artifact_markdown);
+      expect(result.next_gate).toBe("brief review");
+    }
+  });
+
+  it("dispatches to legacy parser for legacy agent configs (no stage field in output_schema)", () => {
+    const legacyAgent = readAgentConfig();
+    const validLegacyOutput = {
+      deliverable_markdown: "## Hook\n\nWe shipped a new dashboard.",
+      resumo: "Summary of the dashboard launch post.",
+      autochecagem: "- Dashboard mentioned\n- Sign-up CTA present",
+    };
+
+    const result = parseCallAgentOutput(legacyAgent, JSON.stringify(validLegacyOutput));
+    expect(isAgentError(result)).toBe(false);
+    if (!isAgentError(result)) {
+      expect(result.deliverable_markdown).toBe(validLegacyOutput.deliverable_markdown);
+      expect(result.resumo).toBe(validLegacyOutput.resumo);
+      expect("stage" in result).toBe(false);
+    }
+  });
+
+  it("rejects staged output missing artifact_markdown", () => {
+    const stagedAgent = readStagedAgentConfig();
+
+    const invalidStagedOutput = {
+      stage: "investigate",
+      artifact_markdown: "",
+      resumo: "Summary of brief findings.",
+      self_check: "- All research documented",
+      next_gate: "brief review",
+    };
+
+    const result = parseCallAgentOutput(stagedAgent, JSON.stringify(invalidStagedOutput));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("artifact_markdown");
+    }
+  });
+
+  it("rejects staged output with wrong next_gate for the stage", () => {
+    const stagedAgent = readStagedAgentConfig();
+
+    const invalidNextGate = {
+      stage: "investigate",
+      artifact_markdown: "## Brief\n\nKey findings.",
+      resumo: "Summary of findings.",
+      self_check: "- Complete",
+      next_gate: "content review",
+    };
+
+    const result = parseCallAgentOutput(stagedAgent, JSON.stringify(invalidNextGate));
+    expect(isStageError(result)).toBe(true);
+    if (isStageError(result)) {
+      expect(result.error).toContain("next_gate");
+      expect(result.error).toContain("brief review");
+    }
+  });
+
+  it("accepts valid legacy output even with extra fields", () => {
+    const legacyAgent = readAgentConfig();
+    const validLegacyWithExtra = {
+      deliverable_markdown: "## Hook\n\nWe shipped a new dashboard.",
+      resumo: "Summary of the dashboard launch post.",
+      autochecagem: "- Dashboard mentioned\n- Sign-up CTA present",
+      extra_field: "should be ignored",
+    };
+
+    const result = parseCallAgentOutput(legacyAgent, JSON.stringify(validLegacyWithExtra));
+    expect(isAgentError(result)).toBe(false);
+    if (!isAgentError(result)) {
+      expect(result.deliverable_markdown).toBe(validLegacyWithExtra.deliverable_markdown);
+      expect("extra_field" in result).toBe(false);
     }
   });
 });

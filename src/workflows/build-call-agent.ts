@@ -2,7 +2,7 @@ import { deterministicWorkflowId } from "./deterministic-id.js";
 import {
   assemblePromptJs,
   parseAgentConfigJs,
-  parseAgentOutputJs,
+  parseCallAgentOutputJs,
   storeInputContextJs,
   unsupportedProviderJs,
 } from "./call-agent-n8n.js";
@@ -223,7 +223,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [2240, 112],
-      parameters: { jsCode: parseAgentOutputJs() },
+      parameters: { jsCode: parseCallAgentOutputJs() },
     },
     {
       id: nodeId("Unsupported Provider Error"),
