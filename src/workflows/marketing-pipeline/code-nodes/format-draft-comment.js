@@ -1,3 +1,5 @@
+// n8n Code node source - wrapped in IIFE for parsing
+(function() {
 const agentOutput = $('Execute Call Agent').first().json;
 const taskFields = $('Extract Task Fields').first().json;
 const agentId = taskFields.agent_id ?? @@DEFAULT_AGENT_ID@@;
@@ -35,3 +37,4 @@ return [{
     autochecagem: agentOutput.autochecagem,
   },
 }];
+}());

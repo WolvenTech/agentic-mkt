@@ -1,3 +1,5 @@
+// n8n Code node source - wrapped in IIFE for parsing
+(function() {
 const fields = $('Extract Task Fields').first().json;
 return [{
   json: {
@@ -8,3 +10,4 @@ return [{
     task_id: fields.task_id,
   },
 }];
+}());

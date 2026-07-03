@@ -1,3 +1,5 @@
+// n8n Code node source - wrapped in IIFE for parsing
+(function() {
 const FIELD_IDS = {
   criterios_de_aceite: @@FIELD_ID_CRITERIOS_DE_ACEITE@@,
   agent_id: @@FIELD_ID_AGENT_ID@@,
@@ -30,3 +32,4 @@ return [{
     model: @@DEFAULT_MODEL@@,
   },
 }];
+}());

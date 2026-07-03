@@ -1,3 +1,5 @@
+// n8n Code node source - wrapped in IIFE for parsing
+(function() {
 const input = $('Store Input Context').first().json;
 const github = $input.first().json;
 const encoded = github.content;
@@ -15,3 +17,4 @@ return skills.map((skill) => ({
     skill_path: `agents/skills/${skill}.md`,
   },
 }));
+}());

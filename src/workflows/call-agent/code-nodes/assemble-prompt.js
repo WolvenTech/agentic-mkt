@@ -1,3 +1,5 @@
+// n8n Code node source - wrapped in IIFE for parsing
+(function() {
 const items = $input.all();
 const base = items[0]?.json ?? {};
 const agentConfig = base.agent_config;
@@ -52,9 +54,8 @@ return [{
     user_message: userMessage,
     temperature: agentConfig.temperature ?? @@DEFAULT_TEMPERATURE@@,
     max_output_tokens: agentConfig.max_output_tokens ?? @@DEFAULT_MAX_OUTPUT_TOKENS@@,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     provider: agentConfig.provider ?? @@DEFAULT_PROVIDER@@,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     model: agentConfig.model ?? @@DEFAULT_MODEL@@,
   },
 }];
+}());

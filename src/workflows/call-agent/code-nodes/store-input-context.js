@@ -1,3 +1,5 @@
+// n8n Code node source - wrapped in IIFE for parsing
+(function() {
 const item = $input.first().json;
 return [{
   json: {
@@ -6,3 +8,4 @@ return [{
     task_id: item.task_id ?? item.task_title ?? 'isolation-test',
   },
 }];
+}());

@@ -1,3 +1,5 @@
+// n8n Code node source - wrapped in IIFE for parsing
+(function() {
 const REQUIRED_KEYS = @@REQUIRED_OUTPUT_KEYS@@;
 const startedAt = $('Store Input Context').first().json._started_at_ms ?? Date.now();
 const input = $('Store Input Context').first().json;
@@ -77,3 +79,4 @@ console.log(JSON.stringify({
 }));
 
 return [{ json: result }];
+}());

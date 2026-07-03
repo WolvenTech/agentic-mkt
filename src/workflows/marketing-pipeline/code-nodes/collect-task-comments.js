@@ -1,3 +1,5 @@
+// n8n Code node source - wrapped in IIFE for parsing
+(function() {
 function normalizeComments(input) {
   const values = Array.isArray(input) ? input : [input];
   return values.flatMap((value) => {
@@ -48,3 +50,4 @@ return [{
     has_actionable_feedback: feedback.length > 0,
   },
 }];
+}());

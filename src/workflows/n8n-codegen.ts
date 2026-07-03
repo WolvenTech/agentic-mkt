@@ -85,7 +85,15 @@ export function loadCodeNodeSource(ref: CodeNodeSourceRef): string {
   }
 
   // Normalize line endings to \n (deterministic across platforms)
-  const normalized = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  let normalized = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // Strip IIFE wrapper if present (added for ESLint parsing compatibility)
+  // Pattern: // comment\n(function() {\n...code...\n}());
+  const iifePat = /^\/\/ n8n Code node source - wrapped in IIFE for parsing\n\(function\(\) \{\n([\s\S]*)\n\}\(\)\);\n$/;
+  const iifMatch = normalized.match(iifePat);
+  if (iifMatch) {
+    normalized = iifMatch[1];
+  }
 
   // If no tokens declared, return normalized source as-is
   const declaredTokens = ref.tokens ?? {};

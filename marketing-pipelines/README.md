@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Version-controlled n8n workflow JSON for the M1 ClickUp → agent → ClickUp marketing pipeline. Generated from TypeScript builders in `src/workflows/` — do not hand-edit unless re-exporting from n8n after credential binding.
+Version-controlled n8n workflow JSON for the M1 ClickUp → agent → ClickUp marketing pipeline. Generated from TypeScript builders in `src/workflows/` — **do not hand-edit these files**. All runtime Code node logic lives in source `.js` files; see [Workflow Architecture](#workflow-architecture) below.
 
 ## Key files
 
@@ -12,6 +12,27 @@ Version-controlled n8n workflow JSON for the M1 ClickUp → agent → ClickUp ma
 | `marketing-pipeline-main.json` | Main workflow: webhook ingress, status transitions, comment post |
 
 I/O contracts and troubleshooting: [`agents/harness/io-contract.md`](../agents/harness/io-contract.md).
+
+## Workflow Architecture
+
+### Code Node Source Files
+
+All n8n Code node runtime logic is authored as normal JavaScript source files. **Do not hand-edit the `jsCode` parameter in the workflow JSON** — instead, edit the corresponding `.js` source file.
+
+| Workflow | Code Node | Source File |
+|----------|-----------|-------------|
+| Call Agent | `Assemble Prompt` | `../src/workflows/call-agent/code-nodes/assemble-prompt.js` |
+| Call Agent | `Parse Agent Config` | `../src/workflows/call-agent/code-nodes/parse-agent-config.js` |
+| Call Agent | `Parse Agent Output` | `../src/workflows/call-agent/code-nodes/parse-agent-output.js` |
+| Call Agent | `Store Input Context` | `../src/workflows/call-agent/code-nodes/store-input-context.js` |
+| Call Agent | `Unsupported Provider Error` | `../src/workflows/call-agent/code-nodes/unsupported-provider-error.js` |
+| Marketing Pipeline | (15 Code nodes) | `../src/workflows/marketing-pipeline/code-nodes/*.js` |
+
+When Code node source files change, regenerate the workflow JSON using `pnpm build:workflows` from the repo root.
+
+### Token Placeholders in Source Files
+
+Code node `.js` files may contain placeholder tokens (e.g., `@@FIELD_IDS@@`) for build-time values. These are replaced during workflow generation. Placeholder lines may have lint exceptions for `@eslint-disable` — that is expected and safe. The rendered JavaScript is what n8n executes.
 
 ## Manual setup
 

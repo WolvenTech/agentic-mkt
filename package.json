@@ -21,12 +21,15 @@
     "clickup:sync": "tsx scripts/sync-field-mapping.ts",
     "clickup:verify": "tsx scripts/verify-clickup.ts",
     "green-run": "tsx scripts/green-run.ts",
-    "executions:inspect": "tsx scripts/inspect-executions.ts"
+    "executions:inspect": "tsx scripts/inspect-executions.ts",
+    "lint:code-nodes": "eslint 'src/workflows/*/code-nodes/**/*.js'"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@types/node": "26.0.0",
     "@vitest/coverage-v8": "4.1.9",
     "ajv": "8.20.0",
+    "eslint": "^9.0.0",
     "tsx": "4.22.4",
     "typescript": "6.0.3",
     "vitest": "4.1.9"

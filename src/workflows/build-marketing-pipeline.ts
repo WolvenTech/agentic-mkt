@@ -1,28 +1,24 @@
-import { needsReviewIfExpression, statusName, webhookIfExpression } from "../marketing-pipeline/logic.js";
+import { DEFAULT_AGENT_ID, DEFAULT_MODEL, fieldId, needsReviewIfExpression, statusName, webhookIfExpression } from "../marketing-pipeline/logic.js";
 import type { FieldMapping } from "../types/field-mapping.js";
 import type { N8nNode, N8nWorkflowExport } from "./build-call-agent.js";
 import { deterministicWorkflowId } from "./deterministic-id.js";
-import {
-  agentParseFailureJs,
-  collectTaskCommentsJs,
-  dedupIfExpression,
-  extractTaskFieldsJs,
-  extractWebhookContextJs,
-  formatDraftCommentJs,
-  formatGuidanceCommentJs,
-  logDuplicateIngressJs,
-  logEmptyFeedbackGuidanceJs,
-  logIngressSkippedJs,
-  markHistoryItemSeenJs,
-  prepareCallAgentInputJs,
-  prepareRevisionCallAgentInputJs,
-  setIngressModeJs,
-  setNeedsReviewSkipTargetJs,
-} from "./marketing-pipeline-n8n.js";
+import { loadCodeNodeSource } from "./n8n-codegen.js";
 
 const CLICKUP_CREDENTIALS = {
   clickUpApi: { id: "CLICKUP_CREDENTIAL_ID", name: "ClickUp Marketing Pipeline" },
 };
+
+function dedupIfExpression(): string {
+  return (
+    `={{ (() => { ` +
+    `const staticData = $getWorkflowStaticData('global'); ` +
+    `const key = String($json.history_item_id ?? ''); ` +
+    `if (!key) return false; ` +
+    `staticData.seenHistoryItems = staticData.seenHistoryItems || {}; ` +
+    `return Boolean(staticData.seenHistoryItems[key]); ` +
+    `})() }}`
+  );
+}
 
 /** Build the Marketing Pipeline n8n main workflow export. Source of truth per ADR-006. */
 export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nWorkflowExport {
@@ -104,7 +100,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [480, 220],
-      parameters: { jsCode: setIngressModeJs("first_draft") },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "set-first-draft-ingress" }) },
     },
     {
       id: nodeId("Set Revision Ingress"),
@@ -112,7 +108,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [720, 480],
-      parameters: { jsCode: setIngressModeJs("revision") },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "set-revision-ingress" }) },
     },
     {
       id: nodeId("Extract Webhook Context"),
@@ -120,7 +116,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [960, 300],
-      parameters: { jsCode: extractWebhookContextJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "extract-webhook-context" }) },
     },
     {
       id: nodeId("Dedup?"),
@@ -150,7 +146,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [1440, 300],
-      parameters: { jsCode: markHistoryItemSeenJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "mark-history-item-seen" }) },
     },
     {
       id: nodeId("GET ClickUp Task"),
@@ -167,7 +163,18 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [1920, 300],
-      parameters: { jsCode: extractTaskFieldsJs(fieldMapping) },
+      parameters: {
+        jsCode: loadCodeNodeSource({
+          workflowSlug: "marketing-pipeline",
+          nodeSlug: "extract-task-fields",
+          tokens: {
+            FIELD_ID_CRITERIOS_DE_ACEITE: fieldId(fieldMapping, "criterios_de_aceite"),
+            FIELD_ID_AGENT_ID: fieldId(fieldMapping, "agent_id"),
+            DEFAULT_AGENT_ID: DEFAULT_AGENT_ID,
+            DEFAULT_MODEL: DEFAULT_MODEL,
+          },
+        }),
+      },
     },
     {
       id: nodeId("Revision Ingress?"),
@@ -212,7 +219,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [2640, 480],
-      parameters: { jsCode: collectTaskCommentsJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "collect-task-comments" }) },
     },
     {
       id: nodeId("Actionable Feedback?"),
@@ -242,7 +249,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [3120, 660],
-      parameters: { jsCode: logEmptyFeedbackGuidanceJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "log-empty-feedback-guidance" }) },
     },
     {
       id: nodeId("Format Empty Feedback Guidance"),
@@ -250,7 +257,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [3360, 660],
-      parameters: { jsCode: formatGuidanceCommentJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "format-empty-feedback-guidance" }) },
     },
     {
       id: nodeId("POST Empty Feedback Guidance"),
@@ -324,7 +331,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [3600, 420],
-      parameters: { jsCode: prepareRevisionCallAgentInputJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "prepare-revision-call-agent-input" }) },
     },
     {
       id: nodeId("Prepare Call Agent Input"),
@@ -332,7 +339,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [3600, 180],
-      parameters: { jsCode: prepareCallAgentInputJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "prepare-call-agent-input" }) },
     },
     {
       id: nodeId("Execute Call Agent"),
@@ -375,7 +382,16 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [4320, 220],
-      parameters: { jsCode: formatDraftCommentJs() },
+      parameters: {
+        jsCode: loadCodeNodeSource({
+          workflowSlug: "marketing-pipeline",
+          nodeSlug: "format-draft-comment",
+          tokens: {
+            DEFAULT_AGENT_ID: DEFAULT_AGENT_ID,
+            DEFAULT_MODEL: DEFAULT_MODEL,
+          },
+        }),
+      },
     },
     {
       id: nodeId("POST Task Comment"),
@@ -414,7 +430,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [4320, 420],
-      parameters: { jsCode: agentParseFailureJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "agent-parse-failure" }) },
     },
     {
       id: nodeId("Set Needs Review Skip Target"),
@@ -422,7 +438,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [720, 660],
-      parameters: { jsCode: setNeedsReviewSkipTargetJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "set-needs-review-skip-target" }) },
     },
     {
       id: nodeId("Log Ingress Skipped"),
@@ -430,7 +446,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [960, 660],
-      parameters: { jsCode: logIngressSkippedJs(fieldMapping) },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "log-ingress-skipped" }) },
     },
     {
       id: nodeId("Log Duplicate Ingress"),
@@ -438,7 +454,7 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [1200, 520],
-      parameters: { jsCode: logDuplicateIngressJs() },
+      parameters: { jsCode: loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "log-duplicate-ingress" }) },
     },
   ];
 

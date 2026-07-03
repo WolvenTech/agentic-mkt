@@ -29,6 +29,47 @@ ClickUp: ready → webhook → n8n → OpenAI → task comment → approval
 
 Planning artifacts (PRD, TechSpec, tasks) live in `.compozy/tasks/` (local, gitignored).
 
+## Workflow Architecture
+
+### Code Node Source Ownership
+
+All n8n **Code node runtime logic** is authored as normal JavaScript source files in `src/workflows/<workflow-slug>/code-nodes/<node-slug>.js`. These `.js` files are the only source of truth for the logic that runs inside n8n Code nodes.
+
+**TypeScript workflow builders** in `src/workflows/build-*.ts` own the workflow topology, node IDs, non-Code-node parameters, credential placeholders, expressions, and generated export shape.
+
+| Surface | Ownership | Edit | Test |
+|---------|-----------|------|------|
+| `src/workflows/*/code-nodes/**/*.js` | Code node runtime logic (source of truth) | Edit as normal JavaScript | `pnpm lint:code-nodes`, `pnpm test` |
+| `src/workflows/build-*.ts` | Workflow topology, shape, non-Code-node params | Edit TypeScript builders | `pnpm test`, `pnpm build:workflows` |
+| `marketing-pipelines/*.json` | Generated workflow exports (artifact) | Do not hand-edit | `pnpm build:workflows:check` |
+
+### Editing Code Node Logic
+
+When you need to change the logic that runs inside an n8n Code node:
+
+1. Find the matching Code node `.js` file under `src/workflows/<workflow-slug>/code-nodes/`
+2. Edit it as normal JavaScript (uses n8n runtime globals: `$input`, `$json`, `$execution`, `$getWorkflowStaticData`, `Buffer`, `console`)
+3. Run verification:
+   ```bash
+   pnpm lint:code-nodes      # Check for lint issues
+   pnpm test                 # Run offline tests
+   pnpm build:workflows      # Regenerate workflow JSON
+   pnpm build:workflows:check # Verify generated output matches committed baseline
+   ```
+4. Review the diff — Code node changes appear as readable JavaScript diffs, while generated JSON remains an artifact.
+
+### Editing Workflow Shape
+
+When you need to change workflow topology, routing, node IDs, or non-Code-node parameters:
+
+1. Edit the TypeScript builder: `src/workflows/build-call-agent.ts` or `src/workflows/build-marketing-pipeline.ts`
+2. Run verification:
+   ```bash
+   pnpm test                 # Run offline tests
+   pnpm build:workflows      # Regenerate from the builder
+   pnpm build:workflows:check # Verify generated output
+   ```
+
 ## Quick start
 
 ### Prerequisites

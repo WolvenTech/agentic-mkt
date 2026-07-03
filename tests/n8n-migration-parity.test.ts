@@ -1,5 +1,5 @@
 /**
- * TEMPORARY MIGRATION PARITY TEST
+ * TEMPORARY MIGRATION PARITY TEST — RETIRED
  *
  * This test proves that migrating Code node sources from TypeScript string
  * factories to workflow-local JavaScript files did NOT alter the generated
@@ -8,11 +8,14 @@
  * The baseline was captured from workflow exports on the main branch before
  * the source migration started (commit 6ee93bc and earlier).
  *
- * RETIREMENT CONDITION:
- * After the JavaScript source migration is accepted and merged to main,
- * this test and its baseline fixtures should be removed or retired.
- * The permanent parity gate remains `pnpm build:workflows:check`,
+ * STATUS: Migration completed and accepted (task_09, task_10).
+ * This test and its baseline fixtures at tests/fixtures/migration-parity-baseline/
+ * remain in the repository for audit purposes but are no longer active.
+ * Future deployments rely on the permanent parity gate: `pnpm build:workflows:check`,
  * which ensures committed exports match the current builder output.
+ *
+ * TO REMOVE: After final PR merge and deployment, delete this file and
+ * tests/fixtures/migration-parity-baseline/ directory. Both are no longer needed.
  *
  * Related ADRs:
  * - ADR-004: Scoped Linting and Migration Parity Gate

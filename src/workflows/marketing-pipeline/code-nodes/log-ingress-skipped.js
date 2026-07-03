@@ -1,3 +1,5 @@
+// n8n Code node source - wrapped in IIFE for parsing
+(function() {
 const raw = $input.first().json;
 const payload = (raw.body && raw.body.history_items) ? raw.body : raw;
 const items = payload.history_items || [];
@@ -27,3 +29,4 @@ const record = {
 };
 console.log(JSON.stringify(record));
 return [{ json: record }];
+}());

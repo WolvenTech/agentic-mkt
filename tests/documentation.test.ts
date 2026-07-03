@@ -14,6 +14,12 @@ const DOMAIN_READMES = {
   agents: resolve(REPO_ROOT, "agents", "README.md"),
 } as const;
 
+const ROOT_README = resolve(REPO_ROOT, "README.md");
+const WORKFLOW_DOCS = {
+  root: ROOT_README,
+  "marketing-pipelines": DOMAIN_READMES["marketing-pipelines"],
+};
+
 const PLACEHOLDER_PATTERNS = ["<TBD>", "YOUR_", "EXAMPLE_", "placeholder", "TODO:", "abc123"];
 
 const NAMED_PATTERNS = [
@@ -238,6 +244,73 @@ describe("no stale Python command references in committed READMEs", () => {
         (pattern) => content.match(new RegExp(pattern, "g")) ?? []
       );
       expect(matches, `${label} still references: ${matches.join(", ")}`).toEqual([]);
+    });
+  }
+});
+
+describe("Code node source ownership documentation", () => {
+  const rootReadme = loadText(ROOT_README);
+  const marketingPipelineReadme = loadText(WORKFLOW_DOCS["marketing-pipelines"]);
+
+  it("documents that Code node .js files are the only source of truth", () => {
+    const sources = [rootReadme, marketingPipelineReadme].join("\n").toLowerCase();
+    expect(sources).toContain("source of truth");
+    expect(sources).toContain("code-nodes");
+    expect(sources).toContain(".js");
+  });
+
+  it("documents that TypeScript builders own workflow topology and non-Code-node parameters", () => {
+    expect(rootReadme.toLowerCase()).toContain("workflow topology");
+    expect(rootReadme.toLowerCase()).toContain("node ids");
+    expect(rootReadme.toLowerCase()).toContain("typescript");
+  });
+
+  it("documents the path pattern for Code node source files", () => {
+    expect(rootReadme).toContain("src/workflows/<workflow-slug>/code-nodes/<node-slug>.js");
+  });
+
+  it("states that generated workflow JSON must not be hand-edited", () => {
+    const combined = [rootReadme, marketingPipelineReadme].join("\n").toLowerCase();
+    expect(combined).toContain("hand-edit");
+    expect(combined).toContain("json");
+  });
+
+  it("documents the edit-regenerate-verify workflow for Code node changes", () => {
+    const instructions = rootReadme.toLowerCase();
+    expect(instructions).toContain("pnpm lint:code-nodes");
+    expect(instructions).toContain("pnpm test");
+    expect(instructions).toContain("pnpm build:workflows");
+    expect(instructions).toContain("pnpm build:workflows:check");
+  });
+
+  it("documents token placeholder expectations", () => {
+    const docs = [rootReadme, marketingPipelineReadme].join("\n").toLowerCase();
+    expect(docs).toContain("placeholder");
+    expect(docs).toContain("token");
+    expect(docs).toContain("build-time");
+  });
+
+  it("documents n8n runtime globals available in Code node files", () => {
+    const globals = rootReadme.toLowerCase();
+    expect(globals).toContain("$input");
+    expect(globals).toContain("$json");
+    expect(globals).toContain("$execution");
+    expect(globals).toContain("$getworkflowstaticdata");
+  });
+});
+
+describe("workflow command references", () => {
+  const rootReadme = loadText(ROOT_README);
+  const commonCommands = [
+    "pnpm test",
+    "pnpm lint:code-nodes",
+    "pnpm build:workflows",
+    "pnpm build:workflows:check",
+  ];
+
+  for (const command of commonCommands) {
+    it(`root README documents ${command}`, () => {
+      expect(rootReadme).toContain(command);
     });
   }
 });

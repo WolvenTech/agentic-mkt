@@ -2,28 +2,20 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_AGENT_ID,
+  DEFAULT_MODEL,
   buildCallAgentInput,
   buildRevisionTaskDescription,
   describeIngressSkipReason,
   extractTaskFields,
   extractWebhookContext,
+  fieldId,
   formatCommentThread,
   formatClickupComment,
   loadFieldMapping,
 } from "../src/marketing-pipeline/logic.js";
 import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/marketing-pipeline/logic.js";
-import { firstCodeNodeJson, runN8nCodeNode } from "../src/workflows/n8n-codegen.js";
-import {
-  collectTaskCommentsJs,
-  extractTaskFieldsJs,
-  extractWebhookContextJs,
-  formatDraftCommentJs,
-  formatGuidanceCommentJs,
-  logIngressSkippedJs,
-  prepareCallAgentInputJs,
-  prepareRevisionCallAgentInputJs,
-  setIngressModeJs,
-} from "../src/workflows/marketing-pipeline-n8n.js";
+import { firstCodeNodeJson, loadCodeNodeSource, runN8nCodeNode } from "../src/workflows/n8n-codegen.js";
 
 const REPO_ROOT = resolve(__dirname, "..");
 const WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-ready-to-work.json");
@@ -49,7 +41,8 @@ describe("marketing pipeline n8n code equivalence", () => {
 
   it("extractWebhookContext jsCode matches TypeScript logic", () => {
     const fixedNow = 1_700_000_000_000;
-    const jsResult = firstCodeNodeJson(runN8nCodeNode(extractWebhookContextJs(), { input: webhookPayload, now: fixedNow }));
+    const jsCode = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "extract-webhook-context" });
+    const jsResult = firstCodeNodeJson(runN8nCodeNode(jsCode, { input: webhookPayload, now: fixedNow }));
     const tsResult = extractWebhookContext(webhookPayload);
 
     expect(jsResult).toMatchObject({
@@ -63,11 +56,14 @@ describe("marketing pipeline n8n code equivalence", () => {
   });
 
   it("setIngressMode jsCode stamps first_draft or revision before branches merge", () => {
-    expect(firstCodeNodeJson(runN8nCodeNode(setIngressModeJs("first_draft"), { input: { task_id: "t1" } }))).toMatchObject({
+    const firstDraftCode = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "set-first-draft-ingress" });
+    expect(firstCodeNodeJson(runN8nCodeNode(firstDraftCode, { input: { task_id: "t1" } }))).toMatchObject({
       task_id: "t1",
       ingress_mode: "first_draft",
     });
-    expect(firstCodeNodeJson(runN8nCodeNode(setIngressModeJs("revision"), { input: { task_id: "t1" } }))).toMatchObject({
+
+    const revisionCode = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "set-revision-ingress" });
+    expect(firstCodeNodeJson(runN8nCodeNode(revisionCode, { input: { task_id: "t1" } }))).toMatchObject({
       task_id: "t1",
       ingress_mode: "revision",
     });
@@ -81,12 +77,13 @@ describe("marketing pipeline n8n code equivalence", () => {
     after.status = mapping.statuses.writing;
     before.status = mapping.statuses.ready;
 
+    const jsCode = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "log-ingress-skipped" });
     const tsRecord = describeIngressSkipReason(selfEcho, { fieldMapping: mapping });
-    const jsRecord = firstCodeNodeJson(runN8nCodeNode(logIngressSkippedJs(mapping), { input: selfEcho }));
+    const jsRecord = firstCodeNodeJson(runN8nCodeNode(jsCode, { input: selfEcho }));
     expect(jsRecord).toEqual(tsRecord);
 
     const revisionSkip = firstCodeNodeJson(
-      runN8nCodeNode(logIngressSkippedJs(mapping), {
+      runN8nCodeNode(jsCode, {
         input: { ...selfEcho, target_status_key: "needs_review" },
       })
     );
@@ -96,8 +93,18 @@ describe("marketing pipeline n8n code equivalence", () => {
   it("extractTaskFields jsCode matches TypeScript fields and omits revision_count", () => {
     const webhookContext = extractWebhookContext(webhookPayload);
     const tsFields = extractTaskFields(task, mapping);
+    const jsCode = loadCodeNodeSource({
+      workflowSlug: "marketing-pipeline",
+      nodeSlug: "extract-task-fields",
+      tokens: {
+        FIELD_ID_CRITERIOS_DE_ACEITE: fieldId(mapping, "criterios_de_aceite"),
+        FIELD_ID_AGENT_ID: fieldId(mapping, "agent_id"),
+        DEFAULT_AGENT_ID: DEFAULT_AGENT_ID,
+        DEFAULT_MODEL: DEFAULT_MODEL,
+      },
+    });
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(extractTaskFieldsJs(mapping), {
+      runN8nCodeNode(jsCode, {
         input: task,
         nodeOutputs: { "Extract Webhook Context": webhookContext as unknown as Record<string, unknown> },
       })
@@ -118,8 +125,9 @@ describe("marketing pipeline n8n code equivalence", () => {
   it("prepareCallAgentInput jsCode preserves first-draft input contract", () => {
     const fields = extractTaskFields(task, mapping);
     const expected = buildCallAgentInput(fields);
+    const jsCode = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "prepare-call-agent-input" });
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(prepareCallAgentInputJs(), {
+      runN8nCodeNode(jsCode, {
         input: {},
         nodeOutputs: { "Extract Task Fields": fields as unknown as Record<string, unknown> },
       })
@@ -134,8 +142,9 @@ describe("marketing pipeline n8n code equivalence", () => {
       comment_text: "## LinkedIn Draft\n\nGenerated post\n\n## Resumo\n\nx\n\n## Autochecagem\n\nx",
       user: { username: "Lead" },
     };
+    const jsCode = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "collect-task-comments" });
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(collectTaskCommentsJs(), {
+      runN8nCodeNode(jsCode, {
         allInputs: [generated, ...commentsFixture.comments] as unknown as Array<Record<string, unknown>>,
         nodeOutputs: { "Extract Task Fields": fields as unknown as Record<string, unknown> },
       })
@@ -153,8 +162,9 @@ describe("marketing pipeline n8n code equivalence", () => {
     const thread = formatCommentThread(feedback);
     const expectedDescription = buildRevisionTaskDescription(fields.task_description, thread);
 
+    const jsCode = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "prepare-revision-call-agent-input" });
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(prepareRevisionCallAgentInputJs(), {
+      runN8nCodeNode(jsCode, {
         input: {},
         nodeOutputs: {
           "Extract Task Fields": fields as unknown as Record<string, unknown>,
@@ -175,8 +185,9 @@ describe("marketing pipeline n8n code equivalence", () => {
 
   it("formatGuidanceComment jsCode posts a blocker comment for empty human feedback", () => {
     const fields = extractTaskFields(task, mapping);
+    const jsCode = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "format-empty-feedback-guidance" });
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(formatGuidanceCommentJs(), {
+      runN8nCodeNode(jsCode, {
         input: {},
         nodeOutputs: { "Extract Task Fields": fields as unknown as Record<string, unknown> },
       })
@@ -195,8 +206,16 @@ describe("marketing pipeline n8n code equivalence", () => {
       resumo: "Short summary",
       autochecagem: "- Criterion met",
     };
+    const jsCode = loadCodeNodeSource({
+      workflowSlug: "marketing-pipeline",
+      nodeSlug: "format-draft-comment",
+      tokens: {
+        DEFAULT_AGENT_ID: DEFAULT_AGENT_ID,
+        DEFAULT_MODEL: DEFAULT_MODEL,
+      },
+    });
     const jsResult = firstCodeNodeJson(
-      runN8nCodeNode(formatDraftCommentJs(), {
+      runN8nCodeNode(jsCode, {
         input: {},
         nodeOutputs: {
           "Extract Task Fields": fields as unknown as Record<string, unknown>,

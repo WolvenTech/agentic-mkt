@@ -1,3 +1,5 @@
+// n8n Code node source - wrapped in IIFE for parsing
+(function() {
 const context = $input.first().json;
 const before = String(context.transition_before ?? '').trim().toLowerCase();
 const after = String(context.transition_after ?? '').trim().toLowerCase();
@@ -12,3 +14,4 @@ const record = {
 };
 console.log(JSON.stringify(record));
 return [{ json: record }];
+}());
