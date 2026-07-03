@@ -245,8 +245,6 @@ describe("no stale Python command references in committed READMEs", () => {
 describe("live proof and rollout readiness (task_22–23)", () => {
   const listSchema = loadText(resolve(REPO_ROOT, "clickup", "list-schema.md"));
   const n8nReadme = loadText(DOMAIN_READMES.n8n);
-  const task23Path = resolve(REPO_ROOT, ".compozy", "tasks", "content-quality-pipeline", "task_23.md");
-  const task23 = loadText(task23Path);
 
   describe("live proof is explicitly required before production rollout", () => {
     it("list-schema.md has a Rollout Readiness section", () => {
@@ -260,85 +258,8 @@ describe("live proof and rollout readiness (task_22–23)", () => {
       expect(lower).toContain("live proof");
     });
 
-    it("list-schema.md references task_23 (live proof checklist)", () => {
-      expect(listSchema).toContain("task_23.md");
-    });
-
-    it("task_23.md exists and is explicitly a live proof validation task", () => {
-      const lower = task23.toLowerCase();
-      expect(lower).toContain("live proof");
-      expect(lower).toContain("validation");
-      expect(lower).toContain("production readiness");
-    });
-
-    it("task_23.md states production rollout is blocked until it passes", () => {
-      const lower = task23.toLowerCase();
-      expect(lower).toContain("production rollout is blocked");
-    });
-  });
-
-  describe("live proof includes all required validations", () => {
-    it("task_23.md requires validation of ClickUp staged statuses", () => {
-      const lower = task23.toLowerCase();
-      expect(lower).toContain("clickup status");
-      expect(lower).toContain("investigate");
-      expect(lower).toContain("write");
-      expect(lower).toContain("format");
-    });
-
-    it("task_23.md requires validation of the Editorial Doc Url custom field", () => {
-      const lower = task23.toLowerCase();
-      expect(lower).toContain("editorial doc");
-      expect(lower).toContain("custom field");
-    });
-
-    it("task_23.md requires validation of Doc page creation and replacement", () => {
-      const lower = task23.toLowerCase();
-      expect(lower).toContain("page");
-      expect(lower).toContain("doc");
-      expect(lower).toContain("create");
-      expect(lower).toContain("replace");
-    });
-
-    it("task_23.md requires validation of pointer comments", () => {
-      const lower = task23.toLowerCase();
-      expect(lower).toContain("pointer comment");
-      expect(lower).toContain("cq-");
-    });
-
-    it("task_23.md requires validation of blocker behavior and return to previous gate", () => {
-      const lower = task23.toLowerCase();
-      expect(lower).toContain("blocker");
-      expect(lower).toContain("previous gate");
-      expect(lower).toContain("cq-blocker");
-    });
-
-    it("task_23.md requires validation of n8n deployment and execution inspection", () => {
-      const lower = task23.toLowerCase();
-      expect(lower).toContain("n8n");
-      expect(lower).toContain("deploy");
-      expect(lower).toContain("execution");
-    });
-  });
-
-  describe("live proof specifies validation phases and success criteria", () => {
-    it("task_23.md defines multiple validation phases (isolation, integration, blocker, filter)", () => {
-      const lower = task23.toLowerCase();
-      expect(lower).toContain("phase 1");
-      expect(lower).toContain("phase 2");
-      expect(lower).toContain("phase 3");
-      expect(lower).toContain("phase 4");
-    });
-
-    it("task_23.md specifies success criteria including latency targets", () => {
-      const lower = task23.toLowerCase();
-      expect(lower).toContain("success criteria");
-      expect(lower).toContain("latency");
-      expect(lower).toContain("60");
-    });
-
-    it("task_23.md references green-run-evidence.json for evidence recording", () => {
-      expect(task23).toContain("green-run-evidence.json");
+    it("list-schema.md references the live validation runbook", () => {
+      expect(listSchema).toContain("LIVE-PROOF-RUNBOOK.md");
     });
   });
 

@@ -50,7 +50,7 @@ Requires a fine-grained GitHub PAT (read-only, repo scope) in n8n. Push this rep
 
 ## Skill copy procedure (from skill-vault)
 
-Runtime skills are adapted from the sibling `skill-vault` catalog. **Manual copy until M2 sync automation exists** ([ADR-004](../.compozy/tasks/marketing-pipeline-clickup-n8n/adrs/adr-004.md)).
+Runtime skills are adapted from the sibling `skill-vault` catalog. **Manual copy until M2 sync automation exists** (ADR-004).
 
 ### Copy steps
 

@@ -4,7 +4,7 @@ import { isKnownStage, getStageDefinition } from "../marketing-pipeline/stages.j
 
 export const REQUIRED_OUTPUT_KEYS = ["deliverable_markdown", "resumo", "autochecagem"] as const;
 export const REQUIRED_STAGE_OUTPUT_KEYS = ["stage", "artifact_markdown", "resumo", "self_check", "next_gate"] as const;
-export const GITHUB_REPO_OWNER = "rafiti052";
+export const GITHUB_REPO_OWNER = "WolvenTech";
 export const GITHUB_REPO_NAME = "agentic-mkt";
 export const DEFAULT_PROVIDER = "openai";
 export const DEFAULT_MODEL = "gpt-4.1-mini";

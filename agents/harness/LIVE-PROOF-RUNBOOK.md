@@ -23,7 +23,7 @@ This document guides manual validation of the staged Content Quality Pipeline in
 - ✅ Custom fields present: `ACs`, `Editorial Doc Url`
 - ✅ n8n workflows exported and ready to import
 
-**Activity Tags Reference** ([ADR-008](../../.compozy/tasks/content-quality-pipeline/adrs/adr-008.md)):
+**Activity Tags Reference** (ADR-008):
 
 The workflow uses two task tags to signal AI activity at a glance:
 - **`agent-working`**: Set when a stage begins (before Call Agent execution). Visible as a colored chip on ClickUp card.
@@ -41,7 +41,7 @@ These tags are **orthogonal to status** — they answer "is AI actively on this?
 1. **Import Call Agent sub-workflow** into n8n.wolven.com.br
    - File: `marketing-pipelines/call-agent-subworkflow.json`
    - Bind credentials:
-     - **GitHub**: Read-only PAT on `rafiti052/agentic-mkt`
+     - **GitHub**: Read-only PAT on `WolvenTech/agentic-mkt`
      - **OpenAI**: API key for gpt-4.1-mini
 
 2. **Do NOT activate** — this workflow is invoked by the main workflow only.
@@ -362,7 +362,7 @@ Before production rollout, verify:
 
 ## Proof Script Exit Codes
 
-Local verification scripts report their status via exit codes (per [ADR-010](../../.compozy/tasks/content-quality-pipeline/adrs/adr-010.md)). When running tasks 23+ validation, you may encounter these codes:
+Local verification scripts report their status via exit codes (per ADR-010). When running tasks 23+ validation, you may encounter these codes:
 
 | Exit code | Meaning | Action |
 |-----------|---------|--------|

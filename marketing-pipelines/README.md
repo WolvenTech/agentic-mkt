@@ -26,7 +26,7 @@ Run `pnpm vendor:gate` before any live operation (see root [README](../README.md
 
 ### Import order (first-time setup)
 
-1. **Call Agent sub-workflow** — import `call-agent-subworkflow.json` into `n8n.wolven.com.br`. Bind **GitHub** (read-only PAT on `rafiti052/agentic-mkt`) and **OpenAI** credentials. Run **Manual Trigger (Isolation Test)**; confirm **Parse Agent Output** returns the stage contract fields for the selected agent/stage. Leave **Inactive** (invoked by main workflow only).
+1. **Call Agent sub-workflow** — import `call-agent-subworkflow.json` into `n8n.wolven.com.br`. Bind **GitHub** (read-only PAT on `WolvenTech/agentic-mkt`) and **OpenAI** credentials. Run **Manual Trigger (Isolation Test)**; confirm **Parse Agent Output** returns the stage contract fields for the selected agent/stage. Leave **Inactive** (invoked by main workflow only).
 2. **Marketing Pipeline main workflow** — import `marketing-pipeline-main.json`. Bind **ClickUp** credential; on **Execute Call Agent**, select the **Call Agent** sub-workflow. **Activate** the main workflow.
 3. **ClickUp webhook** — copy production URL from **ClickUp Webhook** node. Register in ClickUp: **Task Status Updated** on the Marketing Pipeline list.
 

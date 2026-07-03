@@ -13,7 +13,7 @@ I/O contract and output schema for the Call Agent sub-workflow — the reusable 
 | `{ error, raw_response }` | Sub-workflow → Main (parse failure) | [`io-contract.md`](io-contract.md#error-envelope) |
 | ClickUp comment template | Main → ClickUp | [`io-contract.md`](io-contract.md#clickup-task-comment-format) |
 
-M1 has **no idempotency** ([ADR-001](../.compozy/tasks/marketing-pipeline-clickup-n8n/adrs/adr-001.md)). Field names match TechSpec **Core Interfaces**.
+M1 has **no idempotency** (ADR-001). Field names match TechSpec **Core Interfaces**.
 
 ## Key files
 

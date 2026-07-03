@@ -12,7 +12,8 @@ Configuration-first home for Wolven's **agentic marketing pipeline**: ClickUp br
 | **LLM worker** | Pure function — no ClickUp write access |
 
 ```
-ClickUp: ready → webhook → n8n → OpenAI → task comment → approval
+ClickUp: backlog → investigate → brief review → write → content review → format → final review → publish
+          (each AI stage writes to a shared Editorial Doc; human approval moves the task to the next stage)
 ```
 
 ## Repository layout
@@ -107,5 +108,5 @@ Each top-level folder has a README with purpose, key files, and manual setup:
 ## Production
 
 - n8n host: `n8n.wolven.com.br`
-- Runtime config repo: `rafiti052/agentic-mkt` (private), branch `main`
+- Runtime config repo: `WolvenTech/agentic-mkt`, branch `main`
 - M1 model: OpenAI `gpt-4.1-mini` via n8n OpenAI Chat Model node (see [`src/call-agent/logic.ts`](src/call-agent/logic.ts))

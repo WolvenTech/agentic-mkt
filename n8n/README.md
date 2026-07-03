@@ -17,7 +17,7 @@ Runtime agent configs and skills are loaded from this repository via the n8n Git
 
 | Setting | Value |
 |---------|-------|
-| Repository | `rafiti052/agentic-mkt` (private) |
+| Repository | `WolvenTech/agentic-mkt` |
 | Default branch | `main` |
 | Agent config path | `agents/{agent_id}.json` |
 | Skill path | `agents/skills/{skill_name}.md` |
@@ -57,7 +57,7 @@ After import, replace placeholder credential IDs (`GITHUB_CREDENTIAL_ID`, `OPENA
 
 ### Sub-workflow isolation test procedure
 
-1. Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) and configure **GitHub** (read-only PAT on `rafiti052/agentic-mkt`) and **OpenAI** credentials.
+1. Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) and configure **GitHub** (read-only PAT on `WolvenTech/agentic-mkt`) and **OpenAI** credentials.
 2. Open the workflow and run **Manual Trigger (Isolation Test)** — this executes the **Hardcoded Test Input** node with stage and agent settings.
 3. Confirm execution succeeds and **Parse Agent Output** returns JSON with all required keys: `stage`, `artifact_markdown`, `resumo`, `self_check`, `next_gate`, and optionally `blocker_question` (all non-empty strings).
 4. In the execution log for **Parse Agent Output**, verify structured log fields include `parse_success: true`, `stage`, `agent_id`, `execution_id`, and `latency_ms`.
@@ -177,7 +177,7 @@ Validated during M1/M2. An operator can re-import and activate both workflows us
 ### Prerequisites
 
 - Run `pnpm vendor:gate` first — exit 0 required before any live ClickUp/n8n operation below; stop and fix `.env`/vendor setup on exit 1 or 2 (see root [README.md](../README.md#vendor-gate-required-before-live-operations)).
-- Repo pushed to GitHub (`rafiti052/agentic-mkt`, branch `main`) — Call Agent fetches agent configs at runtime.
+- Repo pushed to GitHub (`WolvenTech/agentic-mkt`, branch `main`) — Call Agent fetches agent configs at runtime.
 - n8n credentials configured: **ClickUp**, **GitHub** (read-only PAT), **OpenAI**.
 - [`clickup/field-mapping.json`](../clickup/field-mapping.json) synced with real field IDs (`pnpm clickup:sync`).
 

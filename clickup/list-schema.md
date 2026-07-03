@@ -77,7 +77,7 @@ See [`webhook-contract.md`](webhook-contract.md) for ingress filter and [`../age
 
 ## Rollout Readiness
 
-**Production rollout is blocked until live proof is complete.** See [`.compozy/tasks/content-quality-pipeline/task_23.md`](../.compozy/tasks/content-quality-pipeline/task_23.md) for live validation checklist.
+**Production rollout is blocked until live proof is complete.** See [`LIVE-PROOF-RUNBOOK.md`](../agents/harness/LIVE-PROOF-RUNBOOK.md) for the live validation checklist.
 
 ### Pre-deployment Requirements
 
