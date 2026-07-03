@@ -7,7 +7,7 @@ import type { FieldMapping } from "../types/field-mapping.js";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "clickup", "field-mapping.json");
 
-export const DEFAULT_AGENT_ID = "linkedin-writer";
+export const DEFAULT_AGENT_ID = "investigative-brief";
 export const DEFAULT_MODEL = "gpt-4.1-mini";
 
 export const COMMENT_SECTIONS = ["## LinkedIn Draft", "## Resumo", "## Autochecagem"] as const;

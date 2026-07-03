@@ -38,7 +38,7 @@ export interface N8nWorkflowExport {
 }
 
 const HARDCODED_TEST_INPUT: CallAgentInput = {
-  agent_id: "linkedin-writer",
+  agent_id: "investigative-brief",
   task_title: "Launch post for Q3 product update",
   task_description: "Announce the new dashboard feature for marketing leads.",
   criterios_de_aceite: "- Mention the dashboard\n- CTA to sign up\n- Under 300 words",

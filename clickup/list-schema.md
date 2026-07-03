@@ -48,7 +48,7 @@ Configure statuses on the list in the order above. Status **display names must m
 | Key (`field-mapping.json`) | ClickUp name | Type | Default | Required for brief gate |
 |----------------------------|--------------|------|---------|-------------------------|
 | `criterios_de_aceite` | ACs | Text | — | **Yes** |
-| `agent_id` | Agent | Short text | `linkedin-writer` | No (defaults apply) |
+| `agent_id` | Agent | Short text | `—` | No (manual override only) |
 | `editorial_doc_url` | Editorial Doc Url | URL | — | No (written by workflow) |
 
 Custom fields must be created in the ClickUp UI — the public API cannot create new field definitions ([ClickUp custom fields API](https://developer.clickup.com/reference/getaccessiblecustomfields)).
@@ -72,6 +72,8 @@ Before moving a task to **Investigate**, the marketing lead must ensure:
 **Rework re-runs only the selected stage.** Moving a task *back* to an earlier AI column re-runs only that stage; downstream artifacts are **preserved until manually re-run**. This allows the lead to selectively fix an earlier stage without cascading re-runs.
 
 **Blockers return to the previous human gate.** If an AI stage lacks enough material (e.g., insufficient evidence), it posts one high-impact blocker question as a comment and returns the task to the previous human gate. The lead answers the question via comment and re-moves the task forward to retry.
+
+The staged workflow derives the active agent from the triggering status. Use `Agent` only when you need an exceptional manual override.
 
 See [`webhook-contract.md`](webhook-contract.md) for ingress filter and [`../agents/harness/io-contract.md`](../agents/harness/io-contract.md) for agent I/O.
 

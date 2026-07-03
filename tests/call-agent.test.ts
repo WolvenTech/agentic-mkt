@@ -1036,9 +1036,9 @@ describe("buildCallAgentWorkflow (sub-workflow topology)", () => {
   it("pins a hardcoded test input for isolation runs", () => {
     const hardcoded = nodesByName.get("Hardcoded Test Input");
     const payload = JSON.parse(String((hardcoded?.parameters as { jsonOutput?: string }).jsonOutput ?? "{}"));
-    expect(payload.agent_id).toBe("linkedin-writer");
+    expect(payload.agent_id).toBe("investigative-brief");
     const pin = (workflow.pinData as Record<string, Array<{ json: { agent_id: string } }>>)["When Executed by Another Workflow"];
-    expect(pin?.[0]?.json.agent_id).toBe("linkedin-writer");
+    expect(pin?.[0]?.json.agent_id).toBe("investigative-brief");
   });
 
   it("re-imports without structural errors: every node and connection target is well-formed", () => {

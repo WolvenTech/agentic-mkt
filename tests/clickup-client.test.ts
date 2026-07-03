@@ -144,14 +144,14 @@ describe("clickupPost", () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
       expect(init.method).toBe("POST");
       expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
-      expect(init.body).toBe(JSON.stringify({ value: "linkedin-writer" }));
+      expect(init.body).toBe(JSON.stringify({ value: "investigative-brief" }));
       return jsonResponse({ id: "86btest01" }, 200);
     });
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await clickupPost<{ id: string }>(
       "/task/86btest01/field/cf_agent_id_001",
-      { value: "linkedin-writer" },
+      { value: "investigative-brief" },
       OPTIONS
     );
     expect(result).toEqual({ id: "86btest01" });

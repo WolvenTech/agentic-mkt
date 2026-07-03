@@ -1142,7 +1142,7 @@ describe("Marketing Pipeline stage routing", () => {
     const stageCode = extractStageJs(sparseMapping);
     const stageIfExpression = stagedIngressIfExpression(sparseMapping);
 
-    expect(taskFieldsCode).toContain("linkedin-writer");
+    expect(taskFieldsCode).toContain("investigative-brief");
     expect(stageCode).toContain("stage");
     expect(stageIfExpression).toContain("investigate");
     expect(stageIfExpression).toContain("write");

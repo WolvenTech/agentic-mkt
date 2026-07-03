@@ -34,15 +34,14 @@ const PRD_F5_REQUIREMENTS = [
   "adr-003",
 ];
 
-// Grep-tested READMEs only — `agents/harness/io-contract.md`, `.env.example`, and
-// `webhook-contract.md` still document the coexisting Python tooling by design
-// (root README's "coexists until task 13" section) and are out of scope here;
-// task_12 owns the full python3 -> pnpm command rewrite across docs.
+// Committed docs should not mention the retired python3/.py command path.
 const PYTHON_COMMAND_GREP_PATHS: Record<string, string> = {
   "README.md": resolve(REPO_ROOT, "README.md"),
   "n8n/README.md": resolve(REPO_ROOT, "n8n", "README.md"),
   "clickup/README.md": resolve(REPO_ROOT, "clickup", "README.md"),
   "agents/harness/README.md": resolve(REPO_ROOT, "agents", "harness", "README.md"),
+  "agents/harness/io-contract.md": resolve(REPO_ROOT, "agents", "harness", "io-contract.md"),
+  "clickup/webhook-contract.md": resolve(REPO_ROOT, "clickup", "webhook-contract.md"),
 };
 
 const PYTHON_COMMAND_PATTERNS = [/\bpython3\b/, /\.py\b/];
@@ -154,7 +153,7 @@ describe("troubleshooting", () => {
 
   it("documents field-ID mismatch diagnostics", () => {
     expect(contract).toContain("field id mismatches");
-    for (const step of ["field-mapping.json", "sync-field-mapping.py", "<tbd>"]) {
+    for (const step of ["field-mapping.json", "pnpm clickup:sync", "pnpm clickup:verify", "<tbd>"]) {
       expect(contract).toContain(step);
     }
   });

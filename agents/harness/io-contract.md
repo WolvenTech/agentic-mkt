@@ -6,15 +6,15 @@ Harness contract between n8n orchestration and the worker agent. Type definition
 
 | Direction | Shape | Notes |
 |-----------|-------|-------|
-| **Input** | `CallAgentInput` | Passed by the main workflow when executing the sub-workflow |
-| **Output (success)** | `AgentOutput` | Parsed OpenAI JSON; validated against [`output-schema.json`](output-schema.json) |
+| **Input** | `StageInput` | Passed by the main workflow when executing the sub-workflow |
+| **Output (success)** | `StageAgentOutput` | Parsed OpenAI JSON; validated against [`output-schema.json`](output-schema.json) |
 | **Output (parse failure)** | Error envelope | `{ "error": string, "raw_response": string }` — see [Error envelope](#error-envelope) |
 
 **Idempotency:** None currently ([ADR-001](../../adrs/adr-001.md)). Duplicate webhook deliveries may produce duplicate ClickUp comments. Phase 2 adds ingress dedup.
 
 ## Input (`StageInput`)
 
-The main workflow maps ClickUp task fields and stage context into this envelope before calling the Call Agent sub-workflow. (The original, pre-staged code names this `CallAgentInput`; the staged revision uses `StageInput` for consistency with typed stage output — see the [Call Agent sub-workflow contract](#call-agent-sub-workflow-contract) table above for how both coexist.)
+The main workflow maps ClickUp task fields and stage context into this envelope before calling the Call Agent sub-workflow.
 
 | Field | Type | Source | Description |
 |-------|------|--------|-------------|
@@ -23,15 +23,15 @@ The main workflow maps ClickUp task fields and stage context into this envelope 
 | `task_title` | string | ClickUp task title | Brief headline for the deliverable |
 | `task_description` | string | ClickUp task description | Full creative brief body |
 | `criterios_de_aceite` | string | ClickUp custom field `ACs` | Acceptance criteria the agent must satisfy in `self_check` |
-| `agent_id` | string | ClickUp custom field `Agent` | Runtime config filename stem (e.g. `linkedin-writer` → `agents/linkedin-writer.json`) |
-| `prior_page_markdown` | string | ClickUp Doc page read before stage run | Previous stage's artifact markdown (for Write and Format stages that may reference earlier work) |
-| `latest_lead_feedback` | string | Latest actionable lead comment | Extracted from task comment thread; guides revision stages |
+| `agent_id` | string | ClickUp custom field `Agent` | Runtime config filename stem for the selected stage agent |
+| `prior_stage_artifact` | string | ClickUp Doc page read before stage run | Previous stage's artifact markdown (for Write and Format stages that may reference earlier work) |
+| `lead_feedback` | string | Latest actionable lead comment | Extracted from task comment thread; guides revision stages |
 
 Example:
 
 ```json
 {
-  "agent_id": "linkedin-writer",
+  "agent_id": "investigative-brief",
   "task_title": "Launch post for Q3 product update",
   "task_description": "Announce the new dashboard feature...",
   "criterios_de_aceite": "- Mention the dashboard\n- CTA to sign up\n- Under 300 words"
@@ -40,9 +40,9 @@ Example:
 
 ### Staged input with feedback embedding
 
-All stages after the initial Investigate can incorporate lead feedback. The main workflow passes the latest actionable lead comment in `latest_lead_feedback` instead of embedding it in `task_description`. Agent skills detect feedback presence and incorporate it while maintaining the original brief, acceptance criteria, and Wolven voice.
+All stages after the initial Investigate can incorporate lead feedback. The main workflow passes the latest actionable lead comment in `lead_feedback` instead of embedding it in `task_description`. Agent skills detect feedback presence and incorporate it while maintaining the original brief, acceptance criteria, and Wolven voice.
 
-**When `latest_lead_feedback` is present** (normal for Write and Format stages):
+**When `lead_feedback` is present** (normal for Write and Format stages):
 - The stage reads and integrates the feedback into its output
 - The artifact uses feedback to refine earlier work without re-deriving from scratch
 - The comment thread is preserved as audit trail
@@ -89,11 +89,11 @@ Example (Blocker):
 
 ## Error envelope
 
-When the Code node cannot parse valid `AgentOutput` JSON from the model:
+When the Code node cannot parse valid `StageAgentOutput` JSON from the model:
 
 ```json
 {
-  "error": "Failed to parse AgentOutput: ...",
+  "error": "Failed to parse StageAgentOutput: ...",
   "raw_response": "<verbatim model text>"
 }
 ```
@@ -105,7 +105,7 @@ When the Code node cannot parse valid `AgentOutput` JSON from the model:
 
 **Behavior:**
 
-- The Call Agent sub-workflow **returns** the error envelope instead of `AgentOutput`.
+- The Call Agent sub-workflow **returns** the error envelope instead of `StageAgentOutput`.
 - The main workflow **must not silently fail** — on error envelope, log in n8n Executions and surface failure to the operator (TechSpec **Integration Points**). Do not post a partial or empty ClickUp comment.
 - Operators diagnose via n8n execution logs: check `error`, inspect `raw_response` for malformed JSON or missing keys.
 
@@ -265,7 +265,7 @@ sequenceDiagram
 | 6 | ~T+60+ s | Ready to review and provide feedback | Lead reads Doc and comments |
 | 7 | T+N (lead moves) | Move to Write triggers stage 2 | Webhook fires again; stage 2 repeats steps 1–5 |
 
-**Provider note ([ADR-003](../../adrs/adr-003.md)):** Currently uses **OpenAI `gpt-4.1-mini`** via the n8n OpenAI Chat Model node (defaults in [`src/call-agent/logic.ts`](../src/call-agent/logic.ts)). The PRD originally specified Claude Sonnet 4.6; an earlier draft used Gemini. Phase 2 may swap providers by changing `provider` and `model` in `agents/{agent_id}.json` without restructuring workflows — evaluate draft quality during Phase 2 planning.
+**Provider note ([ADR-003](../../adrs/adr-003.md)):** Currently uses **OpenAI `gpt-4.1-mini`** via the n8n OpenAI Chat Model node (defaults in [`src/call-agent/logic.ts`](../src/call-agent/logic.ts)). Provider and model live in `agents/{agent_id}.json`, so changes stay confined to the agent config.
 
 ## Proof and green-run exit-code contract
 
@@ -346,7 +346,7 @@ Actionable diagnostics for common failure modes. Primary diagnostic surface: **n
 1. In the Call Agent sub-workflow execution, open **Parse Agent Output** node output.
 2. If output is `{ "error": "...", "raw_response": "..." }` (error envelope), inspect `raw_response`:
    - Markdown fences around JSON → Code node should strip; if not, check OpenAI JSON output mode is enabled.
-   - Missing keys (`deliverable_markdown`, `resumo`, `autochecagem`) → model returned partial JSON; tighten system prompt or reduce `max_output_tokens`.
+   - Missing keys (`stage`, `artifact_markdown`, `resumo`, `self_check`, `next_gate`) → model returned partial JSON; tighten system prompt or reduce `max_output_tokens`.
    - Non-JSON text → disable conversational preamble in OpenAI node settings.
 3. Check structured log fields: `parse_success: false`, `execution_id`, `agent_id`.
 4. Main workflow **Agent Parse Failure** node throws with logged `error` — execution must **not** post a partial comment or advance to approval (Status → Review).
@@ -359,7 +359,7 @@ Actionable diagnostics for common failure modes. Primary diagnostic surface: **n
 **Diagnostic steps:**
 
 1. Open [`clickup/field-mapping.json`](../../clickup/field-mapping.json) — `clickup_field_id` values must not be `<TBD>`.
-2. Re-sync from ClickUp API (`pnpm clickup:sync`, the TypeScript successor to the original `sync-field-mapping.py` script):
+2. Re-sync from ClickUp API (`pnpm clickup:sync`):
    ```bash
    export CLICKUP_API_TOKEN="pk_..."
    export CLICKUP_LIST_ID="your_list_id"
@@ -379,7 +379,7 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 **When to use:** Any orchestrator (n8n main workflow, future MCP server) needs to invoke an LLM worker without coupling to ClickUp or delivery channels.
 
-**Description:** Extract agent invocation into a **pure sub-workflow** that accepts `CallAgentInput` and returns `AgentOutput` or an error envelope. No side effects (no ClickUp writes, no webhooks). Main workflow owns all external I/O.
+**Description:** Extract agent invocation into a **pure sub-workflow** that accepts `StageInput` and returns `StageAgentOutput` or an error envelope. No side effects (no ClickUp writes, no webhooks). Main workflow owns all external I/O.
 
 | Artifact | Reference |
 |----------|-----------|
@@ -405,7 +405,7 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 **When to use:** Agent quality depends on structured input; automated gates are deferred but human discipline must be documented.
 
-**Description:** Require title, description, and **ACs** before moving to **ready**. V1 enforcement is manual (lead self-check); n8n may still run if fields are empty. Acceptance criteria flow into `CallAgentInput.criterios_de_aceite` and appear in output `autochecagem`.
+**Description:** Require title, description, and **ACs** before moving to **Investigate**. V1 enforcement is manual (lead self-check); n8n may still run if fields are empty. Acceptance criteria flow into `StageInput.criterios_de_aceite` and appear in output `self_check`.
 
 | Artifact | Reference |
 |----------|-----------|
@@ -430,6 +430,8 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 | Path | Role |
 |------|------|
-| [`output-schema.json`](output-schema.json) | JSON Schema for `AgentOutput` validation |
+| [`output-schema.json`](output-schema.json) | JSON Schema for `StageAgentOutput` validation |
 | `green-run-evidence.json` | Local-only (gitignored) latest-run snapshot; refresh with `GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run` |
-| [`linkedin-writer.json`](../linkedin-writer.json) | Legacy single-agent config and `output_schema` descriptions (see note in [agents/README.md](../README.md#agent-json-schema) on how this relates to the staged agent configs) |
+| [`investigative-brief.json`](../investigative-brief.json) | Stage 1 runtime agent config |
+| [`long-form-argument.json`](../long-form-argument.json) | Stage 2 runtime agent config |
+| [`linkedin-format.json`](../linkedin-format.json) | Stage 3 runtime agent config |

@@ -7,21 +7,25 @@ import { describe, expect, it } from "vitest";
 const REPO_ROOT = resolve(__dirname, "..");
 const IO_CONTRACT_PATH = resolve(REPO_ROOT, "agents", "harness", "io-contract.md");
 const OUTPUT_SCHEMA_PATH = resolve(REPO_ROOT, "agents", "harness", "output-schema.json");
-const AGENT_JSON_PATH = resolve(REPO_ROOT, "agents", "linkedin-writer.json");
+const AGENT_JSON_PATH = resolve(REPO_ROOT, "agents", "investigative-brief.json");
 const HARNESS_README_PATH = resolve(REPO_ROOT, "agents", "harness", "README.md");
 
-const CALL_AGENT_INPUT_FIELDS = ["agent_id", "task_title", "task_description", "criterios_de_aceite"];
-const AGENT_OUTPUT_FIELDS = ["deliverable_markdown", "resumo", "autochecagem"];
+const STAGE_INPUT_FIELDS = ["stage", "agent_id", "task_title", "task_description", "criterios_de_aceite", "prior_stage_artifact", "lead_feedback", "model"];
+const STAGE_OUTPUT_FIELDS = ["stage", "artifact_markdown", "resumo", "self_check", "next_gate"];
 
 const SAMPLE_VALID_OUTPUT = {
-  deliverable_markdown: "## Hook\n\nSample LinkedIn post body.",
-  resumo: "Two-sentence summary of the draft angle.",
-  autochecagem: "- Criterion A met\n- Criterion B met",
+  stage: "investigate",
+  artifact_markdown: "## Brief\n\nSample stage artifact.",
+  resumo: "Two-sentence summary of the stage output.",
+  self_check: "- Criterion A met\n- Criterion B met",
+  next_gate: "brief review",
 };
 
-const SAMPLE_MISSING_AUTOCHECAGEM = {
-  deliverable_markdown: "Draft only.",
+const SAMPLE_MISSING_NEXT_GATE = {
+  stage: "investigate",
+  artifact_markdown: "Draft only.",
   resumo: "Summary only.",
+  self_check: "- Check only.",
 };
 
 interface OutputSchema {
@@ -41,31 +45,31 @@ describe("output-schema.json", () => {
   const ajv = new Ajv({ allErrors: true, strict: false });
   const validate = ajv.compile(schema);
 
-  it("declares the draft-07 meta-schema and required AgentOutput fields", () => {
+  it("declares the draft-07 meta-schema and required StageAgentOutput fields", () => {
     expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
     expect(schema.type).toBe("object");
-    expect([...schema.required].sort()).toEqual([...AGENT_OUTPUT_FIELDS].sort());
+    expect([...schema.required].sort()).toEqual([...STAGE_OUTPUT_FIELDS].sort());
     expect(schema.additionalProperties).toBe(false);
   });
 
-  it("validates a sample valid AgentOutput via ajv", () => {
+  it("validates a sample valid StageAgentOutput via ajv", () => {
     expect(validate(SAMPLE_VALID_OUTPUT)).toBe(true);
   });
 
-  it("rejects a sample missing autochecagem via ajv", () => {
-    expect(validate(SAMPLE_MISSING_AUTOCHECAGEM)).toBe(false);
-    const missingAutochecagem = (validate.errors as ErrorObject[] | null | undefined)?.some(
-      (err) => err.keyword === "required" && err.params.missingProperty === "autochecagem"
+  it("rejects a sample missing next_gate via ajv", () => {
+    expect(validate(SAMPLE_MISSING_NEXT_GATE)).toBe(false);
+    const missingNextGate = (validate.errors as ErrorObject[] | null | undefined)?.some(
+      (err) => err.keyword === "required" && err.params.missingProperty === "next_gate"
     );
-    expect(missingAutochecagem).toBe(true);
+    expect(missingNextGate).toBe(true);
   });
 });
 
 describe("io-contract.md", () => {
   const contract = readFileSync(IO_CONTRACT_PATH, "utf-8");
 
-  it("lists every CallAgentInput field", () => {
-    for (const field of CALL_AGENT_INPUT_FIELDS) {
+  it("lists every StageInput field", () => {
+    for (const field of STAGE_INPUT_FIELDS) {
       expect(contract).toContain(`\`${field}\``);
     }
   });
@@ -95,9 +99,11 @@ describe("io-contract.md", () => {
     expect(lower).toContain("adr-001");
   });
 
-  it("cross-references linkedin-writer.json and output_schema", () => {
-    expect(contract).toContain("agents/linkedin-writer.json");
-    expect(contract).toContain("output_schema");
+  it("cross-references staged agent configs and output_schema", () => {
+    expect(contract).toContain("investigative-brief.json");
+    expect(contract).toContain("long-form-argument.json");
+    expect(contract).toContain("linkedin-format.json");
+    expect(contract).toContain("output-schema.json");
   });
 });
 
@@ -105,20 +111,14 @@ describe("harness integration", () => {
   const schema = readJson<OutputSchema>(OUTPUT_SCHEMA_PATH);
   const agent = readJson<{ output_schema: Record<string, string> }>(AGENT_JSON_PATH);
 
-  it("output-schema required keys match the agent config's output_schema keys", () => {
-    expect([...schema.required].sort()).toEqual(Object.keys(agent.output_schema).sort());
-    expect([...schema.required].sort()).toEqual([...AGENT_OUTPUT_FIELDS].sort());
-  });
-
-  it("output-schema descriptions match the agent config's output_schema descriptions", () => {
-    for (const key of AGENT_OUTPUT_FIELDS) {
-      expect(schema.properties[key]?.description).toBe(agent.output_schema[key]);
-    }
+  it("output-schema required keys match the staged agent contract keys", () => {
+    expect([...schema.required].sort()).toEqual([...STAGE_OUTPUT_FIELDS].sort());
+    expect(Object.keys(agent.output_schema).sort()).toEqual([...STAGE_OUTPUT_FIELDS, "blocker_question"].sort());
   });
 
   it("agents harness README links the contract artifacts", () => {
     const readme = readFileSync(HARNESS_README_PATH, "utf-8");
-    for (const fragment of ["io-contract.md", "output-schema.json", "CallAgentInput", "AgentOutput", "ADR-001"]) {
+    for (const fragment of ["io-contract.md", "output-schema.json", "StageInput", "StageAgentOutput", "ADR-001"]) {
       expect(readme).toContain(fragment);
     }
   });

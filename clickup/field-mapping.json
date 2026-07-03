@@ -10,7 +10,7 @@
     "agent_id": {
       "name": "Agent",
       "type": "short_text",
-      "default": "linkedin-writer",
+      "default": "investigative-brief",
       "clickup_field_id": "a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0"
     },
     "editorial_doc_url": {

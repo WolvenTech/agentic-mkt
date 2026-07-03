@@ -83,13 +83,13 @@ Example `taskStatusUpdated` payload (adapted from [ClickUp task webhook payloads
       "data": { "status_type": "custom" },
       "user": { "id": 183, "username": "John", "email": "john@company.com" },
       "before": {
-        "status": "Backlog",
+        "status": "backlog",
         "color": "#f9d900",
         "orderindex": 0,
         "type": "open"
       },
       "after": {
-        "status": "ready",
+        "status": "investigate",
         "color": "#7C4DFF",
         "orderindex": 1,
         "type": "custom"
@@ -100,7 +100,7 @@ Example `taskStatusUpdated` payload (adapted from [ClickUp task webhook payloads
 }
 ```
 
-Fixture copies for tests: staged ingress fixtures in `fixtures/` directory (e.g., `task-status-updated-investigate.json`, `task-status-updated-write.json`, `task-status-updated-format.json` — exact names depend on generated exports).
+Fixture copies for tests live in `fixtures/` (for example, `task-status-updated-investigate.json`, `task-status-updated-write.json`, and `task-status-updated-format.json`).
 
 ### Fields the workflow reads
 
@@ -130,4 +130,4 @@ Reviewed against ClickUp developer docs (2026-06):
 
 - **Unit:** `tests/clickup.test.ts` validates fixtures against ingress filter logic and payload shape
 - **Integration:** Register webhook → move test task to Investigate, Write, or Format → confirm n8n receives payload matching this contract
-- **Pre-registration:** Use ClickUp webhook test tool or replay [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) and [`fixtures/task-status-updated-needs-review.json`](fixtures/task-status-updated-needs-review.json) into n8n test webhook
+- **Pre-registration:** Use ClickUp webhook test tool or replay [`fixtures/task-status-updated-investigate.json`](fixtures/task-status-updated-investigate.json), [`fixtures/task-status-updated-write.json`](fixtures/task-status-updated-write.json), and [`fixtures/task-status-updated-format.json`](fixtures/task-status-updated-format.json) into n8n test webhook

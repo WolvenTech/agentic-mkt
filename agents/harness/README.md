@@ -8,8 +8,8 @@ I/O contract and output schema for the Call Agent sub-workflow — the reusable 
 
 | Envelope | Direction | Documented in |
 |----------|-----------|---------------|
-| `CallAgentInput` (legacy) / `StageInput` (current) | Main → Call Agent sub-workflow | [`io-contract.md`](io-contract.md#call-agent-sub-workflow-contract), [`io-contract.md`](io-contract.md#input-stageinput) |
-| `AgentOutput` (legacy) / `StageAgentOutput` (current) | Sub-workflow → Main (success) | [`io-contract.md`](io-contract.md#call-agent-sub-workflow-contract), [`io-contract.md`](io-contract.md#output-stageagentoutput), [`output-schema.json`](output-schema.json) |
+| `StageInput` | Main → Call Agent sub-workflow | [`io-contract.md`](io-contract.md#call-agent-sub-workflow-contract), [`io-contract.md`](io-contract.md#input-stageinput) |
+| `StageAgentOutput` | Sub-workflow → Main (success) | [`io-contract.md`](io-contract.md#call-agent-sub-workflow-contract), [`io-contract.md`](io-contract.md#output-stageagentoutput), [`output-schema.json`](output-schema.json) |
 | `{ error, raw_response }` | Sub-workflow → Main (parse failure) | [`io-contract.md`](io-contract.md#error-envelope) |
 | ClickUp comment template | Main → ClickUp | [`io-contract.md`](io-contract.md#clickup-task-comment-format) |
 
@@ -20,9 +20,11 @@ Currently **no idempotency** ([ADR-001](../../adrs/adr-001.md)). Field names mat
 | Path | Purpose |
 |------|---------|
 | [`io-contract.md`](io-contract.md) | Input envelope, sub-workflow contract, error handling, ClickUp comment template, troubleshooting, reusable patterns |
-| [`output-schema.json`](output-schema.json) | JSON Schema for the legacy single-agent response shape (`AgentOutput`) |
+| [`output-schema.json`](output-schema.json) | JSON Schema for the staged response shape (`StageAgentOutput`) |
 | `green-run-evidence.json` | Local-only (gitignored) latest-run snapshot; refresh with `GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run` |
-| [`../agents/linkedin-writer.json`](../linkedin-writer.json) | Legacy single-agent config; `output_schema` is the semantic source of truth for that (non-staged) contract |
+| [`investigative-brief.json`](../investigative-brief.json) | Stage 1 agent config |
+| [`long-form-argument.json`](../long-form-argument.json) | Stage 2 agent config |
+| [`linkedin-format.json`](../linkedin-format.json) | Stage 3 agent config |
 
 ## Operational runbook
 

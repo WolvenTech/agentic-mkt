@@ -22,11 +22,11 @@ Runtime agent configs and skills are loaded from this repository via the n8n Git
 | Agent config path | `agents/{agent_id}.json` |
 | Skill path | `agents/skills/{skill_name}.md` |
 
-Example fetch paths for `linkedin-writer` (via n8n GitHub node with PAT — repo is **private**, so anonymous raw URLs will 404):
+Example fetch paths for `investigative-brief` (via n8n GitHub node with PAT — repo is **private**, so anonymous raw URLs will 404):
 
-- `agents/linkedin-writer.json`
+- `agents/investigative-brief.json`
 - `agents/skills/wolven-voice.md`
-- `agents/skills/linkedin-format.md`
+- `agents/skills/investigative-brief.md`
 
 ### GitHub credential (n8n)
 
@@ -37,13 +37,13 @@ Create a **fine-grained personal access token** scoped to this repository only:
 3. **Permissions → Repository contents:** Read-only.
 4. Do not grant write, metadata beyond read, or organization-wide access.
 5. In n8n (`n8n.wolven.com.br`), add a **GitHub** credential using the PAT.
-6. Test the credential by fetching `agents/linkedin-writer.json` from the default branch.
+6. Test the credential by fetching `agents/investigative-brief.json` from the default branch.
 
 The Call Agent sub-workflow depends on this repo being pushed before isolation testing.
 
 ## Call Agent sub-workflow
 
-Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) into `n8n.wolven.com.br` before the main workflow. This sub-workflow is a single, stage-parameterized pure function — the main workflow invokes it once per AI stage (investigate, write, format), passing `stage` as part of its input rather than the sub-workflow having separate paths per stage. It accepts `StageInput` (stage name, task fields, prior Doc page, latest lead comment), fetches the appropriate agent config and reference/template files from GitHub, invokes OpenAI, and returns `StageAgentOutput` (artifact, resumo, self-check, next gate, optional blocker) or an error envelope — no ClickUp writes.
+Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) into `n8n.wolven.com.br` before the main workflow. This sub-workflow is a single, stage-parameterized pure function — the main workflow invokes it once per AI stage (investigate, write, format), passing `stage` as part of its input rather than the sub-workflow having separate paths per stage. It accepts `StageInput` (stage name, task fields, `prior_stage_artifact`, `lead_feedback`), fetches the appropriate agent config and reference/template files from GitHub, invokes OpenAI, and returns `StageAgentOutput` (artifact, resumo, self-check, next gate, optional blocker) or an error envelope — no ClickUp writes.
 
 | Node | Purpose |
 |------|---------|
@@ -66,7 +66,7 @@ After import, replace placeholder credential IDs (`GITHUB_CREDENTIAL_ID`, `OPENA
 7. Inspect **Assemble Prompt** execution data: the stage-appropriate agent config, `wolven-voice` skill, and stage reference/template files must all appear in `system_prompt`.
 8. Re-export the workflow from n8n after credential binding and commit to `marketing-pipelines/call-agent-subworkflow.json` if the live graph differs from repo export.
 
-Alternative: pin the same hardcoded `CallAgentInput` on **When Executed by Another Workflow** (included in repo export `pinData`) and execute via **Test workflow** on that trigger.
+Alternative: pin the same hardcoded `StageInput` on **When Executed by Another Workflow** (included in repo export `pinData`) and execute via **Test workflow** on that trigger.
 
 ## Marketing Pipeline main workflow (multi-stage staged workflow)
 
@@ -186,7 +186,7 @@ An operator can re-import and activate both workflows using this section alone.
 1. In `n8n.wolven.com.br`, go to **Workflows → Import from File**.
 2. Select [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json).
 3. Open the workflow and bind credentials on **Fetch Agent Config**, **Fetch Skill Markdown** (GitHub), and **OpenAI Chat Model**.
-4. Run **Manual Trigger (Isolation Test)** — confirm **Parse Agent Output** returns all three `AgentOutput` keys with `parse_success: true`.
+4. Run **Manual Trigger (Isolation Test)** — confirm **Parse Agent Output** returns the staged `StageAgentOutput` keys with `parse_success: true`.
 5. Leave the sub-workflow **Inactive** (it is invoked by the main workflow, not by webhook).
 
 ### Step 2 — Import and activate Marketing Pipeline main workflow

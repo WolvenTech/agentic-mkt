@@ -15,8 +15,9 @@ Schema, webhook contract, and field mapping for the **staged editorial workflow*
 | `pnpm clickup:sync` | Pull field IDs from ClickUp API into `field-mapping.json` |
 | `pnpm clickup:verify` | Integration check — create test task and verify custom fields via GET |
 | `pnpm green-run` | Green run preflight + execution; writes `logs/green-run/<timestamp>/evidence.json` (see [`logs/README.md`](../logs/README.md)) |
-| [`fixtures/task-status-updated-ready-to-work.json`](fixtures/task-status-updated-ready-to-work.json) | Sample first-draft webhook payload for contract tests |
-| [`fixtures/task-status-updated-needs-review.json`](fixtures/task-status-updated-needs-review.json) | Sample revision webhook payload for contract tests |
+| [`fixtures/task-status-updated-investigate.json`](fixtures/task-status-updated-investigate.json) | Sample stage-ingress webhook payload for Investigate |
+| [`fixtures/task-status-updated-write.json`](fixtures/task-status-updated-write.json) | Sample stage-ingress webhook payload for Write |
+| [`fixtures/task-status-updated-format.json`](fixtures/task-status-updated-format.json) | Sample stage-ingress webhook payload for Format |
 
 ## Manual setup checklist
 
@@ -38,7 +39,9 @@ On the Marketing Pipeline list, create:
 |------------|------|---------|
 | ACs | Text | — |
 | Editorial Doc Url | URL | — |
-| Agent | Short text | `linkedin-writer` |
+| Agent | Short text | `—` |
+
+The staged workflow selects `investigative-brief`, `long-form-argument`, or `linkedin-format` from the triggering status. The `Agent` field remains available as a manual override for exceptional cases.
 
 Names must match exactly. The **Editorial Doc Url** field stores the machine-readable pointer to the ClickUp Doc for this task's editorial artifacts.
 

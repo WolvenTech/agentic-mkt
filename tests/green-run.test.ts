@@ -235,7 +235,7 @@ function fullFieldMapping(overrides: Partial<FieldMapping> = {}): FieldMapping {
     clickup_list_id: "901234567",
     custom_fields: {
       criterios_de_aceite: { name: "ACs", type: "text", clickup_field_id: "cf1" },
-      agent_id: { name: "Agent", type: "short_text", clickup_field_id: "cf2", default: "linkedin-writer" },
+      agent_id: { name: "Agent", type: "short_text", clickup_field_id: "cf2", default: "investigative-brief" },
       editorial_doc_url: { name: "Editorial Doc Url", type: "url", clickup_field_id: "cf3" },
     },
     statuses: {
