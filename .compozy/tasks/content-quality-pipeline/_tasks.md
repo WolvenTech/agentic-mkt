@@ -39,6 +39,6 @@
 | 33 | Switch generated Call Agent parsing to the staged-aware dispatcher | completed | low | task_32 |
 | 34 | Harden staged Call Agent contract parity fixtures | completed | medium | task_33 |
 | 35 | Persist and normalize the Editorial Doc pointer before page work | pending | medium | task_31 |
-| 36 | Fail closed on missing staged artifact content before Doc writes | pending | medium | task_33 |
+| 36 | Fail closed on missing staged artifact content before Doc writes | completed | medium | task_33 |
 | 37 | Regenerate workflows and assert strict staged Doc topology | pending | medium | task_33, task_35, task_36 |
 | 38 | Run ADR-011 live proof for one-Doc reuse and non-placeholder pages | pending | high | task_37 |
