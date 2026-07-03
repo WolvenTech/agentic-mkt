@@ -80,6 +80,26 @@ describe("mergeLiveBindings", () => {
     expect(merged[1]?.parameters).toEqual(local[1]?.parameters);
     expect(merged[2]?.parameters?.workflowId).toEqual(live[2]?.parameters?.workflowId);
   });
+
+  it("applies live credentials by type to newly added credentialed nodes", () => {
+    const live: N8nDeployNode[] = [
+      {
+        name: "GET ClickUp Task",
+        type: "n8n-nodes-base.httpRequest",
+        credentials: { clickUpApi: { id: "live-clickup", name: "Live ClickUp" } },
+      },
+    ];
+    const local: N8nDeployNode[] = [
+      {
+        name: "PUT Update Editorial Doc Url",
+        type: "n8n-nodes-base.httpRequest",
+        credentials: { clickUpApi: { id: "CLICKUP_CREDENTIAL_ID", name: "ClickUp Marketing Pipeline" } },
+      },
+    ];
+
+    const merged = mergeLiveBindings(live, local);
+    expect(merged[0]?.credentials?.clickUpApi).toEqual({ id: "live-clickup", name: "Live ClickUp" });
+  });
 });
 
 describe("allowedSettings", () => {

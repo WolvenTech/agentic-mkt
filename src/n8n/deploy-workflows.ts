@@ -56,6 +56,7 @@ const LLM_NODE_TYPES = new Set([
 
 export function mergeLiveBindings(liveNodes: N8nDeployNode[], localNodes: N8nDeployNode[]): N8nDeployNode[] {
   const liveByName = new Map(liveNodes.map((node) => [node.name, node]));
+  const liveCredentialsByType = collectCredentialsByType(liveNodes);
   const liveLlmByType = new Map<string, N8nDeployNode>();
   for (const node of liveNodes) {
     if (node.type && LLM_NODE_TYPES.has(node.type)) {
@@ -67,11 +68,21 @@ export function mergeLiveBindings(liveNodes: N8nDeployNode[], localNodes: N8nDep
     if (!live && local.type && liveLlmByType.has(local.type)) {
       live = liveLlmByType.get(local.type);
     }
+    const credentials = local.credentials
+      ? Object.fromEntries(
+          Object.entries(local.credentials).map(([type, localCredential]) => [
+            type,
+            live?.credentials?.[type] ?? liveCredentialsByType[type] ?? localCredential,
+          ])
+        )
+      : undefined;
     if (!live) {
-      return local;
+      return credentials ? { ...local, credentials } : local;
     }
     const merged: N8nDeployNode = { ...local };
-    if (live.credentials) {
+    if (credentials) {
+      merged.credentials = credentials;
+    } else if (live.credentials) {
       merged.credentials = live.credentials;
     }
     if (local.name === "Execute Call Agent" && live.parameters?.workflowId) {

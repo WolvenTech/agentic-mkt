@@ -37,6 +37,7 @@ import {
 import {
   detectBlockerJs,
   docCreatedJs,
+  docReadyJs,
   extractLatestLeadFeedbackJs,
   extractTaskFieldsJs,
   extractStageJs,
@@ -829,12 +830,13 @@ describe("n8n Doc and page helper code generation", () => {
     expect(code).toContain("page_replaced: true");
   });
 
-  it("generates Persist Doc Pointer code that writes created Doc ID to custom field", () => {
+  it("generates Persist Doc Pointer code that writes created Doc URL to custom field", () => {
     const mapping = fixtureFieldMapping();
     const code = persistDocPointerJs(mapping);
     expect(code).toContain("Doc Created");
     expect(code).toContain("Extract Task Fields");
-    expect(code).toContain("custom_fields_payload");
+    expect(code).toContain("https://app.clickup.com/${docData.workspace_id}/v/dc/${docData.doc_id}");
+    expect(code).toContain("editorial_doc_url: docUrl");
     expect(code).toContain("editorial_doc_url_field_id");
     expect(code).toContain("cf_editorial_doc_url_001");
     expect(code).toContain("persist_doc_pointer");
@@ -843,6 +845,8 @@ describe("n8n Doc and page helper code generation", () => {
   it("generates Use Existing Doc code with Doc pointer normalization for URLs and bare IDs", () => {
     const code = useExistingDocJs();
     expect(code).toContain("doc.clickup.com");
+    expect(code).toContain("app.clickup.com");
+    expect(code).toContain("/\\/dc\\/([a-z0-9-]+)/i");
     expect(code).toContain("pointer");
     expect(code).toContain("Invalid Doc pointer format");
     expect(code).toContain("Expected ClickUp Doc URL or bare Doc ID");
@@ -851,6 +855,7 @@ describe("n8n Doc and page helper code generation", () => {
   it("generates Normalize Doc Pointer helper for extracting Doc ID from URL", () => {
     const code = normalizeDocPointerJs();
     expect(code).toContain("doc.clickup.com");
+    expect(code).toContain("app.clickup.com");
     expect(code).toContain("pointer");
     expect(code).toContain("Failed to extract Doc ID");
     expect(code).toContain("Invalid Doc pointer format");
@@ -862,6 +867,7 @@ describe("n8n Doc and page helper code generation", () => {
     expect(code).toContain("editorial_doc_url");
     expect(code).toContain("empty");
     expect(code).toContain("doc.clickup.com");
+    expect(code).toContain("app.clickup.com");
     expect(code).toContain("use_existing_doc");
   });
 });
@@ -879,6 +885,13 @@ describe("Doc pointer normalization", () => {
     expect(match?.[1]).toBe("a1b2c3d4e5f6g7h8");
   });
 
+  it("normalizes a ClickUp app Doc URL to extract the Doc ID", () => {
+    const input = "https://app.clickup.com/90132490697/v/dc/2ky51ae9-19673";
+    const match = input.match(/\/dc\/([a-z0-9-]+)/i);
+    expect(match).toBeDefined();
+    expect(match?.[1]).toBe("2ky51ae9-19673");
+  });
+
   it("validates the regex pattern for bare Doc ID extraction", () => {
     const validIds = ["a1b2c3d4e5f6g7h8", "abc123", "doc-id-with-dashes"];
     validIds.forEach((id) => {
@@ -890,7 +903,7 @@ describe("Doc pointer normalization", () => {
     const inputs = ["", "not a valid pointer!", "@#$%^&*()", "doc.clickup.com"];
     inputs.forEach((input) => {
       const isValidId = /^[a-z0-9-]+$/i.test(input);
-      const hasValidUrlPattern = /\/p\/h\/([a-z0-9]+)/i.test(input);
+      const hasValidUrlPattern = /\/p\/h\/([a-z0-9]+)/i.test(input) || /\/dc\/([a-z0-9-]+)/i.test(input);
       expect(isValidId || hasValidUrlPattern).toBe(false);
     });
   });
@@ -1159,7 +1172,7 @@ describe("Marketing Pipeline stage routing", () => {
     expect(nodeByName(workflow, "Doc Created")?.type).toBe("n8n-nodes-base.code");
     expect(nodeByName(workflow, "Persist Doc Pointer")?.type).toBe("n8n-nodes-base.code");
     expect(nodeByName(workflow, "PUT Update Editorial Doc Url")?.type).toBe("n8n-nodes-base.httpRequest");
-    expect(nodeByName(workflow, "Doc Ready")?.type).toBe("n8n-nodes-base.noOp");
+    expect(nodeByName(workflow, "Doc Ready")?.type).toBe("n8n-nodes-base.code");
     expect(nodeByName(workflow, "GET List Doc Pages")?.type).toBe("n8n-nodes-base.httpRequest");
     expect(nodeByName(workflow, "Find Stage Page")?.type).toBe("n8n-nodes-base.code");
     expect(nodeByName(workflow, "Page Exists?")?.type).toBe("n8n-nodes-base.if");
@@ -1192,6 +1205,32 @@ describe("Marketing Pipeline stage routing", () => {
     }
   });
 
+  it("sends an explicit JSON Content-Type header for ClickUp HTTP nodes with JSON bodies", () => {
+    for (const name of [
+      "POST Create ClickUp Doc",
+      "PUT Update Editorial Doc Url",
+      "POST Create Doc Page",
+      "PUT Replace Doc Page Content",
+    ]) {
+      const node = nodeByName(workflow, name);
+      expect(node?.parameters).toMatchObject({
+        sendHeaders: true,
+        headerParameters: {
+          parameters: [{ name: "Content-Type", value: "application/json" }],
+        },
+      });
+    }
+  });
+
+  it("updates Editorial Doc Url through the ClickUp custom-field endpoint", () => {
+    const node = nodeByName(workflow, "PUT Update Editorial Doc Url");
+    expect(node?.parameters).toMatchObject({
+      method: "POST",
+      url: "=https://api.clickup.com/api/v2/task/{{ $json.task_id }}/field/{{ $json.editorial_doc_url_field_id }}",
+      jsonBody: "={{ { value: $json.editorial_doc_url } }}",
+    });
+  });
+
   it("Has Doc URL? branches to Use Existing Doc on true, doc creation on false", () => {
     const branches = workflow.connections["Has Doc URL?"]?.main ?? [];
     expect(branches[0]?.[0]?.node).toBe("Use Existing Doc");
@@ -1211,6 +1250,13 @@ describe("Marketing Pipeline stage routing", () => {
     expect(workflow.connections["PUT Update Editorial Doc Url"]?.main).toEqual([
       [{ node: "Doc Ready", type: "main", index: 0 }],
     ]);
+  });
+
+  it("Doc Ready restores Doc metadata after the pointer persistence HTTP response", () => {
+    const code = docReadyJs();
+    expect(code).toContain("$('Persist Doc Pointer').first().json");
+    expect(code).toContain("Doc Ready missing doc_id or workspace_id");
+    expect(code).toContain("return [{ json: fields }]");
   });
 
   it("Page Exists? branches directly to Page Ready on true, page creation on false", () => {

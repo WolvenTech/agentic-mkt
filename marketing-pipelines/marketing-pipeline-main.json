@@ -352,7 +352,7 @@
         256
       ],
       "parameters": {
-        "jsCode": "const fields = $('Extract Task Fields').first().json;\nconst pointer = String(fields.editorial_doc_url ?? '').trim();\n\nif (!pointer) {\n  throw new Error('Editorial Doc Url custom field is empty. Expected a Doc ID or ClickUp Doc URL.');\n}\n\n// Normalize: extract Doc ID from ClickUp Doc URL or use bare ID\nlet docId;\nif (pointer.includes('doc.clickup.com')) {\n  const match = pointer.match(/\\/p\\/h\\/([a-z0-9]+)/i);\n  if (match && match[1]) {\n    docId = match[1];\n  } else {\n    throw new Error(`Failed to extract Doc ID from ClickUp Doc URL: ${pointer}`);\n  }\n} else if (/^[a-z0-9-]+$/i.test(pointer)) {\n  docId = pointer;\n} else {\n  throw new Error(`Invalid Doc pointer format: ${pointer}. Expected ClickUp Doc URL or bare Doc ID`);\n}\n\nreturn [{\n  json: {\n    workspace_id: fields.workspace_id,\n    doc_id: docId,\n    doc_created: false,\n    operation: 'use_existing_doc',\n    stage: fields.stage,\n  },\n}];"
+        "jsCode": "const fields = $('Extract Task Fields').first().json;\nconst pointer = String(fields.editorial_doc_url ?? '').trim();\n\nif (!pointer) {\n  throw new Error('Editorial Doc Url custom field is empty. Expected a Doc ID or ClickUp Doc URL.');\n}\n\n// Normalize: extract Doc ID from ClickUp Doc URL or use bare ID\nlet docId;\nif (pointer.includes('doc.clickup.com')) {\n  const match = pointer.match(/\\/p\\/h\\/([a-z0-9]+)/i);\n  if (match && match[1]) {\n    docId = match[1];\n  } else {\n    throw new Error(`Failed to extract Doc ID from ClickUp Doc URL: ${pointer}`);\n  }\n} else if (pointer.includes('app.clickup.com')) {\n  const match = pointer.match(/\\/dc\\/([a-z0-9-]+)/i);\n  if (match && match[1]) {\n    docId = match[1];\n  } else {\n    throw new Error(`Failed to extract Doc ID from ClickUp App URL: ${pointer}`);\n  }\n} else if (/^[a-z0-9-]+$/i.test(pointer)) {\n  docId = pointer;\n} else {\n  throw new Error(`Invalid Doc pointer format: ${pointer}. Expected ClickUp Doc URL or bare Doc ID`);\n}\n\nreturn [{\n  json: {\n    workspace_id: fields.workspace_id,\n    doc_id: docId,\n    doc_created: false,\n    operation: 'use_existing_doc',\n    stage: fields.stage,\n  },\n}];"
       }
     },
     {
@@ -375,6 +375,15 @@
         "url": "=https://api.clickup.com/api/v3/workspaces/{{ $('Extract Task Fields').first().json.workspace_id }}/docs",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "clickUpApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ { name: \"Editorial workspace for \" + $('Extract Task Fields').first().json.task_id, parent: { id: $('Extract Webhook Context').first().json.list_id, type: 6 }, visibility: \"PRIVATE\", create_page: true } }}",
@@ -404,7 +413,7 @@
         448
       ],
       "parameters": {
-        "jsCode": "const docData = $('Doc Created').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\n\n// Create the custom field update payload for ClickUp API v2\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    doc_id: docData.doc_id,\n    workspace_id: docData.workspace_id,\n    editorial_doc_url_field_id: \"fc421386-3bc8-4dca-adce-836a8f3d4d6d\",\n    custom_fields_payload: {\n      \"fc421386-3bc8-4dca-adce-836a8f3d4d6d\": docData.doc_id,\n    },\n    doc_created: true,\n    operation: 'persist_doc_pointer',\n    stage: docData.stage,\n  },\n}];"
+        "jsCode": "const docData = $('Doc Created').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst docUrl = `https://app.clickup.com/${docData.workspace_id}/v/dc/${docData.doc_id}`;\n\n// Create the custom field update payload for ClickUp API v2 custom field endpoint.\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    doc_id: docData.doc_id,\n    editorial_doc_url: docUrl,\n    workspace_id: docData.workspace_id,\n    editorial_doc_url_field_id: \"fc421386-3bc8-4dca-adce-836a8f3d4d6d\",\n    doc_created: true,\n    operation: 'persist_doc_pointer',\n    stage: docData.stage,\n  },\n}];"
       }
     },
     {
@@ -423,26 +432,37 @@
         }
       },
       "parameters": {
-        "method": "PUT",
-        "url": "=https://api.clickup.com/api/v2/task/{{ $json.task_id }}",
+        "method": "POST",
+        "url": "=https://api.clickup.com/api/v2/task/{{ $json.task_id }}/field/{{ $json.editorial_doc_url_field_id }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "clickUpApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { custom_fields: $json.custom_fields_payload } }}",
+        "jsonBody": "={{ { value: $json.editorial_doc_url } }}",
         "options": {}
       }
     },
     {
       "id": "c939e909-7efb-dd59-4f3a-f08c539c3508",
       "name": "Doc Ready",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         4480,
         352
       ],
-      "parameters": {}
+      "parameters": {
+        "jsCode": "let fields = $input.first().json;\n\nif (!fields.doc_id || !fields.workspace_id) {\n  try {\n    const persisted = $('Persist Doc Pointer').first().json;\n    if (persisted.doc_id && persisted.workspace_id) {\n      fields = persisted;\n    }\n  } catch (err) {\n    // Persist Doc Pointer only runs on the new-Doc branch; existing-Doc branch already has the fields.\n  }\n}\n\nif (!fields.doc_id || !fields.workspace_id) {\n  throw new Error('Doc Ready missing doc_id or workspace_id after Doc resolution');\n}\n\nreturn [{ json: fields }];"
+      }
     },
     {
       "id": "6cd828a1-0e0c-2171-5136-92a963321966",
@@ -533,6 +553,15 @@
         "url": "=https://api.clickup.com/api/v3/workspaces/{{ $json.workspace_id }}/docs/{{ $json.doc_id }}/pages",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "clickUpApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ { name: $json.page_name, content: \"# \" + $json.page_name + \"\\n\\n*Initial placeholder content for \" + $json.page_name + \".*\", content_format: \"text/md\" } }}",
@@ -1043,6 +1072,15 @@
         "url": "=https://api.clickup.com/api/v3/workspaces/{{ $('Page Ready').first().json.workspace_id }}/docs/{{ $('Page Ready').first().json.doc_id }}/pages/{{ $('Page Ready').first().json.page_id }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "clickUpApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ { content: $json.artifact_markdown, content_edit_mode: \"replace\", content_format: \"text/md\" } }}",

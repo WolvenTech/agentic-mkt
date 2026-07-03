@@ -23,6 +23,9 @@ Keep only durable, cross-task context here. Do not duplicate facts that are obvi
 - Best-effort tag helper snippets should return the original item unchanged and log ClickUp failures as warnings instead of throwing, so status/Doc mutations can continue.
 - Staged marketing workflow topology now includes `Add agent-working` before `Execute Call Agent`, `Clear activity tags` before `Update Status to Next Gate`, and `Swap activity tags` before `Update Status to Previous Gate`; topology tests and path constants must account for those nodes.
 - Workflow-side fail-closed validation for artifact_markdown: Success path (no blocker) routes through `Validate Staged Artifact` node before `Format Pointer Comment` and `PUT Replace Doc Page Content`. Blocker path (has_blocker=true) bypasses validation and goes directly to `Format Blocker Comment`. Empty or missing artifact_markdown throws error with task_id and stage context, preventing Doc writes and status advancement (ADR-011).
+- Live n8n deploy credential preservation must apply credentials by credential type for new nodes, not only by node name; otherwise newly added HTTP nodes keep placeholder IDs and fail at runtime. The live replacement ClickUp credential created during task_38 is `UWTBHE3QcxvabRWb` (`ClickUp Marketing Pipeline Codex 2026-07-03`).
+- `Editorial Doc Url` is a ClickUp URL custom field; persist it through `POST /task/{task_id}/field/{field_id}` with `{ value: "https://app.clickup.com/{workspace_id}/v/dc/{doc_id}" }`. `PUT /task/{task_id}` with a `custom_fields` object does not set the field value.
+- Generated n8n ClickUp HTTP nodes with JSON bodies should send an explicit `Content-Type: application/json` header; ClickUp Docs page creation returned HTTP 500 from n8n without it while the same API call succeeded directly with the header.
 
 ## Open Risks
 - None currently identified. Stage output validation, parser equivalence, and fail-closed artifact checks are all complete.

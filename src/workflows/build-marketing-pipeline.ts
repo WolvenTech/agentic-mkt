@@ -11,6 +11,7 @@ import {
   dedupIfExpression,
   detectBlockerJs,
   docCreatedJs,
+  docReadyJs,
   extractLatestLeadFeedbackJs,
   extractStageJs,
   extractTaskFieldsJs,
@@ -97,6 +98,14 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
         url,
         authentication: "predefinedCredentialType",
         nodeCredentialType: "clickUpApi",
+        ...(jsonBody
+          ? {
+              sendHeaders: true,
+              headerParameters: {
+                parameters: [{ name: "Content-Type", value: "application/json" }],
+              },
+            }
+          : {}),
         ...(jsonBody ? { sendBody: true, specifyBody: "json", jsonBody } : {}),
         options: {},
       },
@@ -357,17 +366,17 @@ export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nW
     clickUpHttpNode(
       "PUT Update Editorial Doc Url",
       [4256, 448],
-      "PUT",
-      "=https://api.clickup.com/api/v2/task/{{ $json.task_id }}",
-      "={{ { custom_fields: $json.custom_fields_payload } }}"
+      "POST",
+      "=https://api.clickup.com/api/v2/task/{{ $json.task_id }}/field/{{ $json.editorial_doc_url_field_id }}",
+      "={{ { value: $json.editorial_doc_url } }}"
     ),
     {
       id: nodeId("Doc Ready"),
       name: "Doc Ready",
-      type: "n8n-nodes-base.noOp",
-      typeVersion: 1,
+      type: "n8n-nodes-base.code",
+      typeVersion: 2,
       position: [4480, 352],
-      parameters: {},
+      parameters: { jsCode: docReadyJs() },
     },
     clickUpHttpNode(
       "GET List Doc Pages",
