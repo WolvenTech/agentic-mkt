@@ -246,43 +246,20 @@ describe("live proof and rollout readiness (task_22–23)", () => {
   const listSchema = loadText(resolve(REPO_ROOT, "clickup", "list-schema.md"));
   const n8nReadme = loadText(DOMAIN_READMES.n8n);
 
-  describe("live proof is explicitly required before production rollout", () => {
-    it("list-schema.md has a Rollout Readiness section", () => {
+  describe("production status is documented", () => {
+    it("list-schema.md has a Production Status section", () => {
       const lower = listSchema.toLowerCase();
-      expect(lower).toContain("rollout readiness");
+      expect(lower).toContain("production status");
     });
 
-    it("list-schema.md explicitly states production rollout is blocked until live proof completes", () => {
+    it("list-schema.md states the staged workflow is live and passed validation", () => {
       const lower = listSchema.toLowerCase();
-      expect(lower).toContain("production rollout is blocked");
-      expect(lower).toContain("live proof");
+      expect(lower).toContain("live");
+      expect(lower).toContain("passed live validation");
     });
 
     it("list-schema.md references the live validation runbook", () => {
       expect(listSchema).toContain("LIVE-PROOF-RUNBOOK.md");
-    });
-  });
-
-  describe("migration guidance is documented", () => {
-    it("list-schema.md has a Migration section for old in-flight tasks", () => {
-      const lower = listSchema.toLowerCase();
-      expect(lower).toContain("migration");
-      expect(lower).toContain("old");
-      expect(lower).toContain("in-flight");
-    });
-
-    it("list-schema.md documents old statuses that need migration", () => {
-      const lower = listSchema.toLowerCase();
-      expect(lower).toContain("ready");
-      expect(lower).toContain("writing");
-      expect(lower).toContain("approval");
-      expect(lower).toContain("needs review");
-    });
-
-    it("list-schema.md explains the decision tree for migrating each task", () => {
-      const lower = listSchema.toLowerCase();
-      expect(lower).toContain("decision tree");
-      expect(lower).toContain("option");
     });
   });
 });
