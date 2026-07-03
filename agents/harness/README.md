@@ -21,14 +21,14 @@ Currently **no idempotency** ([ADR-001](../../adrs/adr-001.md)). Field names mat
 |------|---------|
 | [`io-contract.md`](io-contract.md) | Input envelope, sub-workflow contract, error handling, ClickUp comment template, troubleshooting, reusable patterns |
 | [`output-schema.json`](output-schema.json) | JSON Schema for the legacy single-agent response shape (`AgentOutput`) |
-| [`green-run-evidence.json`](green-run-evidence.json) | Committed green-run scaffold; promote from `logs/green-run/` after verified run |
+| `green-run-evidence.json` | Local-only (gitignored) latest-run snapshot; refresh with `GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run` |
 | [`../agents/linkedin-writer.json`](../linkedin-writer.json) | Legacy single-agent config; `output_schema` is the semantic source of truth for that (non-staged) contract |
 
 ## Operational runbook
 
 After the initial green run, operators use this harness for diagnosis and cross-project replication:
 
-1. **Verify a run succeeded** — compare against [`io-contract.md` → Green run evidence](io-contract.md#green-run-evidence). Update [`green-run-evidence.json`](green-run-evidence.json) after each production validation.
+1. **Verify a run succeeded** — compare against [`io-contract.md` → Green run evidence](io-contract.md#green-run-evidence). Refresh the local `green-run-evidence.json` after each validation with `GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run`.
 2. **Trace failures** — follow [`io-contract.md` → Troubleshooting](io-contract.md#troubleshooting) (webhook ingress, stuck In Progress, OpenAI parse, field ID mismatches).
 3. **Understand timing** — [`io-contract.md` → Workflow sequence expectations](io-contract.md#workflow-sequence-expectations) documents the marketing lead experience and n8n node sequence.
 4. **Replicate on new projects** — adopt the four patterns in [`io-contract.md` → Reusable harness patterns](io-contract.md#reusable-harness-patterns) (sub-workflow contract, status flow, brief gate, GitHub runtime config).

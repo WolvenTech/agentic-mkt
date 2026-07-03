@@ -6,7 +6,7 @@ This document guides manual validation of the staged Content Quality Pipeline in
 
 ## Quick Links
 
-- **Evidence Tracking**: `agents/harness/green-run-evidence.json`
+- **Evidence Tracking**: `agents/harness/green-run-evidence.json` (local-only, gitignored — refresh with `GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run`)
 - **ClickUp List**: [Linkedin Post Creator](https://app.clickup.com/901327635891)
 - **n8n Instance**: https://n8n.wolven.com.br
 - **Workflow Exports**: `marketing-pipelines/`
@@ -315,11 +315,11 @@ Already complete — `Ready`, `Writing`, `Approval`, and `Needs Review` no longe
 
 ### Step 3: Record Green-Run Evidence
 
-Update `agents/harness/green-run-evidence.json`:
-- Fill in all Phase 1–4 test results
-- Record latency measurements
-- Set `validation_status` to `"passed"` if all phases succeed
-- Add any observations or anomalies
+Run `GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run` to refresh the local (gitignored) `agents/harness/green-run-evidence.json` with:
+- All Phase 1–4 test results
+- Latency measurements
+- `validation_status` set to `"passed"` if all phases succeed
+- Any observations or anomalies
 
 ### Step 4: Team Sign-Off
 
@@ -338,10 +338,10 @@ The staged pipeline is live and this gate has been satisfied (see [`clickup/list
 - [ ] **Phase 2 passed**: Happy path completes with Doc creation, comments, and status auto-advances
 - [ ] **Phase 3 passed**: Blocker handling works correctly and recovery succeeds
 - [ ] **Phase 4 passed**: Self-echo filtering confirmed; no duplicate executions
-- [ ] **Latency verified**: All stages ≤60s (record actuals in green-run-evidence.json)
+- [ ] **Latency verified**: All stages ≤60s (record actuals in the local green-run-evidence.json)
 - [ ] **n8n deployed**: Workflows active and webhook registered
 - [ ] **Team review complete**: Sign-off from marketing lead + engineering
-- [ ] **Evidence recorded**: green-run-evidence.json fully populated
+- [ ] **Evidence recorded**: local green-run-evidence.json fully populated
 
 ---
 
@@ -403,7 +403,7 @@ Local verification scripts report their status via exit codes (per [ADR-008](../
 ✅ **Task is complete when**:
 
 1. All Phase 1–4 tests pass with evidence recorded
-2. Latency per stage documented in green-run-evidence.json
+2. Latency per stage documented in the local green-run-evidence.json
 3. No unexpected behavior during live execution
 4. Workflow stable for 24+ hours post-deployment
 5. Team sign-off on production readiness

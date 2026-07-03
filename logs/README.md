@@ -21,13 +21,13 @@ pnpm green-run
 GREEN_RUN_EXECUTE=1 pnpm green-run
 ```
 
-To promote a successful run into the committed canonical evidence file (for docs and tests), copy manually or set:
+To refresh the local "latest known-good run" snapshot, set:
 
 ```bash
 GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run
 ```
 
-That updates [`agents/harness/green-run-evidence.json`](../agents/harness/green-run-evidence.json) — commit only after a verified green run.
+That updates `agents/harness/green-run-evidence.json`, which is gitignored (same as everything under this directory) — it's a local inspection artifact, never committed, so repeated runs (including agentic evals or human test passes) never create a new versioned surface.
 
 ## Cleanup
 

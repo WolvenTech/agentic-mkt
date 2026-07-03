@@ -29,8 +29,6 @@ ClickUp: backlog → investigate → brief review → write → content review �
 | [`logs/`](logs/README.md) | **Gitignored** local run output (green-run evidence, transcripts) |
 | [`tests/`](tests/) | Contract and scaffold validation suite |
 
-Planning artifacts (PRD, TechSpec, tasks) live in `.compozy/tasks/` (local, gitignored).
-
 ## Quick start
 
 ### Prerequisites
@@ -77,13 +75,13 @@ Exit **0** means ClickUp and n8n are reachable with valid credentials. Exit **1*
 
 ### Run logs
 
-Scripts write ephemeral output under [`logs/`](logs/README.md). That directory is gitignored except `logs/README.md` and `logs/.gitkeep`. To promote a successful green run into committed docs:
+Scripts write ephemeral output under [`logs/`](logs/README.md). That directory is gitignored except `logs/README.md` and `logs/.gitkeep`. To refresh the local "latest known-good run" snapshot:
 
 ```bash
 GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run
 ```
 
-Then commit `agents/harness/green-run-evidence.json` manually.
+This writes `agents/harness/green-run-evidence.json`, which is itself gitignored — it's a local inspection artifact, not a committed one, so re-running it never creates a new versioned surface.
 
 ### Workflow deploy path
 

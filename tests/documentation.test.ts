@@ -51,7 +51,7 @@ function loadText(path: string): string {
   return readFileSync(path, "utf-8");
 }
 
-function loadEvidence(): {
+interface GreenRunEvidence {
   validation_status: string;
   main_workflow: {
     verified: boolean;
@@ -60,23 +60,31 @@ function loadEvidence(): {
     latency_seconds: number | null;
     status_path: string[];
   };
-} {
-  return JSON.parse(readFileSync(GREEN_RUN_EVIDENCE_PATH, "utf-8"));
+}
+
+/** green-run-evidence.json is gitignored (local-only, never committed) — absent is the normal CI/fresh-clone state. */
+function loadEvidence(): GreenRunEvidence | undefined {
+  try {
+    return JSON.parse(readFileSync(GREEN_RUN_EVIDENCE_PATH, "utf-8"));
+  } catch {
+    return undefined;
+  }
 }
 
 describe("green-run evidence cross-references", () => {
   const contract = loadText(IO_CONTRACT_PATH);
   const evidence = loadEvidence();
-  const main = evidence.main_workflow;
+  const main = evidence?.main_workflow;
 
-  it("main_workflow has the required evidence fields", () => {
+  it("main_workflow has the required evidence fields when a local evidence file is present", () => {
+    if (!main) return;
     for (const key of ["n8n_execution_id", "clickup_task_url", "latency_seconds", "status_path"]) {
       expect(main).toHaveProperty(key);
     }
   });
 
   it("documents the execution ID once a run has passed and verified", () => {
-    if (evidence.validation_status !== "passed" || !main.verified) {
+    if (!evidence || evidence.validation_status !== "passed" || !main?.verified) {
       expect(contract.toLowerCase()).toContain("validation_status");
       return;
     }
@@ -88,7 +96,7 @@ describe("green-run evidence cross-references", () => {
   });
 
   it("documents the ClickUp task URL once a run has passed and verified", () => {
-    if (evidence.validation_status !== "passed" || !main.verified) {
+    if (!evidence || evidence.validation_status !== "passed" || !main?.verified) {
       expect(contract).toContain("green-run-evidence.json");
       return;
     }
@@ -99,8 +107,8 @@ describe("green-run evidence cross-references", () => {
     }
   });
 
-  it("documents observed latency under the M1 target once a run has passed and verified", () => {
-    if (evidence.validation_status !== "passed" || !main.verified) {
+  it("documents observed latency once a run has passed and verified", () => {
+    if (!evidence || evidence.validation_status !== "passed" || !main?.verified) {
       expect(contract.toLowerCase()).toContain("latency");
       return;
     }

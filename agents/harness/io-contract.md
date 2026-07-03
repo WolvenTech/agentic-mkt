@@ -176,16 +176,16 @@ Tags are visible on ClickUp board cards and provide at-a-glance AI status signal
 
 ## Green run evidence
 
-The staged pipeline is live and has passed production validation (see [`LIVE-PROOF-RUNBOOK.md`](LIVE-PROOF-RUNBOOK.md) and the [ADR-009](../../adrs/adr-009.md) one-Doc-reuse live proof). Committed scaffold: [`green-run-evidence.json`](green-run-evidence.json) — **note: this file still reflects the pre-launch preflight snapshot and needs promoting from a real run** (see below). Live run output goes to `logs/green-run/<timestamp>/evidence.json` (gitignored — see [`logs/README.md`](../../logs/README.md)). Run:
+The staged pipeline is live and has passed production validation (see [`LIVE-PROOF-RUNBOOK.md`](LIVE-PROOF-RUNBOOK.md) and the [ADR-009](../../adrs/adr-009.md) one-Doc-reuse live proof). `green-run-evidence.json` is a **local-only, gitignored** snapshot of the latest known-good run — it is never committed, so re-running validation (including agentic evals or human test passes) never creates a new versioned surface. Live run output also goes to `logs/green-run/<timestamp>/evidence.json` (gitignored — see [`logs/README.md`](../../logs/README.md)). Run:
 
 ```bash
 pnpm vendor:gate                       # exit 0 required before any step below
 pnpm green-run                         # preflight only → logs/
 GREEN_RUN_EXECUTE=1 pnpm green-run      # after infra ready
-GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run   # promote run into green-run-evidence.json for commit
+GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run   # refresh the local green-run-evidence.json snapshot
 ```
 
-Until that promotion runs, `green-run-evidence.json`'s `validation_status` and per-stage latency fields still show the pre-launch preflight snapshot rather than the passed [ADR-009](../../adrs/adr-009.md) run — target latency remains ≤60s per stage.
+`green-run-evidence.json`'s `validation_status` field and per-stage latency fields reflect whatever run last refreshed it locally — target latency is ≤60s per stage.
 
 **Failure observations (best-effort):**
 
@@ -332,7 +332,7 @@ Actionable diagnostics for common failure modes. Primary diagnostic surface: **n
 1. Open **n8n → Executions** and find the run for this task (filter by workflow **Marketing Pipeline**, sort by time).
 2. Check execution status: **Error** (red) vs **Success** (green) vs **Running** (stuck).
 3. Walk the staged node sequence: **GET ClickUp Task** → **Extract Task Fields** → stage IF (**Investigate?**, **Write?**, or **Format?**) → **Add agent-working** → **GET Task Comments** → **Collect Task Comments** → **Read Current Page** → **Execute Call Agent** → pointer/blocker comment handling.
-4. If failed at **Execute Call Agent**, open the sub-workflow execution (ID often one less than main — see [green run evidence](#m1-green-run-evidence)). Check **Parse Agent Output** for `parse_success: false` or error envelope.
+4. If failed at **Execute Call Agent**, open the sub-workflow execution (ID often one less than main — see [green run evidence](#green-run-evidence)). Check **Parse Agent Output** for `parse_success: false` or error envelope.
 5. If failed at **GET ClickUp Task** or **POST Task Comment**, re-bind the ClickUp credential and verify the token has access to the Marketing Pipeline list.
 6. If **Running** for > 120 s, check OpenAI node timeout and GitHub fetch retries (max 2). Cancel stale execution and retry after fixing credentials.
 7. Confirm task was not manually moved out of the stage during the run — partial runs can leave the `agent-working` tag with no comment.
@@ -431,7 +431,5 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 | Path | Role |
 |------|------|
 | [`output-schema.json`](output-schema.json) | JSON Schema for `AgentOutput` validation |
-| [`green-run-evidence.json`](green-run-evidence.json) | Committed green-run scaffold; promote from `logs/green-run/` after verified run |
+| `green-run-evidence.json` | Local-only (gitignored) latest-run snapshot; refresh with `GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run` |
 | [`linkedin-writer.json`](../linkedin-writer.json) | Legacy single-agent config and `output_schema` descriptions (see note in [agents/README.md](../README.md#agent-json-schema) on how this relates to the staged agent configs) |
-| TechSpec (local, gitignored — `.compozy/tasks/marketing-pipeline-clickup-n8n/_techspec.md`) | Core Interfaces, sub-workflow contract, integration error handling |
-| PRD (local, gitignored — `.compozy/tasks/marketing-pipeline-clickup-n8n/_prd.md`) | F5 harness documentation requirements |

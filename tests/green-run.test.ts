@@ -49,12 +49,55 @@ function writeTempFieldMapping(mapping: FieldMapping): string {
   return path;
 }
 
+let createdEvidencePath = false;
+
+/** EVIDENCE_PATH is gitignored (never committed) — seed a baseline locally if it doesn't exist yet. */
+function ensureBaselineEvidence(): string {
+  try {
+    return readFileSync(EVIDENCE_PATH, "utf-8");
+  } catch {
+    const baseline = JSON.stringify(
+      {
+        recorded_at: "2026-01-01",
+        session: "test-baseline",
+        validation_status: "blocked",
+        preflight: { checklist: [], coverage_percent: 0, blockers: [] },
+        main_workflow: {
+          verified: false,
+          n8n_execution_id: "",
+          n8n_host: "",
+          clickup_task_id: "",
+          clickup_task_url: "",
+          clickup_task_name: "",
+          status_path: [],
+          latency_seconds: null,
+          latency_breakdown: {},
+          comment_sections_verified: [],
+          marketing_lead_usability: "",
+          silent_failures: null,
+        },
+        call_agent_subworkflow: {},
+        failure_observations: {},
+      },
+      null,
+      2
+    );
+    writeFileSync(EVIDENCE_PATH, baseline, "utf-8");
+    createdEvidencePath = true;
+    return baseline;
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   if (tmpDir) {
     rmSync(tmpDir, { recursive: true, force: true });
     tmpDir = undefined;
+  }
+  if (createdEvidencePath) {
+    rmSync(EVIDENCE_PATH, { force: true });
+    createdEvidencePath = false;
   }
 });
 
@@ -1041,7 +1084,7 @@ describe("linkN8nExecutionsForTask (mocked n8n client)", () => {
 
 describe("main() — token present, real (unsynced) field-mapping.json blocks preflight", () => {
   it("exits 2, prints the preflight checklist and blockers, and writes evidence without touching canonical (no GREEN_RUN_UPDATE_CANONICAL)", async () => {
-    const beforeCanonical = readFileSync(EVIDENCE_PATH, "utf-8");
+    const beforeCanonical = ensureBaselineEvidence();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: true }] }))
@@ -1094,7 +1137,7 @@ describe("main() — ready/unverified green run", () => {
 
 describe("main() — offline (no CLICKUP_API_TOKEN)", () => {
   it("exits 2, writes logs/green-run/<timestamp>/evidence.json, and leaves canonical evidence untouched", async () => {
-    const beforeCanonical = readFileSync(EVIDENCE_PATH, "utf-8");
+    const beforeCanonical = ensureBaselineEvidence();
     const beforeDirs = listRunDirs();
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -1124,7 +1167,7 @@ describe("main() — offline (no CLICKUP_API_TOKEN)", () => {
   });
 
   it("does not update canonical evidence on the token-missing path even with GREEN_RUN_UPDATE_CANONICAL=1 (that branch returns before promotion logic runs)", async () => {
-    const beforeCanonical = readFileSync(EVIDENCE_PATH, "utf-8");
+    const beforeCanonical = ensureBaselineEvidence();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
