@@ -45,7 +45,7 @@ export const GREEN_RUN_CHECKLIST = [
   "revision_latency_under_60s",
 ] as const;
 
-const REQUIRED_FIELDS = ["Critérios de Aceite", "agent_id"];
+const REQUIRED_FIELDS = ["ACs", "Agent"];
 
 const RUNTIME_STEPS = [
   "test_task_brief_complete",
@@ -813,6 +813,16 @@ export function shouldUpdateCanonical(env: NodeJS.ProcessEnv = process.env): boo
   return ["1", "true", "yes"].includes((env.GREEN_RUN_UPDATE_CANONICAL ?? "").toLowerCase());
 }
 
+function readySkippedRuntimePhases(): string[] {
+  return RUNTIME_STEPS;
+}
+
+function printReadyUnverifiedOutput(): void {
+  console.error("\nReady but unverified:");
+  console.error(`  Skipped runtime phases: ${readySkippedRuntimePhases().join(", ")}`);
+  console.error("  Run GREEN_RUN_EXECUTE=1 pnpm green-run to execute the live path.");
+}
+
 /** CLI entrypoint logic: loads `.env`, runs preflight (+ optional execute), writes evidence, returns the exit code. */
 export async function main(env: NodeJS.ProcessEnv = process.env): Promise<number> {
   loadRepoDotenv(undefined, env);
@@ -863,6 +873,10 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<number
       console.error(`  - ${blocker}`);
     }
     return 2;
+  }
+  if (evidence.validation_status === "ready") {
+    printReadyUnverifiedOutput();
+    return 3;
   }
   return 0;
 }

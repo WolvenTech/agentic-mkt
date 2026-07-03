@@ -1,0 +1,17 @@
+{
+  "id": "linkedin-format",
+  "provider": "openai",
+  "model": "gpt-4.1-mini",
+  "temperature": 0.7,
+  "max_output_tokens": 1024,
+  "skills": ["wolven-voice", "linkedin-format"],
+  "references": ["agents/references/linkedin-structure.md"],
+  "output_schema": {
+    "stage": "format",
+    "artifact_markdown": "The adapted final LinkedIn post: channel-specific formatting, hook, structure, and call-to-action ready for publication",
+    "resumo": "2-3 sentence summary of the final LinkedIn post adaptation",
+    "self_check": "Bullet list validating the post against evidence traceability, Wolven voice, LinkedIn structure, and acceptance criteria",
+    "next_gate": "final review",
+    "blocker_question": "One highest-impact question when the argument is missing or insufficient; omitted when post is complete"
+  }
+}

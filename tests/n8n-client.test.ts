@@ -431,4 +431,59 @@ describe("summarizeExecution", () => {
 
     expect(summarizeExecution(execution).duration_ms).toBe(100);
   });
+
+  it("creates a workflow via POST", async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(`${N8N_API_URL_DEFAULT}/api/v1/workflows`);
+      expect(init.method).toBe("POST");
+      expect(init.body).toContain('"name":"New Workflow"');
+      return jsonResponse({ id: "new-wf-123" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createN8nClient(OPTIONS);
+    const result = await client.createWorkflow({
+      name: "New Workflow",
+      nodes: [],
+      connections: {},
+      settings: {},
+    });
+    expect(result.id).toBe("new-wf-123");
+  });
+
+  it("activates a workflow via POST /activate", async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(`${N8N_API_URL_DEFAULT}/api/v1/workflows/wf-789/activate`);
+      expect(init.method).toBe("POST");
+      return jsonResponse({ ok: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createN8nClient(OPTIONS);
+    await expect(client.activateWorkflow("wf-789")).resolves.toBeUndefined();
+  });
+
+  it("deactivates a workflow via POST /deactivate", async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(`${N8N_API_URL_DEFAULT}/api/v1/workflows/wf-456/deactivate`);
+      expect(init.method).toBe("POST");
+      return jsonResponse({ ok: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createN8nClient(OPTIONS);
+    await expect(client.deactivateWorkflow("wf-456")).resolves.toBeUndefined();
+  });
+
+  it("deletes a workflow via DELETE", async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(`${N8N_API_URL_DEFAULT}/api/v1/workflows/wf-del`);
+      expect(init.method).toBe("DELETE");
+      return jsonResponse({ ok: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createN8nClient(OPTIONS);
+    await expect(client.deleteWorkflow("wf-del")).resolves.toBeUndefined();
+  });
 });

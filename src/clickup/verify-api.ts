@@ -47,8 +47,8 @@ export async function verify(token: string, listId: string, options: VerifyOptio
     fieldIds.set(spec.name, spec.clickup_field_id);
   }
 
-  const criteriosId = fieldIds.get("Critérios de Aceite");
-  const agentFieldId = fieldIds.get("agent_id");
+  const criteriosId = fieldIds.get("ACs");
+  const agentFieldId = fieldIds.get("Agent");
   if (!criteriosId || !agentFieldId) {
     throw new Error("field-mapping.json is missing expected custom field names");
   }

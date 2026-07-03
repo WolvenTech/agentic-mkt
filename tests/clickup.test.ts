@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ingressMatchesReadyToWork, loadFieldMapping } from "../src/marketing-pipeline/logic.js";
+import { extractStageFromWebhook, loadFieldMapping } from "../src/marketing-pipeline/logic.js";
 import { MissingCustomFieldsError, main as syncMain, syncFieldMapping } from "../src/clickup/sync-field-mapping.js";
 import { automationStatusDisplayName } from "../src/types/field-mapping.js";
 import type { FieldMapping } from "../src/types/field-mapping.js";
@@ -76,7 +76,7 @@ describe("syncFieldMapping", () => {
       "fetch",
       vi.fn(async (url: string) => {
         if (url.endsWith("/field")) {
-          return jsonResponse({ fields: [{ id: "cf_agent_id_001", name: "agent_id" }] });
+          return jsonResponse({ fields: [{ id: "cf_agent_id_001", name: "Agent" }] });
         }
         return jsonResponse(listDetail);
       })
@@ -86,7 +86,7 @@ describe("syncFieldMapping", () => {
       MissingCustomFieldsError
     );
     await expect(syncFieldMapping("pk_test_token", "901234567", { fieldMappingPath: tmpPath })).rejects.toThrow(
-      /Critérios de Aceite/
+      /ACs/
     );
 
     expect(readFileSync(tmpPath, "utf-8")).toBe(originalContents);
@@ -173,8 +173,8 @@ describe("verify", () => {
   it("creates a task, sets custom fields, reads them back, and deletes the task by default", async () => {
     const tmpPath = writeTempFieldMapping(syncedFieldMapping());
     const fetchMock = stubVerifyFetch([
-      { id: "cf_criterios_001", name: "Critérios de Aceite" },
-      { id: "cf_agent_id_001", name: "agent_id" },
+      { id: "cf_criterios_001", name: "ACs" },
+      { id: "cf_agent_id_001", name: "Agent" },
     ]);
 
     const taskId = await verify("pk_test_token", "901234567", { fieldMappingPath: tmpPath });
@@ -187,8 +187,8 @@ describe("verify", () => {
   it("skips deletion when cleanup is false", async () => {
     const tmpPath = writeTempFieldMapping(syncedFieldMapping());
     const fetchMock = stubVerifyFetch([
-      { id: "cf_criterios_001", name: "Critérios de Aceite" },
-      { id: "cf_agent_id_001", name: "agent_id" },
+      { id: "cf_criterios_001", name: "ACs" },
+      { id: "cf_agent_id_001", name: "Agent" },
     ]);
 
     await verify("pk_test_token", "901234567", { cleanup: false, fieldMappingPath: tmpPath });
@@ -199,9 +199,9 @@ describe("verify", () => {
 
   it("throws and still deletes the task when a custom field is missing from the GET response", async () => {
     const tmpPath = writeTempFieldMapping(syncedFieldMapping());
-    const fetchMock = stubVerifyFetch([{ id: "cf_criterios_001", name: "Critérios de Aceite" }]);
+    const fetchMock = stubVerifyFetch([{ id: "cf_criterios_001", name: "ACs" }]);
 
-    await expect(verify("pk_test_token", "901234567", { fieldMappingPath: tmpPath })).rejects.toThrow(/agent_id/);
+    await expect(verify("pk_test_token", "901234567", { fieldMappingPath: tmpPath })).rejects.toThrow(/Agent/);
     const deleteCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit).method === "DELETE");
     expect(deleteCall).toBeDefined();
   });
@@ -209,8 +209,8 @@ describe("verify", () => {
   it("throws when a custom field is present but has no id in the GET response", async () => {
     const tmpPath = writeTempFieldMapping(syncedFieldMapping());
     stubVerifyFetch([
-      { id: "", name: "Critérios de Aceite" },
-      { id: "cf_agent_id_001", name: "agent_id" },
+      { id: "", name: "ACs" },
+      { id: "cf_agent_id_001", name: "Agent" },
     ]);
 
     await expect(verify("pk_test_token", "901234567", { fieldMappingPath: tmpPath })).rejects.toThrow(/has no id/);
@@ -231,8 +231,8 @@ describe("verify", () => {
           return jsonResponse({
             id: "86btest01",
             custom_fields: [
-              { id: "cf_criterios_001", name: "Critérios de Aceite" },
-              { id: "cf_agent_id_001", name: "agent_id" },
+              { id: "cf_criterios_001", name: "ACs" },
+              { id: "cf_agent_id_001", name: "Agent" },
             ],
           });
         }
@@ -275,9 +275,9 @@ describe("verify", () => {
 });
 
 describe("webhook ingress + field-mapping structure (clickup.test.ts deliverable)", () => {
-  it("matches the Ready to Work filter for the webhook fixture", () => {
-    const payload = loadFixture<Record<string, unknown>>("task-status-updated-ready-to-work.json");
-    expect(ingressMatchesReadyToWork(payload as never, loadFieldMapping())).toBe(true);
+  it("extracts the investigate stage from the staged webhook fixture", () => {
+    const payload = loadFixture<Record<string, unknown>>("task-status-updated-investigate.json");
+    expect(extractStageFromWebhook(payload as never, loadFieldMapping())).toBe("investigate");
   });
 
   it("loads the Needs Review status mapping for revision ingress", () => {

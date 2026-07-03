@@ -1,4 +1,5 @@
 import { DEFAULT_AGENT_ID, DEFAULT_MODEL, fieldId } from "../marketing-pipeline/logic.js";
+import { ALL_STAGES } from "../marketing-pipeline/stages.js";
 import type { FieldMapping } from "../types/field-mapping.js";
 import { joinN8nJs } from "./n8n-codegen.js";
 
@@ -28,6 +29,7 @@ export function extractWebhookContextJs(): string {
     "    ingress_mode: String(raw.ingress_mode ?? payload.ingress_mode ?? 'first_draft'),",
     "    transition_before: statusValue(first.before),",
     "    transition_after: statusValue(first.after),",
+    "    stage: payload.stage || null,",
     "  },",
     "}];",
   ]);
@@ -51,27 +53,39 @@ export const READ_CUSTOM_FIELD_JS = [
 export function extractTaskFieldsJs(fieldMapping: FieldMapping): string {
   const criteriosId = fieldId(fieldMapping, "criterios_de_aceite");
   const agentFieldId = fieldId(fieldMapping, "agent_id");
+  const docUrlId = fieldId(fieldMapping, "editorial_doc_url");
   const defaultAgentId = String(fieldMapping.custom_fields.agent_id?.default ?? DEFAULT_AGENT_ID);
   return joinN8nJs([
     "const FIELD_IDS = {",
     `  criterios_de_aceite: ${JSON.stringify(criteriosId)},`,
     `  agent_id: ${JSON.stringify(agentFieldId)},`,
+    `  editorial_doc_url: ${JSON.stringify(docUrlId)},`,
     `  default_agent_id: ${JSON.stringify(defaultAgentId)},`,
+    "};",
+    "",
+    "const STAGE_TO_AGENT = {",
+    "  investigate: 'investigative-brief',",
+    "  write: 'long-form-argument',",
+    "  format: 'linkedin-format',",
     "};",
     "",
     READ_CUSTOM_FIELD_JS,
     "",
     "const task = $input.first().json;",
     "const webhook = $('Extract Webhook Context').first().json;",
-    "const agentId = readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id;",
+    "const stage = webhook.stage || null;",
+    "const agentId = stage && STAGE_TO_AGENT[stage] ? STAGE_TO_AGENT[stage] : (readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id);",
     "",
     "return [{",
     "  json: {",
     "    task_id: String(task.id ?? webhook.task_id ?? ''),",
+    "    stage: stage,",
     "    agent_id: agentId,",
     "    task_title: String(task.name ?? ''),",
     "    task_description: String(task.description ?? task.text_content ?? ''),",
     "    criterios_de_aceite: readCustomField(task, FIELD_IDS.criterios_de_aceite),",
+    "    editorial_doc_url: readCustomField(task, FIELD_IDS.editorial_doc_url),",
+    "    workspace_id: String(task.team_id ?? ''),",
     "    ingress_mode: String(webhook.ingress_mode ?? 'first_draft'),",
     `    model: ${JSON.stringify(DEFAULT_MODEL)},`,
     "  },",
@@ -124,8 +138,19 @@ export const REVISION_COMMENT_HELPERS_JS = [
   "  return username === 'system' || username.includes('clickup') || username.includes('automation');",
   "}",
   "",
+  "function isCqPointerComment(comment) {",
+  "  const body = commentBody(comment);",
+  "  return body.startsWith('[CQ-AI]');",
+  "}",
+  "",
+  "function isCqBlockerComment(comment) {",
+  "  const body = commentBody(comment);",
+  "  return body.startsWith('[CQ-BLOCKER]');",
+  "}",
+  "",
   "function isActionableComment(comment) {",
-  "  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment);",
+  "  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment) &&",
+  "    !isCqPointerComment(comment) && !isCqBlockerComment(comment);",
   "}",
   "",
   "function actionableComments(comments) {",
@@ -408,5 +433,603 @@ export function setNeedsReviewSkipTargetJs(): string {
   return joinN8nJs([
     "const item = $input.first().json;",
     "return [{ json: { ...item, target_status_key: 'needs_review' } }];",
+  ]);
+}
+
+/** n8n IF node expression: does the task already have an editorial_doc_url pointer? */
+export function hasDocUrlIfExpression(): string {
+  return "={{ Boolean(String($('Extract Task Fields').first().json.editorial_doc_url ?? '').trim()) }}";
+}
+
+/** n8n Code node: Use Existing Doc — reuse the doc_id from editorial_doc_url. */
+export function useExistingDocJs(): string {
+  return joinN8nJs([
+    "const fields = $('Extract Task Fields').first().json;",
+    "const pointer = String(fields.editorial_doc_url ?? '').trim();",
+    "",
+    "if (!pointer) {",
+    "  throw new Error('Editorial Doc Url custom field is empty. Expected a Doc ID or ClickUp Doc URL.');",
+    "}",
+    "",
+    "// Normalize: extract Doc ID from ClickUp Doc URL or use bare ID",
+    "let docId;",
+    "if (pointer.includes('doc.clickup.com')) {",
+    "  const match = pointer.match(/\\/p\\/h\\/([a-z0-9]+)/i);",
+    "  if (match && match[1]) {",
+    "    docId = match[1];",
+    "  } else {",
+    "    throw new Error(`Failed to extract Doc ID from ClickUp Doc URL: ${pointer}`);",
+    "  }",
+    "} else if (pointer.includes('app.clickup.com')) {",
+    "  const match = pointer.match(/\\/dc\\/([a-z0-9-]+)/i);",
+    "  if (match && match[1]) {",
+    "    docId = match[1];",
+    "  } else {",
+    "    throw new Error(`Failed to extract Doc ID from ClickUp App URL: ${pointer}`);",
+    "  }",
+    "} else if (/^[a-z0-9-]+$/i.test(pointer)) {",
+    "  docId = pointer;",
+    "} else {",
+    "  throw new Error(`Invalid Doc pointer format: ${pointer}. Expected ClickUp Doc URL or bare Doc ID`);",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    workspace_id: fields.workspace_id,",
+    "    doc_id: docId,",
+    "    doc_created: false,",
+    "    operation: 'use_existing_doc',",
+    "    stage: fields.stage,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Doc Created — validate the POST Create ClickUp Doc response. */
+export function docCreatedJs(): string {
+  return joinN8nJs([
+    "const fields = $('Extract Task Fields').first().json;",
+    "if (!$json.id) {",
+    "  throw new Error('Doc created but response did not include id');",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    workspace_id: fields.workspace_id,",
+    "    doc_id: $json.id,",
+    "    doc_created: true,",
+    "    operation: 'created_doc',",
+    "    stage: fields.stage,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Doc Ready — restore canonical Doc metadata after optional pointer persistence. */
+export function docReadyJs(): string {
+  return joinN8nJs([
+    "let fields = $input.first().json;",
+    "",
+    "if (!fields.doc_id || !fields.workspace_id) {",
+    "  try {",
+    "    const persisted = $('Persist Doc Pointer').first().json;",
+    "    if (persisted.doc_id && persisted.workspace_id) {",
+    "      fields = persisted;",
+    "    }",
+    "  } catch (err) {",
+    "    // Persist Doc Pointer only runs on the new-Doc branch; existing-Doc branch already has the fields.",
+    "  }",
+    "}",
+    "",
+    "if (!fields.doc_id || !fields.workspace_id) {",
+    "  throw new Error('Doc Ready missing doc_id or workspace_id after Doc resolution');",
+    "}",
+    "",
+    "return [{ json: fields }];",
+  ]);
+}
+
+/** n8n Code node: Find Stage Page — locate this stage's page in the GET List Doc Pages response. */
+export function findStagePageJs(): string {
+  const stagePageEntries = ALL_STAGES.map(
+    (definition) => `  ${JSON.stringify(definition.stage)}: ${JSON.stringify(definition.page_name)},`
+  );
+  return joinN8nJs([
+    "const STAGE_TO_PAGE_NAME = {",
+    ...stagePageEntries,
+    "};",
+    "",
+    "const fields = $('Doc Ready').first().json;",
+    "const stage = fields.stage;",
+    "const pageName = STAGE_TO_PAGE_NAME[stage];",
+    "if (!pageName) {",
+    "  throw new Error(`Unknown stage '${stage}'. Expected one of: ${Object.keys(STAGE_TO_PAGE_NAME).join(', ')}`);",
+    "}",
+    "",
+    "const pages = $json.pages || [];",
+    "const existing = pages.find((page) => page.name === pageName);",
+    "",
+    "return [{",
+    "  json: {",
+    "    workspace_id: fields.workspace_id,",
+    "    doc_id: fields.doc_id,",
+    "    stage,",
+    "    page_name: pageName,",
+    "    page_id: existing?.id ?? '',",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n IF node expression: did Find Stage Page locate an existing page_id? */
+export function pageExistsIfExpression(): string {
+  return "={{ Boolean($json.page_id) }}";
+}
+
+/** n8n Code node: Page Created — validate the POST Create Doc Page response. */
+export function pageCreatedJs(): string {
+  return joinN8nJs([
+    "const fields = $('Find Stage Page').first().json;",
+    "if (!$json.id) {",
+    "  throw new Error(`Page '${fields.page_name}' created but response did not include id`);",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...fields,",
+    "    page_id: $json.id,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Read Current Page Content — reshape the GET Doc Page Content response. */
+export function readCurrentPageJs(): string {
+  return joinN8nJs([
+    "const content = $json.content;",
+    "if (content === undefined) {",
+    "  throw new Error('Page fetched but response did not include content');",
+    "}",
+    "",
+    "return [{ json: { page_content: content } }];",
+  ]);
+}
+
+/** n8n Code node: Replace Stage Page Content — reshape the PUT Replace Doc Page Content response. */
+export function replacePageJs(): string {
+  return joinN8nJs([
+    "const fields = $('Format Pointer Comment').first().json;",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...fields,",
+    "    page_replaced: true,",
+    "    operation: 'page_replaced',",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Select Prior Doc Page by Stage (task_13 step 2). */
+export function selectPriorDocPageJs(): string {
+  return joinN8nJs([
+    "const fields = $('Extract Task Fields').first().json;",
+    "const stage = fields.stage || 'investigate';",
+    "",
+    "let priorPageName = null;",
+    "if (stage === 'write') priorPageName = 'Brief';",
+    "if (stage === 'format') priorPageName = 'Argument';",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...fields,",
+    "    prior_page_name: priorPageName,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Extract Latest Lead Feedback Comment (task_13 step 3). */
+export function extractLatestLeadFeedbackJs(): string {
+  return joinN8nJs([
+    REVISION_COMMENT_HELPERS_JS,
+    "",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const collected = $('Collect Task Comments').first().json || {};",
+    "const comments = normalizeComments(collected.feedback_comments ?? collected.comments ?? []);",
+    "",
+    "const actionable = comments.filter((comment) => isActionableComment(comment));",
+    "if (actionable.length === 0) {",
+    "  return [{",
+    "    json: {",
+    "      ...taskFields,",
+    "      lead_feedback: undefined,",
+    "    },",
+    "  }];",
+    "}",
+    "",
+    "const sorted = [...actionable].sort((left, right) => commentTimestamp(left) - commentTimestamp(right));",
+    "const latestFeedback = commentBody(sorted[sorted.length - 1]);",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...taskFields,",
+    "    lead_feedback: latestFeedback || undefined,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Prepare Staged Call Agent Input (task_13 step 4). */
+export function prepareStagedCallAgentInputJs(): string {
+  return joinN8nJs([
+    `const DEFAULT_MODEL = ${JSON.stringify(DEFAULT_MODEL)};`,
+    "",
+    "const fields = $('Extract Task Fields').first().json;",
+    "const priorDoc = $('Read Current Page').first()?.json;",
+    "const feedbackFields = $('Extract Latest Lead Feedback').first()?.json || {};",
+    "",
+    "const stage = fields.stage || 'investigate';",
+    "const priorArtifact = priorDoc?.page_content || '';",
+    "const leadFeedback = feedbackFields.lead_feedback || undefined;",
+    "",
+    "return [{",
+    "  json: {",
+    "    agent_id: fields.agent_id,",
+    "    stage,",
+    "    task_title: fields.task_title,",
+    "    task_description: fields.task_description,",
+    "    criterios_de_aceite: fields.criterios_de_aceite,",
+    "    prior_stage_artifact: priorArtifact || undefined,",
+    "    lead_feedback: leadFeedback,",
+    "    model: fields.model || DEFAULT_MODEL,",
+    "    task_id: fields.task_id,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Extract stage from webhook and store in context for routing. */
+export function extractStageJs(fieldMapping: FieldMapping): string {
+  const investigateStatus = String(fieldMapping.statuses?.investigate ?? "investigate").trim().toLowerCase();
+  const writeStatus = String(fieldMapping.statuses?.write ?? "write").trim().toLowerCase();
+  const formatStatus = String(fieldMapping.statuses?.format ?? "format").trim().toLowerCase();
+
+  return joinN8nJs([
+    UNWRAP_WEBHOOK_PAYLOAD_JS,
+    "",
+    "const items = payload.history_items || [];",
+    "const item = items[0];",
+    "if (!item || item.field !== 'status') {",
+    "  return [{ json: { ...payload, stage: null } }];",
+    "}",
+    "",
+    "const after = item.after;",
+    "const status = (after !== null && typeof after === 'object') ? String(after.status ?? '').trim().toLowerCase() : String(after ?? '').trim().toLowerCase();",
+    "",
+    `const investigateMatch = status === ${JSON.stringify(investigateStatus)};`,
+    `const writeMatch = status === ${JSON.stringify(writeStatus)};`,
+    `const formatMatch = status === ${JSON.stringify(formatStatus)};`,
+    "",
+    "let stage = null;",
+    "if (investigateMatch) stage = 'investigate';",
+    "else if (writeMatch) stage = 'write';",
+    "else if (formatMatch) stage = 'format';",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...payload,",
+    "    stage: stage,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n IF node expression: check if payload has any staged status (investigate, write, or format). */
+export function stagedIngressIfExpression(fieldMapping: FieldMapping = {}): string {
+  const investigateStatus = String(fieldMapping.statuses?.investigate ?? "investigate").trim().toLowerCase();
+  const writeStatus = String(fieldMapping.statuses?.write ?? "write").trim().toLowerCase();
+  const formatStatus = String(fieldMapping.statuses?.format ?? "format").trim().toLowerCase();
+
+  return (
+    `={{ (() => { ` +
+    `const payload = $json.body && $json.body.history_items ? $json.body : $json; ` +
+    `const item = payload?.history_items?.[0]; ` +
+    `if (!item || item.field !== "status") return false; ` +
+    `const after = item.after; ` +
+    `const status = (after !== null && typeof after === "object") ? String(after.status ?? "").trim().toLowerCase() : String(after ?? "").trim().toLowerCase(); ` +
+    `return status === ${JSON.stringify(investigateStatus)} || status === ${JSON.stringify(writeStatus)} || status === ${JSON.stringify(formatStatus)}; ` +
+    `})() }}`
+  );
+}
+
+/** n8n IF node expression: check if stage is investigate. */
+export function routeInvestigateIfExpression(): string {
+  return "={{ $json.stage === 'investigate' }}";
+}
+
+/** n8n IF node expression: check if stage is write. */
+export function routeWriteIfExpression(): string {
+  return "={{ $json.stage === 'write' }}";
+}
+
+/** n8n IF node expression: check if stage is format. */
+export function routeFormatIfExpression(): string {
+  return "={{ $json.stage === 'format' }}";
+}
+
+/** n8n Code node: Format Pointer Comment for successful staged outputs (task_17). */
+export function formatPointerCommentJs(): string {
+  return joinN8nJs([
+    "const agentOutput = $('Execute Call Agent').first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "",
+    "const artifact = (agentOutput.artifact_markdown ?? '').trim();",
+    "const firstLine = artifact.split('\\n')[0].replace(/^#+\\s*/, '').trim();",
+    "const whatChanged = firstLine || '(artifact updated)';",
+    "",
+    "const commentText = [",
+    "  '[CQ-AI] Staged artifact updated',",
+    "  '',",
+    "  `**What changed:** ${whatChanged}`,",
+    "  '',",
+    "  '**Summary:**',",
+    "  `${agentOutput.resumo ?? ''}`,",
+    "  '',",
+    "  '**Self-check:**',",
+    "  `${agentOutput.self_check ?? ''}`,",
+    "  '',",
+    "  `**Next:** Moving to ${agentOutput.next_gate ?? 'next review'}`,",
+    "].join('\\n');",
+    "",
+    "return [{",
+    "  json: {",
+    "    task_id: taskFields.task_id,",
+    "    comment_text: commentText,",
+    "    artifact_markdown: agentOutput.artifact_markdown,",
+    "    next_gate: agentOutput.next_gate,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Update task status to the stage's next_gate (task_17). */
+export function updateStatusToNextGateJs(): string {
+  return joinN8nJs([
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const commentData = $('Format Pointer Comment').first().json;",
+    "const nextGate =  $('Execute Call Agent').first().json.next_gate || '';",
+    "",
+    "const STATUS_MAP = {",
+    "  'brief review': 'Brief Review',",
+    "  'content review': 'Content Review',",
+    "  'final review': 'Final Review',",
+    "};",
+    "",
+    "const statusValue = STATUS_MAP[nextGate];",
+    "if (!statusValue) {",
+    "  throw new Error(`Invalid next_gate '${nextGate}'. Expected one of: brief review, content review, final review`);",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...commentData,",
+    "    status_to_set: statusValue,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Detect blocker output (task_18). Checks for blocker_question field. */
+export function detectBlockerJs(): string {
+  return joinN8nJs([
+    "const agentOutput = $('Execute Call Agent').first().json;",
+    "const hasBlocker = Boolean(agentOutput.blocker_question);",
+    "return [{",
+    "  json: {",
+    "    ...agentOutput,",
+    "    has_blocker: hasBlocker,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Format Blocker Comment (task_18). */
+export function formatBlockerCommentJs(): string {
+  return joinN8nJs([
+    "const agentOutput = $('Execute Call Agent').first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const stage = taskFields.stage || 'unknown';",
+    "",
+    "const STAGE_NAMES = {",
+    "  investigate: 'investigation phase',",
+    "  write: 'argument phase',",
+    "  format: 'formatting phase',",
+    "};",
+    "",
+    "const stageName = STAGE_NAMES[stage] || stage;",
+    "",
+    "const commentText = [",
+    "  '[CQ-BLOCKER] Cannot proceed to next stage',",
+    "  '',",
+    "  `**Stage:** ${stageName}`,",
+    "  '',",
+    "  '**Question for you:**',",
+    "  `${agentOutput.blocker_question ?? ''}`,",
+    "  '',",
+    "  'Please provide the information requested above, then move the task back to this stage.',",
+    "].join('\\n');",
+    "",
+    "return [{",
+    "  json: {",
+    "    task_id: taskFields.task_id,",
+    "    comment_text: commentText,",
+    "    blocker_question: agentOutput.blocker_question,",
+    "    stage: taskFields.stage,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Update task status to the stage's previous_gate (task_18). */
+export function updateStatusToPreviousGateJs(): string {
+  return joinN8nJs([
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const stage = taskFields.stage || 'investigate';",
+    "",
+    "const STAGE_TO_PREVIOUS_GATE = {",
+    "  investigate: 'backlog',",
+    "  write: 'brief review',",
+    "  format: 'content review',",
+    "};",
+    "",
+    "const GATE_STATUS_MAP = {",
+    "  backlog: 'Backlog',",
+    "  'brief review': 'Brief Review',",
+    "  'content review': 'Content Review',",
+    "};",
+    "",
+    "const previousGate = STAGE_TO_PREVIOUS_GATE[stage];",
+    "if (!previousGate) {",
+    "  throw new Error(`Invalid stage '${stage}'. Expected one of: investigate, write, format`);",
+    "}",
+    "",
+    "const statusValue = GATE_STATUS_MAP[previousGate];",
+    "if (!statusValue) {",
+    "  throw new Error(`Invalid previous_gate '${previousGate}'. Expected one of: backlog, brief review, content review`);",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    task_id: taskFields.task_id,",
+    "    status_to_set: statusValue,",
+    "    previous_gate: previousGate,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Persist Doc Pointer — write created Doc ID to Editorial Doc Url custom field. */
+export function persistDocPointerJs(fieldMapping: FieldMapping): string {
+  const docUrlFieldId = fieldId(fieldMapping, "editorial_doc_url");
+  return joinN8nJs([
+    "const docData = $('Doc Created').first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "const docUrl = `https://app.clickup.com/${docData.workspace_id}/v/dc/${docData.doc_id}`;",
+    "",
+    "// Create the custom field update payload for ClickUp API v2 custom field endpoint.",
+    "return [{",
+    "  json: {",
+    "    task_id: taskFields.task_id,",
+    "    doc_id: docData.doc_id,",
+    "    editorial_doc_url: docUrl,",
+    "    workspace_id: docData.workspace_id,",
+    `    editorial_doc_url_field_id: ${JSON.stringify(docUrlFieldId)},`,
+    "    doc_created: true,",
+    "    operation: 'persist_doc_pointer',",
+    "    stage: docData.stage,",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** Helper to normalize a stored Doc pointer (URL or bare ID) to a Doc ID. */
+export function normalizeDocPointerJs(): string {
+  return joinN8nJs([
+    "const pointer = String($json ?? '').trim();",
+    "",
+    "// Extract Doc ID from ClickUp Doc URL or return bare ID",
+    "// ClickUp Doc URLs can look like https://doc.clickup.com/p/h/{doc_id}/... or https://app.clickup.com/{workspace}/v/dc/{doc_id}",
+    "if (pointer.includes('doc.clickup.com')) {",
+    "  const match = pointer.match(/\\/p\\/h\\/([a-z0-9]+)/i);",
+    "  if (match && match[1]) {",
+    "    return match[1];",
+    "  }",
+    "  throw new Error(`Failed to extract Doc ID from ClickUp Doc URL: ${pointer}`);",
+    "}",
+    "if (pointer.includes('app.clickup.com')) {",
+    "  const match = pointer.match(/\\/dc\\/([a-z0-9-]+)/i);",
+    "  if (match && match[1]) {",
+    "    return match[1];",
+    "  }",
+    "  throw new Error(`Failed to extract Doc ID from ClickUp App URL: ${pointer}`);",
+    "}",
+    "",
+    "// Assume it's a bare Doc ID",
+    "if (/^[a-z0-9-]+$/i.test(pointer)) {",
+    "  return pointer;",
+    "}",
+    "",
+    "throw new Error(`Invalid Doc pointer format: ${pointer}. Expected ClickUp Doc URL or bare Doc ID`);",
+  ]);
+}
+
+/** n8n Code node: Normalize Doc Pointer — extract Doc ID from stored URL or bare ID. */
+export function normalizeStoredDocPointerJs(): string {
+  return joinN8nJs([
+    "const fields = $('Extract Task Fields').first().json;",
+    "const pointer = String(fields.editorial_doc_url ?? '').trim();",
+    "",
+    "if (!pointer) {",
+    "  throw new Error('Editorial Doc Url custom field is empty. Expected a Doc ID or ClickUp Doc URL.');",
+    "}",
+    "",
+    "// Extract Doc ID from ClickUp Doc URL or return bare ID",
+    "// ClickUp Doc URLs can look like https://doc.clickup.com/p/h/{doc_id}/... or https://app.clickup.com/{workspace}/v/dc/{doc_id}",
+    "let docId;",
+    "if (pointer.includes('doc.clickup.com')) {",
+    "  const match = pointer.match(/\\/p\\/h\\/([a-z0-9]+)/i);",
+    "  if (match && match[1]) {",
+    "    docId = match[1];",
+    "  } else {",
+    "    throw new Error(`Failed to extract Doc ID from ClickUp Doc URL: ${pointer}`);",
+    "  }",
+    "} else if (pointer.includes('app.clickup.com')) {",
+    "  const match = pointer.match(/\\/dc\\/([a-z0-9-]+)/i);",
+    "  if (match && match[1]) {",
+    "    docId = match[1];",
+    "  } else {",
+    "    throw new Error(`Failed to extract Doc ID from ClickUp App URL: ${pointer}`);",
+    "  }",
+    "} else if (/^[a-z0-9-]+$/i.test(pointer)) {",
+    "  docId = pointer;",
+    "} else {",
+    "  throw new Error(`Invalid Doc pointer format: ${pointer}. Expected ClickUp Doc URL or bare Doc ID`);",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...$('{\"jsonata\": \"$.json\"}').json,",
+    "    doc_id: docId,",
+    "    doc_created: false,",
+    "    operation: 'use_existing_doc',",
+    "  },",
+    "}];",
+  ]);
+}
+
+/** n8n Code node: Validate Staged Artifact — ensure artifact_markdown is non-empty before Doc operations. */
+export function validateStagedArtifactJs(): string {
+  return joinN8nJs([
+    "const agentOutput = $('Execute Call Agent').first().json;",
+    "const taskFields = $('Extract Task Fields').first().json;",
+    "",
+    "const artifact = agentOutput.artifact_markdown;",
+    "",
+    "// Validate artifact_markdown exists and is non-empty",
+    "if (!artifact || typeof artifact !== 'string' || artifact.trim().length === 0) {",
+    "  throw new Error(",
+    "    `Staged success output missing or empty artifact_markdown. ` +",
+    "    `Cannot proceed with Doc replacement or status advancement. ` +",
+    "    `Task: ${taskFields.task_id}, Stage: ${taskFields.stage}`",
+    "  );",
+    "}",
+    "",
+    "return [{",
+    "  json: {",
+    "    ...agentOutput,",
+    "    artifact_markdown: artifact.trim(),",
+    "  },",
+    "}];",
   ]);
 }

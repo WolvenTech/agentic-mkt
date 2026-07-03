@@ -13,7 +13,18 @@ export interface FieldMapping {
 }
 
 /** Keys in `statuses` used by automation ingress and workflow-owned status transitions. */
-export const AUTOMATION_STATUS_KEYS = ["ready", "needs_review", "writing", "review"] as const;
+export const AUTOMATION_STATUS_KEYS = [
+  "investigate",
+  "brief_review",
+  "write",
+  "content_review",
+  "format",
+  "final_review",
+  "ready",
+  "needs_review",
+  "writing",
+  "review",
+] as const;
 
 export type AutomationStatusKey = (typeof AUTOMATION_STATUS_KEYS)[number];
 

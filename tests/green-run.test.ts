@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -48,12 +49,55 @@ function writeTempFieldMapping(mapping: FieldMapping): string {
   return path;
 }
 
+let createdEvidencePath = false;
+
+/** EVIDENCE_PATH is gitignored (never committed) — seed a baseline locally if it doesn't exist yet. */
+function ensureBaselineEvidence(): string {
+  try {
+    return readFileSync(EVIDENCE_PATH, "utf-8");
+  } catch {
+    const baseline = JSON.stringify(
+      {
+        recorded_at: "2026-01-01",
+        session: "test-baseline",
+        validation_status: "blocked",
+        preflight: { checklist: [], coverage_percent: 0, blockers: [] },
+        main_workflow: {
+          verified: false,
+          n8n_execution_id: "",
+          n8n_host: "",
+          clickup_task_id: "",
+          clickup_task_url: "",
+          clickup_task_name: "",
+          status_path: [],
+          latency_seconds: null,
+          latency_breakdown: {},
+          comment_sections_verified: [],
+          marketing_lead_usability: "",
+          silent_failures: null,
+        },
+        call_agent_subworkflow: {},
+        failure_observations: {},
+      },
+      null,
+      2
+    );
+    writeFileSync(EVIDENCE_PATH, baseline, "utf-8");
+    createdEvidencePath = true;
+    return baseline;
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   if (tmpDir) {
     rmSync(tmpDir, { recursive: true, force: true });
     tmpDir = undefined;
+  }
+  if (createdEvidencePath) {
+    rmSync(EVIDENCE_PATH, { force: true });
+    createdEvidencePath = false;
   }
 });
 
@@ -102,7 +146,7 @@ describe("fieldMappingSynced", () => {
     const mapping: FieldMapping = {
       clickup_list_id: "<TBD>",
       custom_fields: {
-        criterios_de_aceite: { name: "Critérios de Aceite", type: "text", clickup_field_id: "123" },
+        criterios_de_aceite: { name: "ACs", type: "text", clickup_field_id: "123" },
       },
       statuses: { ready: "Ready" },
     };
@@ -115,7 +159,7 @@ describe("fieldMappingSynced", () => {
     const mapping: FieldMapping = {
       clickup_list_id: "901234567",
       custom_fields: {
-        agent_id: { name: "agent_id", type: "short_text", clickup_field_id: "<TBD>" },
+        agent_id: { name: "Agent", type: "short_text", clickup_field_id: "<TBD>" },
       },
       statuses: {},
     };
@@ -128,7 +172,7 @@ describe("fieldMappingSynced", () => {
     const mapping: FieldMapping = {
       clickup_list_id: "901234567",
       custom_fields: {
-        agent_id: { name: "agent_id", type: "short_text", clickup_field_id: "cf1" },
+        agent_id: { name: "Agent", type: "short_text", clickup_field_id: "cf1" },
       },
       statuses: {},
     };
@@ -190,10 +234,25 @@ function fullFieldMapping(overrides: Partial<FieldMapping> = {}): FieldMapping {
     list_name: "Linkedin Post Creator",
     clickup_list_id: "901234567",
     custom_fields: {
-      criterios_de_aceite: { name: "Critérios de Aceite", type: "text", clickup_field_id: "cf1" },
-      agent_id: { name: "agent_id", type: "short_text", clickup_field_id: "cf2", default: "linkedin-writer" },
+      criterios_de_aceite: { name: "ACs", type: "text", clickup_field_id: "cf1" },
+      agent_id: { name: "Agent", type: "short_text", clickup_field_id: "cf2", default: "investigative-brief" },
+      editorial_doc_url: { name: "Editorial Doc Url", type: "url", clickup_field_id: "cf3" },
     },
-    statuses: { backlog: "Backlog", ready: "Ready", needs_review: "Needs Review", writing: "Writing", review: "Approval" },
+    statuses: {
+      backlog: "Backlog",
+      investigate: "Investigate",
+      brief_review: "Brief Review",
+      write: "Write",
+      content_review: "Content Review",
+      format: "Format",
+      final_review: "Final Review",
+      ready: "Ready",
+      needs_review: "Needs Review",
+      writing: "Writing",
+      review: "Approval",
+      publish: "Publish",
+      completed: "Closed",
+    },
     ...overrides,
   };
 }
@@ -212,12 +271,26 @@ function stubClickUpAndN8nSuccess(): void {
       if (url.includes("api.clickup.com")) {
         if (url.includes("/field")) {
           return jsonResponse({
-            fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }],
+            fields: [{ name: "ACs" }, { name: "Agent" }, { name: "Editorial Doc Url" }],
           });
         }
         return jsonResponse({
           name: "Linkedin Post Creator",
-          statuses: [{ status: "Ready" }, { status: "Needs Review" }, { status: "Writing" }, { status: "Approval" }],
+          statuses: [
+            { status: "Backlog" },
+            { status: "Investigate" },
+            { status: "Brief Review" },
+            { status: "Write" },
+            { status: "Content Review" },
+            { status: "Format" },
+            { status: "Final Review" },
+            { status: "Ready" },
+            { status: "Needs Review" },
+            { status: "Writing" },
+            { status: "Approval" },
+            { status: "Publish" },
+            { status: "Closed" },
+          ],
         });
       }
       return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: true }] });
@@ -243,7 +316,7 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
       vi.fn(async (url: string) => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
-            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
+            return jsonResponse({ fields: [{ name: "ACs" }, { name: "Agent" }, { name: "revision_count" }] });
           }
           if (url.endsWith("/list/901234567")) {
             return jsonResponse({ err: "Unauthorized" }, 401);
@@ -267,7 +340,7 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
       vi.fn(async (url: string) => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
-            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
+            return jsonResponse({ fields: [{ name: "ACs" }, { name: "Agent" }, { name: "revision_count" }] });
           }
           return jsonResponse({ name: "Some Other List", statuses: [] });
         }
@@ -288,7 +361,7 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
       vi.fn(async (url: string) => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
-            return jsonResponse({ fields: [{ name: "agent_id" }] });
+            return jsonResponse({ fields: [{ name: "Agent" }] });
           }
           return jsonResponse({
             name: "Linkedin Post Creator",
@@ -302,7 +375,7 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
     const report = await runPreflight({ ...PREFLIGHT_ARGS, fieldMappingPath: path });
     const fieldsCheck = report.results.find((r) => r.step === "clickup_custom_fields_present");
     expect(fieldsCheck?.passed).toBe(false);
-    expect(fieldsCheck?.detail).toContain("Critérios de Aceite");
+    expect(fieldsCheck?.detail).toContain("ACs");
   });
 
   it("fails clickup_statuses_present when a required status is missing on the list", async () => {
@@ -312,7 +385,7 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
       vi.fn(async (url: string) => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
-            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
+            return jsonResponse({ fields: [{ name: "ACs" }, { name: "Agent" }, { name: "revision_count" }] });
           }
           return jsonResponse({ name: "Linkedin Post Creator", statuses: [{ status: "Ready" }] });
         }
@@ -333,7 +406,7 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
       vi.fn(async (url: string) => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
-            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
+            return jsonResponse({ fields: [{ name: "ACs" }, { name: "Agent" }, { name: "revision_count" }] });
           }
           return jsonResponse({
             name: "Linkedin Post Creator",
@@ -367,11 +440,25 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
       vi.fn(async (url: string) => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
-            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
+            return jsonResponse({ fields: [{ name: "ACs" }, { name: "Agent" }, { name: "Editorial Doc Url" }] });
           }
           return jsonResponse({
             name: "Linkedin Post Creator",
-            statuses: [{ status: "ready" }, { status: "needs review" }, { status: "writing" }, { status: "approval" }],
+            statuses: [
+              { status: "backlog" },
+              { status: "investigate" },
+              { status: "brief review" },
+              { status: "write" },
+              { status: "content review" },
+              { status: "format" },
+              { status: "final review" },
+              { status: "ready" },
+              { status: "needs review" },
+              { status: "writing" },
+              { status: "approval" },
+              { status: "publish" },
+              { status: "closed" },
+            ],
           });
         }
         return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: true }] });
@@ -400,7 +487,7 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
       vi.fn(async (url: string) => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
-            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
+            return jsonResponse({ fields: [{ name: "ACs" }, { name: "Agent" }, { name: "revision_count" }] });
           }
           return jsonResponse({
             name: "Linkedin Post Creator",
@@ -424,7 +511,7 @@ describe("runPreflight (mocked ClickUp + n8n)", () => {
       vi.fn(async (url: string) => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
-            return jsonResponse({ fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }] });
+            return jsonResponse({ fields: [{ name: "ACs" }, { name: "Agent" }, { name: "revision_count" }] });
           }
           return jsonResponse({
             name: "Linkedin Post Creator",
@@ -997,7 +1084,7 @@ describe("linkN8nExecutionsForTask (mocked n8n client)", () => {
 
 describe("main() — token present, real (unsynced) field-mapping.json blocks preflight", () => {
   it("exits 2, prints the preflight checklist and blockers, and writes evidence without touching canonical (no GREEN_RUN_UPDATE_CANONICAL)", async () => {
-    const beforeCanonical = readFileSync(EVIDENCE_PATH, "utf-8");
+    const beforeCanonical = ensureBaselineEvidence();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline", active: true }] }))
@@ -1024,9 +1111,33 @@ describe("main() — token present, real (unsynced) field-mapping.json blocks pr
   });
 });
 
+describe("main() — ready/unverified green run", () => {
+  it("exits 3, prints skipped runtime phases, and points at GREEN_RUN_EXECUTE=1 pnpm green-run", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    stubClickUpAndN8nSuccess();
+
+    const code = await main({
+      SKIP_DOTENV: "1",
+      CLICKUP_API_TOKEN: "pk_test",
+      CLICKUP_LIST_ID: "901234567",
+    });
+
+    expect(code).toBe(3);
+    const errorOutput = errorSpy.mock.calls.flat().join("\n");
+    expect(errorOutput).toContain("Ready but unverified:");
+    expect(errorOutput).toContain("Skipped runtime phases: test_task_brief_complete");
+    expect(errorOutput).toContain("GREEN_RUN_EXECUTE=1 pnpm green-run");
+    expect(logSpy.mock.calls.flat().join("\n")).toContain("Validation status: ready");
+
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+});
+
 describe("main() — offline (no CLICKUP_API_TOKEN)", () => {
   it("exits 2, writes logs/green-run/<timestamp>/evidence.json, and leaves canonical evidence untouched", async () => {
-    const beforeCanonical = readFileSync(EVIDENCE_PATH, "utf-8");
+    const beforeCanonical = ensureBaselineEvidence();
     const beforeDirs = listRunDirs();
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -1056,7 +1167,7 @@ describe("main() — offline (no CLICKUP_API_TOKEN)", () => {
   });
 
   it("does not update canonical evidence on the token-missing path even with GREEN_RUN_UPDATE_CANONICAL=1 (that branch returns before promotion logic runs)", async () => {
-    const beforeCanonical = readFileSync(EVIDENCE_PATH, "utf-8");
+    const beforeCanonical = ensureBaselineEvidence();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
@@ -1068,6 +1179,69 @@ describe("main() — offline (no CLICKUP_API_TOKEN)", () => {
 
     logSpy.mockRestore();
     errorSpy.mockRestore();
+  });
+});
+
+describe("scripts/green-run.ts wrapper", () => {
+  it("propagates the ready/unverified exit code from the CLI entrypoint", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "agentic-mkt-green-run-wrapper-"));
+    const preloadPath = join(tmp, "preload.cjs");
+    writeFileSync(
+      preloadPath,
+      [
+        "global.fetch = async (url, init = {}) => {",
+        "  const method = init.method || 'GET';",
+        "  const href = String(url);",
+        "  if (href.includes('api.clickup.com')) {",
+        "    if (method === 'GET' && href.includes('/field')) {",
+        "      return new Response(JSON.stringify({ fields: [{ name: 'ACs' }, { name: 'Agent' }, { name: 'Editorial Doc Url' }] }), { status: 200, headers: { 'content-type': 'application/json' } });",
+        "    }",
+        "    if (method === 'GET' && /\\/list\\/[^/]+$/.test(href)) {",
+        "      return new Response(JSON.stringify({ name: 'Linkedin Post Creator', statuses: [",
+        "        { status: 'Backlog' },",
+        "        { status: 'Investigate' },",
+        "        { status: 'Brief Review' },",
+        "        { status: 'Write' },",
+        "        { status: 'Content Review' },",
+        "        { status: 'Format' },",
+        "        { status: 'Final Review' },",
+        "        { status: 'Ready' },",
+        "        { status: 'Needs Review' },",
+        "        { status: 'Writing' },",
+        "        { status: 'Approval' },",
+        "        { status: 'Publish' },",
+        "        { status: 'Closed' },",
+        "      ] }), { status: 200, headers: { 'content-type': 'application/json' } });",
+        "    }",
+        "  }",
+        "  if (href.includes('n8n')) {",
+        "    return new Response(JSON.stringify({ data: [{ name: 'Call Agent' }, { name: 'Marketing Pipeline', active: true }] }), { status: 200, headers: { 'content-type': 'application/json' } });",
+        "  }",
+        "  throw new Error(`unexpected request ${method} ${href}`);",
+        "};",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    try {
+      const result = spawnSync("pnpm", ["exec", "tsx", "scripts/green-run.ts"], {
+        cwd: resolve("."),
+        env: {
+          ...process.env,
+          NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require=${preloadPath}`.trim(),
+          SKIP_DOTENV: "1",
+          CLICKUP_API_TOKEN: "pk_test",
+          CLICKUP_LIST_ID: "901234567",
+        },
+        encoding: "utf-8",
+      });
+
+      expect(result.status).toBe(3);
+      expect(result.stderr).toContain("Ready but unverified:");
+      expect(result.stderr).toContain("GREEN_RUN_EXECUTE=1 pnpm green-run");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 

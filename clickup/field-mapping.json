@@ -3,24 +3,35 @@
   "clickup_list_id": "901327635891",
   "custom_fields": {
     "criterios_de_aceite": {
-      "name": "Critérios de Aceite",
+      "name": "ACs",
       "type": "text",
       "clickup_field_id": "bd2e7a51-3e9e-4d6a-9729-770fac44a504"
     },
     "agent_id": {
-      "name": "agent_id",
+      "name": "Agent",
       "type": "short_text",
-      "default": "linkedin-writer",
+      "default": "investigative-brief",
       "clickup_field_id": "a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0"
+    },
+    "editorial_doc_url": {
+      "name": "Editorial Doc Url",
+      "type": "url",
+      "clickup_field_id": "fc421386-3bc8-4dca-adce-836a8f3d4d6d"
     }
   },
   "statuses": {
     "backlog": "backlog",
+    "investigate": "investigate",
+    "brief_review": "brief review",
+    "write": "write",
+    "content_review": "content review",
+    "format": "format",
+    "final_review": "final review",
+    "publish": "publish",
+    "completed": "Closed",
     "ready": "ready",
     "needs_review": "needs review",
     "writing": "writing",
-    "review": "approval",
-    "publish": "publish",
-    "completed": "Closed"
+    "review": "approval"
   }
 }

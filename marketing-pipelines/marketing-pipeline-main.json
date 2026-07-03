@@ -8,108 +8,39 @@
       "typeVersion": 2,
       "position": [
         0,
-        300
+        448
       ],
       "webhookId": "92b0a88b-d639-9f50-b485-4c416ca14ad1",
       "parameters": {
         "httpMethod": "POST",
-        "path": "marketing-pipeline-ready-to-work",
-        "responseMode": "onReceived",
+        "path": "marketing-pipeline-staged-ingress",
         "options": {}
       }
     },
     {
-      "id": "a09e4778-9602-9c70-bf99-867a202d274f",
-      "name": "Ready to Work?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        240,
-        300
-      ],
-      "parameters": {
-        "conditions": {
-          "options": {
-            "version": 2,
-            "leftValue": "",
-            "caseSensitive": true,
-            "typeValidation": "loose"
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "1511e6af-bcae-181c-1db7-92b08e6603d9",
-              "leftValue": "={{ (() => { const payload = ($json.body && $json.body.history_items ? $json.body : $json); const item = payload?.history_items?.[0]; if (!item || item.field !== \"status\") return false; const after = item.after; const status = (after !== null && typeof after === \"object\") ? after.status : after; return String(status ?? \"\").trim().toLowerCase() === \"ready\"; })() }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ]
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "ff22d518-7417-a932-1037-e361c71764f0",
-      "name": "Needs Review?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        480,
-        480
-      ],
-      "parameters": {
-        "conditions": {
-          "options": {
-            "version": 2,
-            "leftValue": "",
-            "caseSensitive": true,
-            "typeValidation": "loose"
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "c9566540-65f8-3303-5330-a26401f7db9d",
-              "leftValue": "={{ (() => { const payload = ($json.body && $json.body.history_items ? $json.body : $json); const item = payload?.history_items?.[0]; if (!item || item.field !== \"status\") return false; const after = item.after; const status = (after !== null && typeof after === \"object\") ? after.status : after; return String(status ?? \"\").trim().toLowerCase() === \"needs review\"; })() }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ]
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "486b70b1-6ca9-fbe3-996f-0bff0356d1bc",
-      "name": "Set First Draft Ingress",
+      "id": "0f90c00d-f8cc-dd56-bddc-65f43eb9d285",
+      "name": "Extract Stage",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        480,
-        220
+        224,
+        448
+      ],
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst payload = (raw.body && raw.body.history_items) ? raw.body : raw;\n\nconst items = payload.history_items || [];\nconst item = items[0];\nif (!item || item.field !== 'status') {\n  return [{ json: { ...payload, stage: null } }];\n}\n\nconst after = item.after;\nconst status = (after !== null && typeof after === 'object') ? String(after.status ?? '').trim().toLowerCase() : String(after ?? '').trim().toLowerCase();\n\nconst investigateMatch = status === \"investigate\";\nconst writeMatch = status === \"write\";\nconst formatMatch = status === \"format\";\n\nlet stage = null;\nif (investigateMatch) stage = 'investigate';\nelse if (writeMatch) stage = 'write';\nelse if (formatMatch) stage = 'format';\n\nreturn [{\n  json: {\n    ...payload,\n    stage: stage,\n  },\n}];"
+      }
+    },
+    {
+      "id": "eafdeea7-4c83-6e14-187f-3ae5672b3d88",
+      "name": "Set Staged Ingress",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        448
       ],
       "parameters": {
         "jsCode": "const item = $input.first().json;\nreturn [{\n  json: {\n    ...item,\n    ingress_mode: \"first_draft\",\n  },\n}];"
-      }
-    },
-    {
-      "id": "4e2ebfd1-55c2-e1a4-3bc5-0962ffc660ac",
-      "name": "Set Revision Ingress",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        720,
-        480
-      ],
-      "parameters": {
-        "jsCode": "const item = $input.first().json;\nreturn [{\n  json: {\n    ...item,\n    ingress_mode: \"revision\",\n  },\n}];"
       }
     },
     {
@@ -118,11 +49,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
-        300
+        672,
+        448
       ],
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst payload = (raw.body && raw.body.history_items) ? raw.body : raw;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\nfunction statusValue(value) {\n  if (value !== null && typeof value === 'object') return String(value.status ?? '').trim().toLowerCase();\n  return String(value ?? '').trim().toLowerCase();\n}\nreturn [{\n  json: {\n    task_id: String(payload.task_id ?? ''),\n    webhook_id: String(payload.webhook_id ?? ''),\n    history_item_id: String(first.id ?? ''),\n    list_id: String(first.parent_id ?? ''),\n    received_at_ms: Date.now(),\n    ingress_mode: String(raw.ingress_mode ?? payload.ingress_mode ?? 'first_draft'),\n    transition_before: statusValue(first.before),\n    transition_after: statusValue(first.after),\n  },\n}];"
+        "jsCode": "const raw = $input.first().json;\nconst payload = (raw.body && raw.body.history_items) ? raw.body : raw;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\nfunction statusValue(value) {\n  if (value !== null && typeof value === 'object') return String(value.status ?? '').trim().toLowerCase();\n  return String(value ?? '').trim().toLowerCase();\n}\nreturn [{\n  json: {\n    task_id: String(payload.task_id ?? ''),\n    webhook_id: String(payload.webhook_id ?? ''),\n    history_item_id: String(first.id ?? ''),\n    list_id: String(first.parent_id ?? ''),\n    received_at_ms: Date.now(),\n    ingress_mode: String(raw.ingress_mode ?? payload.ingress_mode ?? 'first_draft'),\n    transition_before: statusValue(first.before),\n    transition_after: statusValue(first.after),\n    stage: payload.stage || null,\n  },\n}];"
       }
     },
     {
@@ -131,8 +62,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1200,
-        300
+        896,
+        448
       ],
       "parameters": {
         "conditions": {
@@ -165,8 +96,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1440,
-        300
+        1120,
+        352
       ],
       "parameters": {
         "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.seenHistoryItems = staticData.seenHistoryItems || {};\nconst key = String($json.history_item_id ?? '');\nif (key) staticData.seenHistoryItems[key] = Date.now();\nreturn [{ json: $json }];"
@@ -178,8 +109,8 @@
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        1680,
-        300
+        1344,
+        352
       ],
       "credentials": {
         "clickUpApi": {
@@ -198,21 +129,21 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1920,
-        300
+        1568,
+        352
       ],
       "parameters": {
-        "jsCode": "const FIELD_IDS = {\n  criterios_de_aceite: \"bd2e7a51-3e9e-4d6a-9729-770fac44a504\",\n  agent_id: \"a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0\",\n  default_agent_id: \"linkedin-writer\",\n};\n\nfunction readCustomField(task, fieldId) {\n  if (!fieldId || fieldId === '<TBD>') return '';\n  const fields = task.custom_fields || [];\n  const match = fields.find((field) => String(field.id) === String(fieldId));\n  if (!match || match.value === null || match.value === undefined) return '';\n  if (typeof match.value === 'object') {\n    return String(match.value.value ?? match.value.name ?? match.value.label ?? '');\n  }\n  return String(match.value);\n}\n\nconst task = $input.first().json;\nconst webhook = $('Extract Webhook Context').first().json;\nconst agentId = readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id;\n\nreturn [{\n  json: {\n    task_id: String(task.id ?? webhook.task_id ?? ''),\n    agent_id: agentId,\n    task_title: String(task.name ?? ''),\n    task_description: String(task.description ?? task.text_content ?? ''),\n    criterios_de_aceite: readCustomField(task, FIELD_IDS.criterios_de_aceite),\n    ingress_mode: String(webhook.ingress_mode ?? 'first_draft'),\n    model: \"gpt-4.1-mini\",\n  },\n}];"
+        "jsCode": "const FIELD_IDS = {\n  criterios_de_aceite: \"bd2e7a51-3e9e-4d6a-9729-770fac44a504\",\n  agent_id: \"a969b8cc-d77a-4a0b-9e37-a8e81dfc6de0\",\n  editorial_doc_url: \"fc421386-3bc8-4dca-adce-836a8f3d4d6d\",\n  default_agent_id: \"investigative-brief\",\n};\n\nconst STAGE_TO_AGENT = {\n  investigate: 'investigative-brief',\n  write: 'long-form-argument',\n  format: 'linkedin-format',\n};\n\nfunction readCustomField(task, fieldId) {\n  if (!fieldId || fieldId === '<TBD>') return '';\n  const fields = task.custom_fields || [];\n  const match = fields.find((field) => String(field.id) === String(fieldId));\n  if (!match || match.value === null || match.value === undefined) return '';\n  if (typeof match.value === 'object') {\n    return String(match.value.value ?? match.value.name ?? match.value.label ?? '');\n  }\n  return String(match.value);\n}\n\nconst task = $input.first().json;\nconst webhook = $('Extract Webhook Context').first().json;\nconst stage = webhook.stage || null;\nconst agentId = stage && STAGE_TO_AGENT[stage] ? STAGE_TO_AGENT[stage] : (readCustomField(task, FIELD_IDS.agent_id).trim() || FIELD_IDS.default_agent_id);\n\nreturn [{\n  json: {\n    task_id: String(task.id ?? webhook.task_id ?? ''),\n    stage: stage,\n    agent_id: agentId,\n    task_title: String(task.name ?? ''),\n    task_description: String(task.description ?? task.text_content ?? ''),\n    criterios_de_aceite: readCustomField(task, FIELD_IDS.criterios_de_aceite),\n    editorial_doc_url: readCustomField(task, FIELD_IDS.editorial_doc_url),\n    workspace_id: String(task.team_id ?? ''),\n    ingress_mode: String(webhook.ingress_mode ?? 'first_draft'),\n    model: \"gpt-4.1-mini\",\n  },\n}];"
       }
     },
     {
-      "id": "e91ad722-bae1-839d-1f5d-92852bfe2239",
-      "name": "Revision Ingress?",
+      "id": "fb278e8f-44ec-f486-839b-39c77bee94b8",
+      "name": "Route by Stage?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        2160,
-        300
+        1792,
+        352
       ],
       "parameters": {
         "conditions": {
@@ -225,8 +156,110 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "26bfaa96-d2ed-5dc0-e45f-f9d4b003600d",
-              "leftValue": "={{ $json.ingress_mode === 'revision' }}",
+              "id": "b380d9af-82ea-b087-97ae-298dbe097b42",
+              "leftValue": "={{ $json.stage !== null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3d4df950-ec14-f252-447a-1008db2c3318",
+      "name": "Investigate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2016,
+        352
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "025f76a5-a46e-8791-9baa-b3526ead6818",
+              "leftValue": "={{ $json.stage === 'investigate' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e298a8dc-9ebe-eb14-123d-7cc00e037b21",
+      "name": "Write?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2240,
+        432
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c2036467-7115-29a5-feca-d1e9e040acf2",
+              "leftValue": "={{ $json.stage === 'write' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f9638317-a3e1-c2e9-0a95-93f52d059a93",
+      "name": "Format?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2464,
+        496
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "9d167aaf-3501-3697-6974-41dc9b37f16b",
+              "leftValue": "={{ $json.stage === 'format' }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -245,8 +278,8 @@
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        2400,
-        480
+        2912,
+        352
       ],
       "credentials": {
         "clickUpApi": {
@@ -254,12 +287,12 @@
           "name": "ClickUp Marketing Pipeline"
         }
       },
+      "alwaysOutputData": true,
       "parameters": {
         "resource": "comment",
         "operation": "getAll",
         "commentsOn": "task",
-        "id": "={{ $json.task_id }}",
-        "limit": 50
+        "id": "={{ $('Extract Task Fields').item.json.task_id }}"
       }
     },
     {
@@ -268,21 +301,21 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2640,
-        480
+        3136,
+        352
       ],
       "parameters": {
-        "jsCode": "function normalizeComments(input) {\n  const values = Array.isArray(input) ? input : [input];\n  return values.flatMap((value) => {\n    if (Array.isArray(value)) return normalizeComments(value);\n    if (Array.isArray(value?.comments)) return value.comments;\n    if (Array.isArray(value?.json?.comments)) return value.json.comments;\n    if (value && typeof value === 'object' && 'comment_text' in value) return [value];\n    if (value?.json && typeof value.json === 'object' && 'comment_text' in value.json) return [value.json];\n    return [];\n  });\n}\n\nfunction commentBody(comment) {\n  return String(comment?.comment_text ?? '').trim();\n}\n\nfunction isAgentDraftComment(comment) {\n  const body = commentBody(comment);\n  return body.includes('## LinkedIn Draft') ||\n    body.includes('## Resumo') ||\n    body.includes('## Autochecagem') ||\n    /_Generated by [^)]+\\(.*\\)_/i.test(body);\n}\n\nfunction isSystemComment(comment) {\n  const username = String(comment?.user?.username ?? '').trim().toLowerCase();\n  if (!username) return true;\n  return username === 'system' || username.includes('clickup') || username.includes('automation');\n}\n\nfunction isActionableComment(comment) {\n  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment);\n}\n\nfunction actionableComments(comments) {\n  return comments.filter((comment) => isActionableComment(comment));\n}\n\nfunction hasActionableFeedback(comments) {\n  return actionableComments(comments).length > 0;\n}\n\nfunction commentTimestamp(comment) {\n  const date = comment?.date;\n  if (!date) return 0;\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return numeric;\n  const parsed = Date.parse(date);\n  return Number.isFinite(parsed) ? parsed : 0;\n}\n\nfunction formatCommentDate(date) {\n  if (!date) return '';\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return new Date(numeric).toISOString();\n  return String(date);\n}\n\nfunction formatCommentThread(comments) {\n  return [...comments]\n    .sort((left, right) => commentTimestamp(left) - commentTimestamp(right))\n    .map((comment) => {\n      const username = String(comment?.user?.username ?? 'Unknown').trim() || 'Unknown';\n      const date = formatCommentDate(comment?.date);\n      const suffix = date ? ` (${date})` : '';\n      return `- **${username}**${suffix}: ${commentBody(comment)}`;\n    })\n    .join('\\n');\n}\n\nconst fields = $('Extract Task Fields').first().json;\nconst comments = normalizeComments($input.all().map((item) => item.json));\nconst feedback = actionableComments(comments);\nreturn [{\n  json: {\n    task_id: fields.task_id,\n    comments,\n    feedback_comments: feedback,\n    comment_count: comments.length,\n    has_actionable_feedback: feedback.length > 0,\n  },\n}];"
+        "jsCode": "function normalizeComments(input) {\n  const values = Array.isArray(input) ? input : [input];\n  return values.flatMap((value) => {\n    if (Array.isArray(value)) return normalizeComments(value);\n    if (Array.isArray(value?.comments)) return value.comments;\n    if (Array.isArray(value?.json?.comments)) return value.json.comments;\n    if (value && typeof value === 'object' && 'comment_text' in value) return [value];\n    if (value?.json && typeof value.json === 'object' && 'comment_text' in value.json) return [value.json];\n    return [];\n  });\n}\n\nfunction commentBody(comment) {\n  return String(comment?.comment_text ?? '').trim();\n}\n\nfunction isAgentDraftComment(comment) {\n  const body = commentBody(comment);\n  return body.includes('## LinkedIn Draft') ||\n    body.includes('## Resumo') ||\n    body.includes('## Autochecagem') ||\n    /_Generated by [^)]+\\(.*\\)_/i.test(body);\n}\n\nfunction isSystemComment(comment) {\n  const username = String(comment?.user?.username ?? '').trim().toLowerCase();\n  if (!username) return true;\n  return username === 'system' || username.includes('clickup') || username.includes('automation');\n}\n\nfunction isCqPointerComment(comment) {\n  const body = commentBody(comment);\n  return body.startsWith('[CQ-AI]');\n}\n\nfunction isCqBlockerComment(comment) {\n  const body = commentBody(comment);\n  return body.startsWith('[CQ-BLOCKER]');\n}\n\nfunction isActionableComment(comment) {\n  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment) &&\n    !isCqPointerComment(comment) && !isCqBlockerComment(comment);\n}\n\nfunction actionableComments(comments) {\n  return comments.filter((comment) => isActionableComment(comment));\n}\n\nfunction hasActionableFeedback(comments) {\n  return actionableComments(comments).length > 0;\n}\n\nfunction commentTimestamp(comment) {\n  const date = comment?.date;\n  if (!date) return 0;\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return numeric;\n  const parsed = Date.parse(date);\n  return Number.isFinite(parsed) ? parsed : 0;\n}\n\nfunction formatCommentDate(date) {\n  if (!date) return '';\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return new Date(numeric).toISOString();\n  return String(date);\n}\n\nfunction formatCommentThread(comments) {\n  return [...comments]\n    .sort((left, right) => commentTimestamp(left) - commentTimestamp(right))\n    .map((comment) => {\n      const username = String(comment?.user?.username ?? 'Unknown').trim() || 'Unknown';\n      const date = formatCommentDate(comment?.date);\n      const suffix = date ? ` (${date})` : '';\n      return `- **${username}**${suffix}: ${commentBody(comment)}`;\n    })\n    .join('\\n');\n}\n\nconst fields = $('Extract Task Fields').first().json;\nconst comments = normalizeComments($input.all().map((item) => item.json));\nconst feedback = actionableComments(comments);\nreturn [{\n  json: {\n    task_id: fields.task_id,\n    comments,\n    feedback_comments: feedback,\n    comment_count: comments.length,\n    has_actionable_feedback: feedback.length > 0,\n  },\n}];"
       }
     },
     {
-      "id": "01f5dfde-385f-5baf-db83-53712f357273",
-      "name": "Actionable Feedback?",
+      "id": "a8b795c1-a064-4565-aa89-265f8717af21",
+      "name": "Has Doc URL?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        2880,
-        480
+        3360,
+        352
       ],
       "parameters": {
         "conditions": {
@@ -295,8 +328,8 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "7dab6b50-326c-4ad2-d11d-5b83e0a426d8",
-              "leftValue": "={{ $json.has_actionable_feedback === true }}",
+              "id": "cec3a487-638e-a192-ed14-5ca9a54d431e",
+              "leftValue": "={{ Boolean(String($('Extract Task Fields').first().json.editorial_doc_url ?? '').trim()) }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -310,65 +343,87 @@
       }
     },
     {
-      "id": "6281cdbd-66f2-0eb2-413d-bcc1b7fe6f67",
-      "name": "Log Empty Feedback Guidance",
+      "id": "51e733f6-6cb2-61e1-5a5c-4f565c06b193",
+      "name": "Use Existing Doc",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3120,
-        660
+        3808,
+        256
       ],
       "parameters": {
-        "jsCode": "const fields = $('Extract Task Fields').first().json;\nconst record = {\n  event: 'empty_feedback_guidance',\n  task_id: fields.task_id,\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
+        "jsCode": "const fields = $('Extract Task Fields').first().json;\nconst pointer = String(fields.editorial_doc_url ?? '').trim();\n\nif (!pointer) {\n  throw new Error('Editorial Doc Url custom field is empty. Expected a Doc ID or ClickUp Doc URL.');\n}\n\n// Normalize: extract Doc ID from ClickUp Doc URL or use bare ID\nlet docId;\nif (pointer.includes('doc.clickup.com')) {\n  const match = pointer.match(/\\/p\\/h\\/([a-z0-9]+)/i);\n  if (match && match[1]) {\n    docId = match[1];\n  } else {\n    throw new Error(`Failed to extract Doc ID from ClickUp Doc URL: ${pointer}`);\n  }\n} else if (pointer.includes('app.clickup.com')) {\n  const match = pointer.match(/\\/dc\\/([a-z0-9-]+)/i);\n  if (match && match[1]) {\n    docId = match[1];\n  } else {\n    throw new Error(`Failed to extract Doc ID from ClickUp App URL: ${pointer}`);\n  }\n} else if (/^[a-z0-9-]+$/i.test(pointer)) {\n  docId = pointer;\n} else {\n  throw new Error(`Invalid Doc pointer format: ${pointer}. Expected ClickUp Doc URL or bare Doc ID`);\n}\n\nreturn [{\n  json: {\n    workspace_id: fields.workspace_id,\n    doc_id: docId,\n    doc_created: false,\n    operation: 'use_existing_doc',\n    stage: fields.stage,\n  },\n}];"
       }
     },
     {
-      "id": "d85ba409-d1d9-a3c9-7271-7c598022f688",
-      "name": "Format Empty Feedback Guidance",
+      "id": "e8f3bd45-c25a-a164-91c4-fd026b3497d2",
+      "name": "POST Create ClickUp Doc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3584,
+        448
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.clickup.com/api/v3/workspaces/{{ $('Extract Task Fields').first().json.workspace_id }}/docs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "clickUpApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { name: \"Editorial workspace for \" + $('Extract Task Fields').first().json.task_id, parent: { id: $('Extract Webhook Context').first().json.list_id, type: 6 }, visibility: \"PRIVATE\", create_page: true } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "43235627-74a7-6d15-9462-4aaa3f852de4",
+      "name": "Doc Created",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3360,
-        660
+        3808,
+        448
       ],
       "parameters": {
-        "jsCode": "const fields = $('Extract Task Fields').first().json;\nconst commentText = [\n  '## Revision feedback needed',\n  '',\n  'I did not find actionable lead feedback in the comment thread, so I did not start an automated revision.',\n  '',\n  'Please add a comment with the specific changes needed, then move the task back to Needs Review.',\n].join('\\n');\nreturn [{ json: { task_id: fields.task_id, comment_text: commentText } }];"
+        "jsCode": "const fields = $('Extract Task Fields').first().json;\nif (!$json.id) {\n  throw new Error('Doc created but response did not include id');\n}\n\nreturn [{\n  json: {\n    workspace_id: fields.workspace_id,\n    doc_id: $json.id,\n    doc_created: true,\n    operation: 'created_doc',\n    stage: fields.stage,\n  },\n}];"
       }
     },
     {
-      "id": "8afe6c9d-d23f-9c49-8933-5474af801b37",
-      "name": "POST Empty Feedback Guidance",
-      "type": "n8n-nodes-base.clickUp",
-      "typeVersion": 1,
+      "id": "81ed3a07-e1d8-f293-c44f-2d5eea7d21aa",
+      "name": "Persist Doc Pointer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        3600,
-        660
+        4032,
+        448
       ],
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 1000,
-      "credentials": {
-        "clickUpApi": {
-          "id": "CLICKUP_CREDENTIAL_ID",
-          "name": "ClickUp Marketing Pipeline"
-        }
-      },
       "parameters": {
-        "resource": "comment",
-        "operation": "create",
-        "commentOn": "task",
-        "id": "={{ $json.task_id }}",
-        "commentText": "={{ $json.comment_text }}"
+        "jsCode": "const docData = $('Doc Created').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst docUrl = `https://app.clickup.com/${docData.workspace_id}/v/dc/${docData.doc_id}`;\n\n// Create the custom field update payload for ClickUp API v2 custom field endpoint.\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    doc_id: docData.doc_id,\n    editorial_doc_url: docUrl,\n    workspace_id: docData.workspace_id,\n    editorial_doc_url_field_id: \"fc421386-3bc8-4dca-adce-836a8f3d4d6d\",\n    doc_created: true,\n    operation: 'persist_doc_pointer',\n    stage: docData.stage,\n  },\n}];"
       }
     },
     {
-      "id": "3c784bf8-c645-68a8-dc8b-5348b9c20e65",
-      "name": "Empty Feedback → Approval",
-      "type": "n8n-nodes-base.clickUp",
-      "typeVersion": 1,
+      "id": "5f04b8e4-bc94-21ce-f917-388394d36b37",
+      "name": "PUT Update Editorial Doc Url",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
-        3840,
-        660
+        4256,
+        448
       ],
       "credentials": {
         "clickUpApi": {
@@ -377,21 +432,46 @@
         }
       },
       "parameters": {
-        "operation": "update",
-        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
-        "updateFields": {
-          "status": "approval"
-        }
+        "method": "POST",
+        "url": "=https://api.clickup.com/api/v2/task/{{ $json.task_id }}/field/{{ $json.editorial_doc_url_field_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "clickUpApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { value: $json.editorial_doc_url } }}",
+        "options": {}
       }
     },
     {
-      "id": "f648c83a-bdbd-41e0-eec2-a73b460c097a",
-      "name": "Status → In Progress",
-      "type": "n8n-nodes-base.clickUp",
-      "typeVersion": 1,
+      "id": "c939e909-7efb-dd59-4f3a-f08c539c3508",
+      "name": "Doc Ready",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        3120,
-        300
+        4480,
+        352
+      ],
+      "parameters": {
+        "jsCode": "let fields = $input.first().json;\n\nif (!fields.doc_id || !fields.workspace_id) {\n  try {\n    const persisted = $('Persist Doc Pointer').first().json;\n    if (persisted.doc_id && persisted.workspace_id) {\n      fields = persisted;\n    }\n  } catch (err) {\n    // Persist Doc Pointer only runs on the new-Doc branch; existing-Doc branch already has the fields.\n  }\n}\n\nif (!fields.doc_id || !fields.workspace_id) {\n  throw new Error('Doc Ready missing doc_id or workspace_id after Doc resolution');\n}\n\nreturn [{ json: fields }];"
+      }
+    },
+    {
+      "id": "6cd828a1-0e0c-2171-5136-92a963321966",
+      "name": "GET List Doc Pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4704,
+        352
       ],
       "credentials": {
         "clickUpApi": {
@@ -400,21 +480,33 @@
         }
       },
       "parameters": {
-        "operation": "update",
-        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
-        "updateFields": {
-          "status": "writing"
-        }
+        "url": "=https://api.clickup.com/api/v3/workspaces/{{ $json.workspace_id }}/docs/{{ $json.doc_id }}/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "clickUpApi",
+        "options": {}
       }
     },
     {
-      "id": "e047beaf-14eb-19fb-7a36-7ee0ffa5d633",
-      "name": "Prepare Revision Input?",
+      "id": "c73ecb8c-6ab7-4b08-664a-f5e304c67bb6",
+      "name": "Find Stage Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4928,
+        352
+      ],
+      "parameters": {
+        "jsCode": "const STAGE_TO_PAGE_NAME = {\n  \"investigate\": \"Brief\",\n  \"write\": \"Argument\",\n  \"format\": \"Final Draft\",\n};\n\nconst fields = $('Doc Ready').first().json;\nconst stage = fields.stage;\nconst pageName = STAGE_TO_PAGE_NAME[stage];\nif (!pageName) {\n  throw new Error(`Unknown stage '${stage}'. Expected one of: ${Object.keys(STAGE_TO_PAGE_NAME).join(', ')}`);\n}\n\nconst pages = $json.pages || [];\nconst existing = pages.find((page) => page.name === pageName);\n\nreturn [{\n  json: {\n    workspace_id: fields.workspace_id,\n    doc_id: fields.doc_id,\n    stage,\n    page_name: pageName,\n    page_id: existing?.id ?? '',\n  },\n}];"
+      }
+    },
+    {
+      "id": "c1b6b6cc-e20b-2e94-9f9b-620b023398a4",
+      "name": "Page Exists?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        3360,
-        300
+        5152,
+        352
       ],
       "parameters": {
         "conditions": {
@@ -427,8 +519,8 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "4dcc8a2a-3141-8af3-9b4b-c6fe18f7a3b5",
-              "leftValue": "={{ $('Extract Task Fields').first().json.ingress_mode === 'revision' }}",
+              "id": "a0151a50-826e-2143-62a1-1223d3083e53",
+              "leftValue": "={{ Boolean($json.page_id) }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -442,29 +534,146 @@
       }
     },
     {
-      "id": "694c50b2-95b8-4d17-d574-7c8036d5139b",
-      "name": "Prepare Revision Call Agent Input",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "54e501b5-a69b-4044-f6e2-13bfd372f524",
+      "name": "POST Create Doc Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
-        3600,
-        420
+        5376,
+        432
       ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
       "parameters": {
-        "jsCode": "function normalizeComments(input) {\n  const values = Array.isArray(input) ? input : [input];\n  return values.flatMap((value) => {\n    if (Array.isArray(value)) return normalizeComments(value);\n    if (Array.isArray(value?.comments)) return value.comments;\n    if (Array.isArray(value?.json?.comments)) return value.json.comments;\n    if (value && typeof value === 'object' && 'comment_text' in value) return [value];\n    if (value?.json && typeof value.json === 'object' && 'comment_text' in value.json) return [value.json];\n    return [];\n  });\n}\n\nfunction commentBody(comment) {\n  return String(comment?.comment_text ?? '').trim();\n}\n\nfunction isAgentDraftComment(comment) {\n  const body = commentBody(comment);\n  return body.includes('## LinkedIn Draft') ||\n    body.includes('## Resumo') ||\n    body.includes('## Autochecagem') ||\n    /_Generated by [^)]+\\(.*\\)_/i.test(body);\n}\n\nfunction isSystemComment(comment) {\n  const username = String(comment?.user?.username ?? '').trim().toLowerCase();\n  if (!username) return true;\n  return username === 'system' || username.includes('clickup') || username.includes('automation');\n}\n\nfunction isActionableComment(comment) {\n  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment);\n}\n\nfunction actionableComments(comments) {\n  return comments.filter((comment) => isActionableComment(comment));\n}\n\nfunction hasActionableFeedback(comments) {\n  return actionableComments(comments).length > 0;\n}\n\nfunction commentTimestamp(comment) {\n  const date = comment?.date;\n  if (!date) return 0;\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return numeric;\n  const parsed = Date.parse(date);\n  return Number.isFinite(parsed) ? parsed : 0;\n}\n\nfunction formatCommentDate(date) {\n  if (!date) return '';\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return new Date(numeric).toISOString();\n  return String(date);\n}\n\nfunction formatCommentThread(comments) {\n  return [...comments]\n    .sort((left, right) => commentTimestamp(left) - commentTimestamp(right))\n    .map((comment) => {\n      const username = String(comment?.user?.username ?? 'Unknown').trim() || 'Unknown';\n      const date = formatCommentDate(comment?.date);\n      const suffix = date ? ` (${date})` : '';\n      return `- **${username}**${suffix}: ${commentBody(comment)}`;\n    })\n    .join('\\n');\n}\n\nfunction buildRevisionTaskDescription(brief, thread) {\n  return `# Original Brief\\n${String(brief ?? '').trim()}\\n\\n` +\n    `# Revision Feedback (Comment Thread)\\n${String(thread ?? '').trim()}\\n\\n` +\n    '# Revision Instructions\\n' +\n    'Incorporate the actionable lead feedback above. Produce a revised LinkedIn draft that preserves the original brief, acceptance criteria, and Wolven voice.';\n}\n\nconst fields = $('Extract Task Fields').first().json;\nconst collected = $('Collect Task Comments').first().json;\nconst comments = normalizeComments(collected.feedback_comments ?? collected.comments ?? []);\nconst thread = formatCommentThread(comments);\nconst taskDescription = buildRevisionTaskDescription(fields.task_description, thread);\n\nreturn [{\n  json: {\n    agent_id: fields.agent_id,\n    task_title: fields.task_title,\n    task_description: taskDescription,\n    criterios_de_aceite: fields.criterios_de_aceite,\n    task_id: fields.task_id,\n  },\n}];"
+        "method": "POST",
+        "url": "=https://api.clickup.com/api/v3/workspaces/{{ $json.workspace_id }}/docs/{{ $json.doc_id }}/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "clickUpApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { name: $json.page_name, content: \"# \" + $json.page_name + \"\\n\\n*Initial placeholder content for \" + $json.page_name + \".*\", content_format: \"text/md\" } }}",
+        "options": {}
       }
     },
     {
-      "id": "cacc3bf4-657c-6720-2dae-a75e0f8efc81",
-      "name": "Prepare Call Agent Input",
+      "id": "685175d6-4aa9-2180-2b97-018c6095b2d0",
+      "name": "Page Created",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3600,
-        180
+        5600,
+        432
       ],
       "parameters": {
-        "jsCode": "const fields = $('Extract Task Fields').first().json;\nreturn [{\n  json: {\n    agent_id: fields.agent_id,\n    task_title: fields.task_title,\n    task_description: fields.task_description,\n    criterios_de_aceite: fields.criterios_de_aceite,\n    task_id: fields.task_id,\n  },\n}];"
+        "jsCode": "const fields = $('Find Stage Page').first().json;\nif (!$json.id) {\n  throw new Error(`Page '${fields.page_name}' created but response did not include id`);\n}\n\nreturn [{\n  json: {\n    ...fields,\n    page_id: $json.id,\n  },\n}];"
+      }
+    },
+    {
+      "id": "53fbe022-bb0a-67c4-b7c2-b2e9b7ce0de2",
+      "name": "Page Ready",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        5824,
+        352
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "1f21a3f8-c924-e723-6b53-54098c9d19b4",
+      "name": "GET Doc Page Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6048,
+        352
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "url": "=https://api.clickup.com/api/v3/workspaces/{{ $json.workspace_id }}/docs/{{ $json.doc_id }}/pages/{{ $json.page_id }}?content_format=text/md",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "clickUpApi",
+        "options": {}
+      }
+    },
+    {
+      "id": "e2deef77-e62b-3bfe-df95-b18321de1208",
+      "name": "Read Current Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6272,
+        352
+      ],
+      "parameters": {
+        "jsCode": "const content = $json.content;\nif (content === undefined) {\n  throw new Error('Page fetched but response did not include content');\n}\n\nreturn [{ json: { page_content: content } }];"
+      }
+    },
+    {
+      "id": "9bb72a1d-b79d-248f-5c82-b5aee9b07efd",
+      "name": "Extract Latest Lead Feedback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6496,
+        352
+      ],
+      "parameters": {
+        "jsCode": "function normalizeComments(input) {\n  const values = Array.isArray(input) ? input : [input];\n  return values.flatMap((value) => {\n    if (Array.isArray(value)) return normalizeComments(value);\n    if (Array.isArray(value?.comments)) return value.comments;\n    if (Array.isArray(value?.json?.comments)) return value.json.comments;\n    if (value && typeof value === 'object' && 'comment_text' in value) return [value];\n    if (value?.json && typeof value.json === 'object' && 'comment_text' in value.json) return [value.json];\n    return [];\n  });\n}\n\nfunction commentBody(comment) {\n  return String(comment?.comment_text ?? '').trim();\n}\n\nfunction isAgentDraftComment(comment) {\n  const body = commentBody(comment);\n  return body.includes('## LinkedIn Draft') ||\n    body.includes('## Resumo') ||\n    body.includes('## Autochecagem') ||\n    /_Generated by [^)]+\\(.*\\)_/i.test(body);\n}\n\nfunction isSystemComment(comment) {\n  const username = String(comment?.user?.username ?? '').trim().toLowerCase();\n  if (!username) return true;\n  return username === 'system' || username.includes('clickup') || username.includes('automation');\n}\n\nfunction isCqPointerComment(comment) {\n  const body = commentBody(comment);\n  return body.startsWith('[CQ-AI]');\n}\n\nfunction isCqBlockerComment(comment) {\n  const body = commentBody(comment);\n  return body.startsWith('[CQ-BLOCKER]');\n}\n\nfunction isActionableComment(comment) {\n  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment) &&\n    !isCqPointerComment(comment) && !isCqBlockerComment(comment);\n}\n\nfunction actionableComments(comments) {\n  return comments.filter((comment) => isActionableComment(comment));\n}\n\nfunction hasActionableFeedback(comments) {\n  return actionableComments(comments).length > 0;\n}\n\nfunction commentTimestamp(comment) {\n  const date = comment?.date;\n  if (!date) return 0;\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return numeric;\n  const parsed = Date.parse(date);\n  return Number.isFinite(parsed) ? parsed : 0;\n}\n\nfunction formatCommentDate(date) {\n  if (!date) return '';\n  const numeric = Number(date);\n  if (Number.isFinite(numeric)) return new Date(numeric).toISOString();\n  return String(date);\n}\n\nfunction formatCommentThread(comments) {\n  return [...comments]\n    .sort((left, right) => commentTimestamp(left) - commentTimestamp(right))\n    .map((comment) => {\n      const username = String(comment?.user?.username ?? 'Unknown').trim() || 'Unknown';\n      const date = formatCommentDate(comment?.date);\n      const suffix = date ? ` (${date})` : '';\n      return `- **${username}**${suffix}: ${commentBody(comment)}`;\n    })\n    .join('\\n');\n}\n\nconst taskFields = $('Extract Task Fields').first().json;\nconst collected = $('Collect Task Comments').first().json || {};\nconst comments = normalizeComments(collected.feedback_comments ?? collected.comments ?? []);\n\nconst actionable = comments.filter((comment) => isActionableComment(comment));\nif (actionable.length === 0) {\n  return [{\n    json: {\n      ...taskFields,\n      lead_feedback: undefined,\n    },\n  }];\n}\n\nconst sorted = [...actionable].sort((left, right) => commentTimestamp(left) - commentTimestamp(right));\nconst latestFeedback = commentBody(sorted[sorted.length - 1]);\n\nreturn [{\n  json: {\n    ...taskFields,\n    lead_feedback: latestFeedback || undefined,\n  },\n}];"
+      }
+    },
+    {
+      "id": "6672df6b-0369-b5e1-a0c7-b1bb7f941e47",
+      "name": "Prepare Staged Call Agent Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6720,
+        352
+      ],
+      "parameters": {
+        "jsCode": "const DEFAULT_MODEL = \"gpt-4.1-mini\";\n\nconst fields = $('Extract Task Fields').first().json;\nconst priorDoc = $('Read Current Page').first()?.json;\nconst feedbackFields = $('Extract Latest Lead Feedback').first()?.json || {};\n\nconst stage = fields.stage || 'investigate';\nconst priorArtifact = priorDoc?.page_content || '';\nconst leadFeedback = feedbackFields.lead_feedback || undefined;\n\nreturn [{\n  json: {\n    agent_id: fields.agent_id,\n    stage,\n    task_title: fields.task_title,\n    task_description: fields.task_description,\n    criterios_de_aceite: fields.criterios_de_aceite,\n    prior_stage_artifact: priorArtifact || undefined,\n    lead_feedback: leadFeedback,\n    model: fields.model || DEFAULT_MODEL,\n    task_id: fields.task_id,\n  },\n}];"
+      }
+    },
+    {
+      "id": "db6df28b-aac2-bc2e-9ca8-5b30e7f7af2d",
+      "name": "Add agent-working",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        352
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "taskTag",
+        "taskId": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "tagName": "agent-working",
+        "additionalFields": {}
       }
     },
     {
@@ -473,17 +682,23 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        3840,
-        300
+        6944,
+        352
       ],
       "parameters": {
-        "source": "database",
         "workflowId": {
           "__rl": true,
           "mode": "id",
           "value": "CALL_AGENT_WORKFLOW_ID"
         },
-        "mode": "once",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
         "options": {}
       }
     },
@@ -493,8 +708,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        4080,
-        300
+        6720,
+        352
       ],
       "parameters": {
         "conditions": {
@@ -526,11 +741,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4320,
-        220
+        7168,
+        64
       ],
       "parameters": {
-        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst agentId = taskFields.agent_id ?? \"linkedin-writer\";\nconst model = taskFields.model ?? \"gpt-4.1-mini\";\n\nconst commentText = [\n  '## LinkedIn Draft',\n  '',\n  agentOutput.deliverable_markdown ?? '',\n  '',\n  '---',\n  '',\n  '## Resumo',\n  '',\n  agentOutput.resumo ?? '',\n  '',\n  '---',\n  '',\n  '## Autochecagem',\n  '',\n  agentOutput.autochecagem ?? '',\n  '',\n  '---',\n  `_Generated by ${agentId} (${model})_`,\n].join('\\n');\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    agent_id: agentId,\n    model,\n    comment_text: commentText,\n    deliverable_markdown: agentOutput.deliverable_markdown,\n    resumo: agentOutput.resumo,\n    autochecagem: agentOutput.autochecagem,\n  },\n}];"
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst agentId = taskFields.agent_id ?? \"investigative-brief\";\nconst model = taskFields.model ?? \"gpt-4.1-mini\";\n\nconst commentText = [\n  '## LinkedIn Draft',\n  '',\n  agentOutput.deliverable_markdown ?? '',\n  '',\n  '---',\n  '',\n  '## Resumo',\n  '',\n  agentOutput.resumo ?? '',\n  '',\n  '---',\n  '',\n  '## Autochecagem',\n  '',\n  agentOutput.autochecagem ?? '',\n  '',\n  '---',\n  `_Generated by ${agentId} (${model})_`,\n].join('\\n');\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    agent_id: agentId,\n    model,\n    comment_text: commentText,\n    deliverable_markdown: agentOutput.deliverable_markdown,\n    resumo: agentOutput.resumo,\n    autochecagem: agentOutput.autochecagem,\n  },\n}];"
       }
     },
     {
@@ -539,8 +754,8 @@
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        4560,
-        220
+        7392,
+        64
       ],
       "retryOnFail": true,
       "maxTries": 2,
@@ -553,10 +768,10 @@
       },
       "parameters": {
         "resource": "comment",
-        "operation": "create",
         "commentOn": "task",
         "id": "={{ $json.task_id }}",
-        "commentText": "={{ $json.comment_text }}"
+        "commentText": "={{ $json.comment_text }}",
+        "additionalFields": {}
       }
     },
     {
@@ -565,8 +780,8 @@
       "type": "n8n-nodes-base.clickUp",
       "typeVersion": 1,
       "position": [
-        4800,
-        220
+        7616,
+        64
       ],
       "credentials": {
         "clickUpApi": {
@@ -588,37 +803,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4320,
-        420
+        6944,
+        448
       ],
       "parameters": {
         "jsCode": "const output = $input.first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconsole.log(JSON.stringify({\n  task_id: taskFields.task_id,\n  agent_id: taskFields.agent_id,\n  execution_id: $execution.id,\n  parse_success: false,\n  error: output.error ?? 'Agent returned error envelope',\n}));\nthrow new Error(`Call Agent failed: ${output.error ?? 'unknown error'}`);"
-      }
-    },
-    {
-      "id": "f7197921-41d6-b212-867a-ee2368ce9915",
-      "name": "Set Needs Review Skip Target",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        720,
-        660
-      ],
-      "parameters": {
-        "jsCode": "const item = $input.first().json;\nreturn [{ json: { ...item, target_status_key: 'needs_review' } }];"
-      }
-    },
-    {
-      "id": "7fb8f597-e939-23ef-8f12-3a17b8d3b2c6",
-      "name": "Log Ingress Skipped",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        960,
-        660
-      ],
-      "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst payload = (raw.body && raw.body.history_items) ? raw.body : raw;\nconst items = payload.history_items || [];\nconst first = items[0] || {};\nconst targetStatusKey = String(raw.target_status_key ?? 'ready');\n\nfunction statusValue(value) {\n  if (value !== null && typeof value === 'object') return String(value.status ?? '').trim().toLowerCase();\n  return String(value ?? '').trim().toLowerCase();\n}\n\nconst before = statusValue(first.before);\nconst after = statusValue(first.after);\nconst transition = before || after ? `${before}->${after}` : '';\n\nlet reason = targetStatusKey === 'needs_review' ? 'not_entering_needs_review' : 'not_entering_ready';\nif (!items.length) reason = 'no_history_items';\nelse if (first.field !== 'status') reason = 'field_not_status';\n\nconst record = {\n  event: 'ingress_skipped',\n  task_id: String(payload.task_id ?? ''),\n  webhook_id: String(payload.webhook_id ?? ''),\n  history_item_id: String(first.id ?? ''),\n  transition,\n  reason,\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
       }
     },
     {
@@ -627,11 +816,398 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1200,
-        520
+        1120,
+        544
       ],
       "parameters": {
         "jsCode": "const context = $input.first().json;\nconst before = String(context.transition_before ?? '').trim().toLowerCase();\nconst after = String(context.transition_after ?? '').trim().toLowerCase();\nconst transition = before || after ? `${before}->${after}` : '';\nconst record = {\n  event: 'ingress_skipped',\n  task_id: context.task_id,\n  webhook_id: context.webhook_id,\n  history_item_id: context.history_item_id,\n  transition,\n  reason: 'duplicate_history_item',\n};\nconsole.log(JSON.stringify(record));\nreturn [{ json: record }];"
+      }
+    },
+    {
+      "id": "3f3d0622-4bbb-9fad-5333-a79503e606d3",
+      "name": "Staged Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6944,
+        256
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "440dc19e-cfff-3a2c-2463-f58d882f08a2",
+              "leftValue": "={{ $('Extract Task Fields').first().json.stage !== null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d923e3be-92b3-d7b6-b12b-53b5f20f607f",
+      "name": "Detect Blocker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7168,
+        352
+      ],
+      "parameters": {
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst hasBlocker = Boolean(agentOutput.blocker_question);\nreturn [{\n  json: {\n    ...agentOutput,\n    has_blocker: hasBlocker,\n  },\n}];"
+      }
+    },
+    {
+      "id": "46d28c5f-c5a2-4db2-8cda-44be33edf42a",
+      "name": "Has Blocker?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        7392,
+        352
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "40a2f214-4cd9-8220-8408-463cf0436292",
+              "leftValue": "={{ $json.has_blocker === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "4fe6eb1c-1ea3-4507-6000-1571694a24fe",
+      "name": "Format Blocker Comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7616,
+        448
+      ],
+      "parameters": {
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\nconst stage = taskFields.stage || 'unknown';\n\nconst STAGE_NAMES = {\n  investigate: 'investigation phase',\n  write: 'argument phase',\n  format: 'formatting phase',\n};\n\nconst stageName = STAGE_NAMES[stage] || stage;\n\nconst commentText = [\n  '[CQ-BLOCKER] Cannot proceed to next stage',\n  '',\n  `**Stage:** ${stageName}`,\n  '',\n  '**Question for you:**',\n  `${agentOutput.blocker_question ?? ''}`,\n  '',\n  'Please provide the information requested above, then move the task back to this stage.',\n].join('\\n');\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    comment_text: commentText,\n    blocker_question: agentOutput.blocker_question,\n    stage: taskFields.stage,\n  },\n}];"
+      }
+    },
+    {
+      "id": "b88a68cc-233a-45c3-d88a-89cf15600441",
+      "name": "POST Blocker Comment",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        7840,
+        448
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "resource": "comment",
+        "commentOn": "task",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "commentText": "={{ $json.comment_text }}",
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "596cc118-dc98-8739-9e30-d12625029d5b",
+      "name": "Swap activity tags",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        8064,
+        448
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "taskTag",
+        "operation": "remove",
+        "taskId": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "tagName": "agent-working",
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "fa5f8701-a29c-705d-5376-aeada6c4739f",
+      "name": "Add agent-blocked tag",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        8288,
+        448
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "taskTag",
+        "taskId": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "tagName": "agent-blocked",
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "3a72cbb7-70c7-d152-33e5-be6d1c6657e7",
+      "name": "Update Status to Previous Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8512,
+        448
+      ],
+      "parameters": {
+        "jsCode": "const taskFields = $('Extract Task Fields').first().json;\nconst stage = taskFields.stage || 'investigate';\n\nconst STAGE_TO_PREVIOUS_GATE = {\n  investigate: 'backlog',\n  write: 'brief review',\n  format: 'content review',\n};\n\nconst GATE_STATUS_MAP = {\n  backlog: 'Backlog',\n  'brief review': 'Brief Review',\n  'content review': 'Content Review',\n};\n\nconst previousGate = STAGE_TO_PREVIOUS_GATE[stage];\nif (!previousGate) {\n  throw new Error(`Invalid stage '${stage}'. Expected one of: investigate, write, format`);\n}\n\nconst statusValue = GATE_STATUS_MAP[previousGate];\nif (!statusValue) {\n  throw new Error(`Invalid previous_gate '${previousGate}'. Expected one of: backlog, brief review, content review`);\n}\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    status_to_set: statusValue,\n    previous_gate: previousGate,\n  },\n}];"
+      }
+    },
+    {
+      "id": "9b050c7f-e51b-af82-b2bc-b0bed6d1ea5b",
+      "name": "Status → Previous Gate",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        8736,
+        448
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "operation": "update",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "updateFields": {
+          "status": "={{ $json.status_to_set }}"
+        }
+      }
+    },
+    {
+      "id": "288bd820-9a03-5347-cd33-2ddafe53884c",
+      "name": "Validate Staged Artifact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7392,
+        256
+      ],
+      "parameters": {
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\n\nconst artifact = agentOutput.artifact_markdown;\n\n// Validate artifact_markdown exists and is non-empty\nif (!artifact || typeof artifact !== 'string' || artifact.trim().length === 0) {\n  throw new Error(\n    `Staged success output missing or empty artifact_markdown. ` +\n    `Cannot proceed with Doc replacement or status advancement. ` +\n    `Task: ${taskFields.task_id}, Stage: ${taskFields.stage}`\n  );\n}\n\nreturn [{\n  json: {\n    ...agentOutput,\n    artifact_markdown: artifact.trim(),\n  },\n}];"
+      }
+    },
+    {
+      "id": "c6916463-debe-32e5-7e19-b8005938c070",
+      "name": "Format Pointer Comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7616,
+        256
+      ],
+      "parameters": {
+        "jsCode": "const agentOutput = $('Execute Call Agent').first().json;\nconst taskFields = $('Extract Task Fields').first().json;\n\nconst artifact = (agentOutput.artifact_markdown ?? '').trim();\nconst firstLine = artifact.split('\\n')[0].replace(/^#+\\s*/, '').trim();\nconst whatChanged = firstLine || '(artifact updated)';\n\nconst commentText = [\n  '[CQ-AI] Staged artifact updated',\n  '',\n  `**What changed:** ${whatChanged}`,\n  '',\n  '**Summary:**',\n  `${agentOutput.resumo ?? ''}`,\n  '',\n  '**Self-check:**',\n  `${agentOutput.self_check ?? ''}`,\n  '',\n  `**Next:** Moving to ${agentOutput.next_gate ?? 'next review'}`,\n].join('\\n');\n\nreturn [{\n  json: {\n    task_id: taskFields.task_id,\n    comment_text: commentText,\n    artifact_markdown: agentOutput.artifact_markdown,\n    next_gate: agentOutput.next_gate,\n  },\n}];"
+      }
+    },
+    {
+      "id": "8e48e965-ae30-e5b6-0096-1456674edf05",
+      "name": "PUT Replace Doc Page Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7840,
+        256
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.clickup.com/api/v3/workspaces/{{ $('Page Ready').first().json.workspace_id }}/docs/{{ $('Page Ready').first().json.doc_id }}/pages/{{ $('Page Ready').first().json.page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "clickUpApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { content: $json.artifact_markdown, content_edit_mode: \"replace\", content_format: \"text/md\" } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "a0d17bd9-f265-2eae-62df-f4dbf1db17f9",
+      "name": "Replace Doc Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8064,
+        256
+      ],
+      "parameters": {
+        "jsCode": "const fields = $('Format Pointer Comment').first().json;\n\nreturn [{\n  json: {\n    ...fields,\n    page_replaced: true,\n    operation: 'page_replaced',\n  },\n}];"
+      }
+    },
+    {
+      "id": "a07784f3-91d4-b0f6-8b2b-5b9f5e8e5437",
+      "name": "POST Pointer Comment",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        8288,
+        256
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "resource": "comment",
+        "commentOn": "task",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "commentText": "={{ $json.comment_text }}",
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "f1c2c529-b820-3261-4337-64dc4f555b46",
+      "name": "Clear activity tags",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        8512,
+        256
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "taskTag",
+        "operation": "remove",
+        "taskId": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "tagName": "agent-working",
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "57e164df-6a51-7d91-0d97-4e958112ec52",
+      "name": "Remove agent-blocked tag",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        8736,
+        256
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "taskTag",
+        "operation": "remove",
+        "taskId": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "tagName": "agent-blocked",
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "4277f30c-fa71-ec74-8323-0540f7ebb102",
+      "name": "Update Status to Next Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8960,
+        256
+      ],
+      "parameters": {
+        "jsCode": "const taskFields = $('Extract Task Fields').first().json;\nconst commentData = $('Format Pointer Comment').first().json;\nconst nextGate =  $('Execute Call Agent').first().json.next_gate || '';\n\nconst STATUS_MAP = {\n  'brief review': 'Brief Review',\n  'content review': 'Content Review',\n  'final review': 'Final Review',\n};\n\nconst statusValue = STATUS_MAP[nextGate];\nif (!statusValue) {\n  throw new Error(`Invalid next_gate '${nextGate}'. Expected one of: brief review, content review, final review`);\n}\n\nreturn [{\n  json: {\n    ...commentData,\n    status_to_set: statusValue,\n  },\n}];"
+      }
+    },
+    {
+      "id": "3b2e80ef-50b4-a5f6-c4bb-1d751bd7d312",
+      "name": "Status → Next Gate",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [
+        9184,
+        256
+      ],
+      "credentials": {
+        "clickUpApi": {
+          "id": "CLICKUP_CREDENTIAL_ID",
+          "name": "ClickUp Marketing Pipeline"
+        }
+      },
+      "parameters": {
+        "operation": "update",
+        "id": "={{ $('Extract Task Fields').first().json.task_id }}",
+        "updateFields": {
+          "status": "={{ $json.status_to_set }}"
+        }
       }
     }
   ],
@@ -640,61 +1216,25 @@
       "main": [
         [
           {
-            "node": "Ready to Work?",
+            "node": "Extract Stage",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Ready to Work?": {
+    "Extract Stage": {
       "main": [
         [
           {
-            "node": "Set First Draft Ingress",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Needs Review?",
+            "node": "Set Staged Ingress",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Needs Review?": {
-      "main": [
-        [
-          {
-            "node": "Set Revision Ingress",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Set Needs Review Skip Target",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Set First Draft Ingress": {
-      "main": [
-        [
-          {
-            "node": "Extract Webhook Context",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Set Revision Ingress": {
+    "Set Staged Ingress": {
       "main": [
         [
           {
@@ -760,25 +1300,78 @@
       "main": [
         [
           {
-            "node": "Revision Ingress?",
+            "node": "Route by Stage?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Revision Ingress?": {
+    "Route by Stage?": {
       "main": [
         [
           {
-            "node": "GET Task Comments",
+            "node": "Investigate?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Investigate?": {
+      "main": [
+        [
+          {
+            "node": "Add agent-working",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Status → In Progress",
+            "node": "Write?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write?": {
+      "main": [
+        [
+          {
+            "node": "Add agent-working",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format?": {
+      "main": [
+        [
+          {
+            "node": "Add agent-working",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Add agent-working": {
+      "main": [
+        [
+          {
+            "node": "GET Task Comments",
             "type": "main",
             "index": 0
           }
@@ -800,105 +1393,204 @@
       "main": [
         [
           {
-            "node": "Actionable Feedback?",
+            "node": "Has Doc URL?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Actionable Feedback?": {
+    "Has Doc URL?": {
       "main": [
         [
           {
-            "node": "Status → In Progress",
+            "node": "Use Existing Doc",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Log Empty Feedback Guidance",
+            "node": "POST Create ClickUp Doc",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Log Empty Feedback Guidance": {
+    "Use Existing Doc": {
       "main": [
         [
           {
-            "node": "Format Empty Feedback Guidance",
+            "node": "Doc Ready",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Format Empty Feedback Guidance": {
+    "POST Create ClickUp Doc": {
       "main": [
         [
           {
-            "node": "POST Empty Feedback Guidance",
+            "node": "Doc Created",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "POST Empty Feedback Guidance": {
+    "Doc Created": {
       "main": [
         [
           {
-            "node": "Empty Feedback → Approval",
+            "node": "Persist Doc Pointer",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Status → In Progress": {
+    "Persist Doc Pointer": {
       "main": [
         [
           {
-            "node": "Prepare Revision Input?",
+            "node": "PUT Update Editorial Doc Url",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare Revision Input?": {
+    "PUT Update Editorial Doc Url": {
       "main": [
         [
           {
-            "node": "Prepare Revision Call Agent Input",
+            "node": "Doc Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Doc Ready": {
+      "main": [
+        [
+          {
+            "node": "GET List Doc Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET List Doc Pages": {
+      "main": [
+        [
+          {
+            "node": "Find Stage Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Stage Page": {
+      "main": [
+        [
+          {
+            "node": "Page Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Page Exists?": {
+      "main": [
+        [
+          {
+            "node": "Page Ready",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Prepare Call Agent Input",
+            "node": "POST Create Doc Page",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare Revision Call Agent Input": {
+    "POST Create Doc Page": {
       "main": [
         [
           {
-            "node": "Execute Call Agent",
+            "node": "Page Created",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare Call Agent Input": {
+    "Page Created": {
+      "main": [
+        [
+          {
+            "node": "Page Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Page Ready": {
+      "main": [
+        [
+          {
+            "node": "GET Doc Page Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Doc Page Content": {
+      "main": [
+        [
+          {
+            "node": "Read Current Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Current Page": {
+      "main": [
+        [
+          {
+            "node": "Extract Latest Lead Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Latest Lead Feedback": {
+      "main": [
+        [
+          {
+            "node": "Prepare Staged Call Agent Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Staged Call Agent Input": {
       "main": [
         [
           {
@@ -924,7 +1616,7 @@
       "main": [
         [
           {
-            "node": "Format Draft Comment",
+            "node": "Staged Success?",
             "type": "main",
             "index": 0
           }
@@ -932,6 +1624,196 @@
         [
           {
             "node": "Agent Parse Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Staged Success?": {
+      "main": [
+        [
+          {
+            "node": "Detect Blocker",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Draft Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Blocker": {
+      "main": [
+        [
+          {
+            "node": "Has Blocker?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Blocker?": {
+      "main": [
+        [
+          {
+            "node": "Format Blocker Comment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Staged Artifact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Blocker Comment": {
+      "main": [
+        [
+          {
+            "node": "POST Blocker Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Blocker Comment": {
+      "main": [
+        [
+          {
+            "node": "Swap activity tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Swap activity tags": {
+      "main": [
+        [
+          {
+            "node": "Add agent-blocked tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add agent-blocked tag": {
+      "main": [
+        [
+          {
+            "node": "Update Status to Previous Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status to Previous Gate": {
+      "main": [
+        [
+          {
+            "node": "Status → Previous Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Staged Artifact": {
+      "main": [
+        [
+          {
+            "node": "Format Pointer Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Pointer Comment": {
+      "main": [
+        [
+          {
+            "node": "PUT Replace Doc Page Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PUT Replace Doc Page Content": {
+      "main": [
+        [
+          {
+            "node": "Replace Doc Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Doc Page": {
+      "main": [
+        [
+          {
+            "node": "POST Pointer Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Pointer Comment": {
+      "main": [
+        [
+          {
+            "node": "Clear activity tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear activity tags": {
+      "main": [
+        [
+          {
+            "node": "Remove agent-blocked tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove agent-blocked tag": {
+      "main": [
+        [
+          {
+            "node": "Update Status to Next Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status to Next Gate": {
+      "main": [
+        [
+          {
+            "node": "Status → Next Gate",
             "type": "main",
             "index": 0
           }
@@ -954,17 +1836,6 @@
         [
           {
             "node": "Status → Review",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Set Needs Review Skip Target": {
-      "main": [
-        [
-          {
-            "node": "Log Ingress Skipped",
             "type": "main",
             "index": 0
           }

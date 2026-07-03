@@ -2,7 +2,7 @@ import { deterministicWorkflowId } from "./deterministic-id.js";
 import {
   assemblePromptJs,
   parseAgentConfigJs,
-  parseAgentOutputJs,
+  parseCallAgentOutputJs,
   storeInputContextJs,
   unsupportedProviderJs,
 } from "./call-agent-n8n.js";
@@ -38,7 +38,7 @@ export interface N8nWorkflowExport {
 }
 
 const HARDCODED_TEST_INPUT: CallAgentInput = {
-  agent_id: "linkedin-writer",
+  agent_id: "investigative-brief",
   task_title: "Launch post for Q3 product update",
   task_description: "Announce the new dashboard feature for marketing leads.",
   criterios_de_aceite: "- Mention the dashboard\n- CTA to sign up\n- Under 300 words",
@@ -70,7 +70,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       name: "When Executed by Another Workflow",
       type: "n8n-nodes-base.executeWorkflowTrigger",
       typeVersion: 1.1,
-      position: [0, 300],
+      position: [224, 304],
       parameters: { inputSource: "passthrough" },
     },
     {
@@ -78,7 +78,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       name: "Manual Trigger (Isolation Test)",
       type: "n8n-nodes-base.manualTrigger",
       typeVersion: 1,
-      position: [0, 100],
+      position: [0, 112],
       parameters: {},
     },
     {
@@ -86,7 +86,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       name: "Hardcoded Test Input",
       type: "n8n-nodes-base.set",
       typeVersion: 3.4,
-      position: [240, 100],
+      position: [224, 112],
       parameters: { mode: "raw", jsonOutput: JSON.stringify(HARDCODED_TEST_INPUT), options: {} },
     },
     {
@@ -94,7 +94,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       name: "Store Input Context",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [480, 200],
+      position: [448, 208],
       parameters: { jsCode: storeInputContextJs() },
     },
     {
@@ -102,7 +102,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       name: "Fetch Agent Config",
       type: "n8n-nodes-base.github",
       typeVersion: 1.1,
-      position: [720, 200],
+      position: [672, 208],
       retryOnFail: true,
       maxTries: 2,
       waitBetweenTries: 1000,
@@ -114,6 +114,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
         repository: GITHUB_REPOSITORY_PARAM,
         filePath: `=${agentConfigPath("{{ $json.agent_id }}")}`,
         asBinaryProperty: false,
+        additionalParameters: { reference: "content-quality-pipeline" },
       },
     },
     {
@@ -121,15 +122,15 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       name: "Parse Agent Config",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [960, 200],
+      position: [896, 208],
       parameters: { jsCode: parseAgentConfigJs() },
     },
     {
-      id: nodeId("Fetch Skill Markdown"),
-      name: "Fetch Skill Markdown",
+      id: nodeId("Fetch Agent Files"),
+      name: "Fetch Agent Files",
       type: "n8n-nodes-base.github",
       typeVersion: 1.1,
-      position: [1200, 200],
+      position: [1120, 288],
       retryOnFail: true,
       maxTries: 2,
       waitBetweenTries: 1000,
@@ -139,16 +140,17 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
         operation: "get",
         owner: GITHUB_OWNER_PARAM,
         repository: GITHUB_REPOSITORY_PARAM,
-        filePath: "={{ $json.skill_path }}",
+        filePath: "={{ $json.path }}",
         asBinaryProperty: false,
+        additionalParameters: { reference: "content-quality-pipeline" },
       },
     },
     {
-      id: nodeId("Merge Skill Fetch"),
-      name: "Merge Skill Fetch",
+      id: nodeId("Merge Agent Files Fetch"),
+      name: "Merge Agent Files Fetch",
       type: "n8n-nodes-base.merge",
       typeVersion: 3.2,
-      position: [1320, 200],
+      position: [1344, 208],
       parameters: {
         mode: "combine",
         combineBy: "combineByPosition",
@@ -160,7 +162,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       name: "Assemble Prompt",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [1560, 200],
+      position: [1568, 208],
       parameters: { jsCode: assemblePromptJs() },
     },
     {
@@ -168,7 +170,7 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       name: "Route Provider",
       type: "n8n-nodes-base.if",
       typeVersion: 2.2,
-      position: [1800, 200],
+      position: [1792, 208],
       parameters: {
         conditions: {
           options: { version: 2, leftValue: "", caseSensitive: true, typeValidation: "strict" },
@@ -196,25 +198,22 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       name: GPT_NODE_NAME,
       type: "@n8n/n8n-nodes-langchain.openAi",
       typeVersion: 2.1,
-      position: [2040, 120],
+      position: [2016, 112],
       credentials: { openAiApi: { id: "OPENAI_CREDENTIAL_ID", name: "OpenAI API" } },
       parameters: {
-        resource: "text",
-        operation: "response",
         modelId: {
           __rl: true,
           mode: "id",
           value: `={{ ($json.model || '${DEFAULT_MODEL}').replace(/^models\\//, '').replace(/^gemini.*/, '${DEFAULT_MODEL}') }}`,
         },
         responses: {
-          values: [{ type: "text", role: "user", content: "={{ $json.user_message }}" }],
+          values: [{ content: "={{ $json.user_message }}" }],
         },
-        simplify: true,
         builtInTools: {},
         options: {
           instructions: "={{ $json.system_prompt }}",
-          temperature: "={{ $json.temperature ?? 0.7 }}",
           maxTokens: "={{ $json.max_output_tokens ?? 1024 }}",
+          temperature: "={{ $json.temperature ?? 0.7 }}",
         },
       },
     },
@@ -223,15 +222,15 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       name: "Parse Agent Output",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [2280, 120],
-      parameters: { jsCode: parseAgentOutputJs() },
+      position: [2240, 112],
+      parameters: { jsCode: parseCallAgentOutputJs() },
     },
     {
       id: nodeId("Unsupported Provider Error"),
       name: "Unsupported Provider Error",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [2040, 320],
+      position: [2016, 304],
       parameters: { jsCode: unsupportedProviderJs() },
     },
   ];
@@ -245,13 +244,13 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
     "Parse Agent Config": {
       main: [
         [
-          { node: "Fetch Skill Markdown", type: "main", index: 0 },
-          { node: "Merge Skill Fetch", type: "main", index: 0 },
+          { node: "Fetch Agent Files", type: "main", index: 0 },
+          { node: "Merge Agent Files Fetch", type: "main", index: 0 },
         ],
       ],
     },
-    "Fetch Skill Markdown": { main: [[{ node: "Merge Skill Fetch", type: "main", index: 1 }]] },
-    "Merge Skill Fetch": { main: [[{ node: "Assemble Prompt", type: "main", index: 0 }]] },
+    "Fetch Agent Files": { main: [[{ node: "Merge Agent Files Fetch", type: "main", index: 1 }]] },
+    "Merge Agent Files Fetch": { main: [[{ node: "Assemble Prompt", type: "main", index: 0 }]] },
     "Assemble Prompt": { main: [[{ node: "Route Provider", type: "main", index: 0 }]] },
     "Route Provider": {
       main: [
