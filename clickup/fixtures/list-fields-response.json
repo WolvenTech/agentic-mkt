@@ -1,6 +1,6 @@
 {
   "fields": [
-    { "id": "cf_criterios_001", "name": "Critérios de Aceite", "type": "text" },
-    { "id": "cf_agent_id_001", "name": "agent_id", "type": "short_text" }
+    { "id": "cf_criterios_001", "name": "ACs", "type": "text" },
+    { "id": "cf_agent_id_001", "name": "Agent", "type": "short_text" }
   ]
 }

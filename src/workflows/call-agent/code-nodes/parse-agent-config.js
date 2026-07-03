@@ -9,12 +9,25 @@ if (!encoded) {
 const decoded = Buffer.from(String(encoded).replace(/\n/g, ''), 'base64').toString('utf8');
 const agentConfig = JSON.parse(decoded);
 const skills = Array.isArray(agentConfig.skills) ? agentConfig.skills : [];
-return skills.map((skill) => ({
-  json: {
-    ...input,
-    agent_config: agentConfig,
-    skill,
-    skill_path: `agents/skills/${skill}.md`,
-  },
-}));
+const references = Array.isArray(agentConfig.references) ? agentConfig.references : [];
+const items = [
+  ...skills.map((skill) => ({
+    json: {
+      ...input,
+      agent_config: agentConfig,
+      skill,
+      skill_path: `agents/skills/${skill}.md`,
+      path: `agents/skills/${skill}.md`,
+    },
+  })),
+  ...references.map((reference) => ({
+    json: {
+      ...input,
+      agent_config: agentConfig,
+      reference,
+      path: reference,
+    },
+  })),
+];
+return items;
 }());

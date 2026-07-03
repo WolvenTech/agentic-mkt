@@ -1,63 +1,104 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CallAgentInput } from "../types/call-agent-io.js";
+import type { CallAgentInput, StageInput } from "../types/call-agent-io.js";
 import type { FieldMapping } from "../types/field-mapping.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "clickup", "field-mapping.json");
 
-export const DEFAULT_AGENT_ID = "linkedin-writer";
+export const DEFAULT_AGENT_ID = "investigative-brief";
 export const DEFAULT_MODEL = "gpt-4.1-mini";
 
 export const COMMENT_SECTIONS = ["## LinkedIn Draft", "## Resumo", "## Autochecagem"] as const;
 
 export type IngressMode = "first_draft" | "revision" | "skip";
 
-/** Expected main-workflow node order (happy path) for topology validation (task_09). */
-export const HAPPY_PATH_NODE_SEQUENCE = [
+/** Staged investigate ingress happy-path node order for topology validation. */
+export const STAGED_INVESTIGATE_PATH_NODE_SEQUENCE = [
   "ClickUp Webhook",
-  "Ready to Work?",
-  "Set First Draft Ingress",
+  "Extract Stage",
+  "Set Staged Ingress",
   "Extract Webhook Context",
   "Dedup?",
   "Mark History Item Seen",
   "GET ClickUp Task",
   "Extract Task Fields",
-  "Revision Ingress?",
-  "Status → In Progress",
-  "Prepare Revision Input?",
-  "Prepare Call Agent Input",
-  "Execute Call Agent",
-  "Agent Output OK?",
-  "Format Draft Comment",
-  "POST Task Comment",
-  "Status → Review",
-] as const;
-
-/** Revision happy-path node order for topology validation. */
-export const REVISION_PATH_NODE_SEQUENCE = [
-  "ClickUp Webhook",
-  "Ready to Work?",
-  "Needs Review?",
-  "Set Revision Ingress",
-  "Extract Webhook Context",
-  "Dedup?",
-  "Mark History Item Seen",
-  "GET ClickUp Task",
-  "Extract Task Fields",
-  "Revision Ingress?",
+  "Route by Stage?",
+  "Investigate?",
+  "Add agent-working",
   "GET Task Comments",
   "Collect Task Comments",
-  "Actionable Feedback?",
-  "Status → In Progress",
-  "Prepare Revision Input?",
-  "Prepare Revision Call Agent Input",
+  "Read Current Page",
+  "Extract Latest Lead Feedback",
+  "Prepare Staged Call Agent Input",
   "Execute Call Agent",
   "Agent Output OK?",
-  "Format Draft Comment",
-  "POST Task Comment",
-  "Status → Review",
+  "Staged Success?",
+  "Format Pointer Comment",
+  "Replace Doc Page",
+  "POST Pointer Comment",
+  "Clear activity tags",
+  "Update Status to Next Gate",
+  "Status → Next Gate",
+] as const;
+
+/** Staged write ingress happy-path node order for topology validation. */
+export const STAGED_WRITE_PATH_NODE_SEQUENCE = [
+  "ClickUp Webhook",
+  "Extract Stage",
+  "Set Staged Ingress",
+  "Extract Webhook Context",
+  "Dedup?",
+  "Mark History Item Seen",
+  "GET ClickUp Task",
+  "Extract Task Fields",
+  "Route by Stage?",
+  "Write?",
+  "Add agent-working",
+  "GET Task Comments",
+  "Collect Task Comments",
+  "Read Current Page",
+  "Extract Latest Lead Feedback",
+  "Prepare Staged Call Agent Input",
+  "Execute Call Agent",
+  "Agent Output OK?",
+  "Staged Success?",
+  "Format Pointer Comment",
+  "Replace Doc Page",
+  "POST Pointer Comment",
+  "Clear activity tags",
+  "Update Status to Next Gate",
+  "Status → Next Gate",
+] as const;
+
+/** Staged format ingress happy-path node order for topology validation. */
+export const STAGED_FORMAT_PATH_NODE_SEQUENCE = [
+  "ClickUp Webhook",
+  "Extract Stage",
+  "Set Staged Ingress",
+  "Extract Webhook Context",
+  "Dedup?",
+  "Mark History Item Seen",
+  "GET ClickUp Task",
+  "Extract Task Fields",
+  "Route by Stage?",
+  "Format?",
+  "Add agent-working",
+  "GET Task Comments",
+  "Collect Task Comments",
+  "Read Current Page",
+  "Extract Latest Lead Feedback",
+  "Prepare Staged Call Agent Input",
+  "Execute Call Agent",
+  "Agent Output OK?",
+  "Staged Success?",
+  "Format Pointer Comment",
+  "Replace Doc Page",
+  "POST Pointer Comment",
+  "Clear activity tags",
+  "Update Status to Next Gate",
+  "Status → Next Gate",
 ] as const;
 
 export interface WebhookHistoryItem {
@@ -121,7 +162,13 @@ export interface TaskFields {
   task_description: string;
   criterios_de_aceite: string;
   agent_id: string;
+  editorial_doc_url: string;
   ingress_mode?: IngressMode;
+}
+
+export interface DocPointerValidation {
+  valid: boolean;
+  error?: string;
 }
 
 export interface AgentOutputLike {
@@ -183,7 +230,7 @@ export function formatIngressTransition(item: WebhookHistoryItem | undefined): s
   return `${before}->${after}`;
 }
 
-/** Derive ingress skip reason for payloads that fail `ingressMatchesReadyToWork`. */
+/** Derive ingress skip reason for legacy ingress filters. */
 export function deriveIngressSkipReason(
   payload: ClickUpWebhookPayload,
   fieldMapping: FieldMapping = loadFieldMapping(),
@@ -207,6 +254,29 @@ export function deriveIngressSkipReason(
   return reason;
 }
 
+/** Derive ingress skip reason for payloads that don't match any staged status. */
+export function deriveStagedIngressSkipReason(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): string {
+  const event = unwrapWebhookPayload(payload);
+  const items = event.history_items ?? [];
+  const item = items[0];
+  if (!item) {
+    return "no_history_items";
+  }
+  if (item.field !== "status") {
+    return "field_not_status";
+  }
+  const stage = extractStageFromWebhook(payload, fieldMapping);
+  if (stage) {
+    // This shouldn't happen if this function is called correctly
+    return "unexpected_stage_match";
+  }
+  // Not entering any staged status
+  return "not_entering_staged_status";
+}
+
 /** Build structured ingress skip record for filtered webhook executions. */
 export function describeIngressSkipReason(
   payload: ClickUpWebhookPayload,
@@ -226,38 +296,6 @@ export function describeIngressSkipReason(
   };
 }
 
-/** Return true when webhook payload enters the automation ingress status (ClickUp taskStatusUpdated shape). */
-export function ingressMatchesReadyToWork(
-  payload: ClickUpWebhookPayload,
-  fieldMapping: FieldMapping = loadFieldMapping()
-): boolean {
-  const event = unwrapWebhookPayload(payload);
-  const items = event.history_items ?? [];
-  const item = items[0];
-  if (!item || item.field !== "status") {
-    return false;
-  }
-  const after = item.after;
-  const status = after !== null && typeof after === "object" ? (after as Record<string, unknown>).status : after;
-  return normalizeStatusValue(status) === normalizeStatusValue(statusName(fieldMapping, "ready"));
-}
-
-/** Return true when webhook payload enters the Needs Review revision ingress status. */
-export function ingressMatchesNeedsReview(
-  payload: ClickUpWebhookPayload,
-  fieldMapping: FieldMapping = loadFieldMapping()
-): boolean {
-  const event = unwrapWebhookPayload(payload);
-  const items = event.history_items ?? [];
-  const item = items[0];
-  if (!item || item.field !== "status") {
-    return false;
-  }
-  const after = item.after;
-  const status = after !== null && typeof after === "object" ? (after as Record<string, unknown>).status : after;
-  return normalizeStatusValue(status) === normalizeStatusValue(statusName(fieldMapping, "needs_review"));
-}
-
 /** n8n IF node expression per clickup/webhook-contract.md. */
 export function webhookIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
   const readyStatus = normalizeStatusValue(statusName(fieldMapping, "ready"));
@@ -274,9 +312,67 @@ export function webhookIfExpression(fieldMapping: FieldMapping = loadFieldMappin
   );
 }
 
-/** n8n IF node expression for Needs Review revision ingress. */
-export function needsReviewIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
-  const needsReviewStatus = normalizeStatusValue(statusName(fieldMapping, "needs_review"));
+/** Extract stage name from webhook status transition. Returns the stage if entering a staged status, null otherwise. */
+export function extractStageFromWebhook(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): string | null {
+  const event = unwrapWebhookPayload(payload);
+  const items = event.history_items ?? [];
+  const item = items[0];
+  if (!item || item.field !== "status") {
+    return null;
+  }
+  const after = item.after;
+  const status = after !== null && typeof after === "object" ? (after as Record<string, unknown>).status : after;
+  const normalizedStatus = normalizeStatusValue(status);
+
+  // Check each staged status
+  const investigateStatus = normalizeStatusValue(statusName(fieldMapping, "investigate"));
+  if (normalizedStatus === investigateStatus) {
+    return "investigate";
+  }
+
+  const writeStatus = normalizeStatusValue(statusName(fieldMapping, "write"));
+  if (normalizedStatus === writeStatus) {
+    return "write";
+  }
+
+  const formatStatus = normalizeStatusValue(statusName(fieldMapping, "format"));
+  if (normalizedStatus === formatStatus) {
+    return "format";
+  }
+
+  return null;
+}
+
+/** Return true when webhook payload enters the investigate stage. */
+export function ingressMatchesInvestigate(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): boolean {
+  return extractStageFromWebhook(payload, fieldMapping) === "investigate";
+}
+
+/** Return true when webhook payload enters the write stage. */
+export function ingressMatchesWrite(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): boolean {
+  return extractStageFromWebhook(payload, fieldMapping) === "write";
+}
+
+/** Return true when webhook payload enters the format stage. */
+export function ingressMatchesFormat(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping = loadFieldMapping()
+): boolean {
+  return extractStageFromWebhook(payload, fieldMapping) === "format";
+}
+
+/** n8n IF node expression for investigate stage ingress. */
+export function stagedInvestigateIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
+  const investigateStatus = normalizeStatusValue(statusName(fieldMapping, "investigate"));
   const root = webhookPayloadRootExpression();
   return (
     `={{ (() => { ` +
@@ -285,7 +381,39 @@ export function needsReviewIfExpression(fieldMapping: FieldMapping = loadFieldMa
     `if (!item || item.field !== "status") return false; ` +
     `const after = item.after; ` +
     `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
-    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(needsReviewStatus)}; ` +
+    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(investigateStatus)}; ` +
+    `})() }}`
+  );
+}
+
+/** n8n IF node expression for write stage ingress. */
+export function stagedWriteIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
+  const writeStatus = normalizeStatusValue(statusName(fieldMapping, "write"));
+  const root = webhookPayloadRootExpression();
+  return (
+    `={{ (() => { ` +
+    `const payload = ${root}; ` +
+    `const item = payload?.history_items?.[0]; ` +
+    `if (!item || item.field !== "status") return false; ` +
+    `const after = item.after; ` +
+    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
+    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(writeStatus)}; ` +
+    `})() }}`
+  );
+}
+
+/** n8n IF node expression for format stage ingress. */
+export function stagedFormatIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
+  const formatStatus = normalizeStatusValue(statusName(fieldMapping, "format"));
+  const root = webhookPayloadRootExpression();
+  return (
+    `={{ (() => { ` +
+    `const payload = ${root}; ` +
+    `const item = payload?.history_items?.[0]; ` +
+    `if (!item || item.field !== "status") return false; ` +
+    `const after = item.after; ` +
+    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
+    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(formatStatus)}; ` +
     `})() }}`
   );
 }
@@ -334,6 +462,19 @@ export function extractCustomFieldValue(task: ClickUpTask, fieldId: string): str
   return "";
 }
 
+/** Validate ClickUp Doc pointer URL/ID for presence and format. */
+export function validateDocPointer(pointer: string): DocPointerValidation {
+  if (!pointer) {
+    return { valid: false, error: "missing_pointer" };
+  }
+  const isUrl = pointer.match(/^https?:\/\//) !== null;
+  const isDocId = pointer.match(/^[a-zA-Z0-9-]+$/) !== null;
+  if (!isUrl && !isDocId) {
+    return { valid: false, error: "malformed_pointer" };
+  }
+  return { valid: true };
+}
+
 /** Map ClickUp task response to CallAgentInput fields plus task_id. */
 export function extractTaskFields(task: ClickUpTask, fieldMapping: FieldMapping): TaskFields {
   const custom = fieldMapping.custom_fields ?? {};
@@ -341,12 +482,14 @@ export function extractTaskFields(task: ClickUpTask, fieldMapping: FieldMapping)
   const agentIdField = custom.agent_id;
   const agentIdValue = extractCustomFieldValue(task, String(agentIdField?.clickup_field_id ?? ""));
   const defaultAgent = String(agentIdField?.default ?? DEFAULT_AGENT_ID);
+  const docUrlId = String(custom.editorial_doc_url?.clickup_field_id ?? "");
   return {
     task_id: String(task.id ?? ""),
     task_title: String(task.name ?? ""),
     task_description: String(task.description ?? task.text_content ?? ""),
     criterios_de_aceite: extractCustomFieldValue(task, criteriosId),
     agent_id: agentIdValue.trim() || defaultAgent,
+    editorial_doc_url: extractCustomFieldValue(task, docUrlId),
   };
 }
 
@@ -382,9 +525,26 @@ function isSystemComment(comment: ClickUpComment): boolean {
   return username === "system" || username.includes("clickup") || username.includes("automation");
 }
 
-/** Return true when at least one non-system, non-agent comment can guide a revision. */
+function isCqPointerComment(comment: ClickUpComment): boolean {
+  const body = commentBody(comment);
+  return body.startsWith("[CQ-AI]");
+}
+
+function isCqBlockerComment(comment: ClickUpComment): boolean {
+  const body = commentBody(comment);
+  return body.startsWith("[CQ-BLOCKER]");
+}
+
+/** Return true when at least one non-system, non-agent, non-AI-pointer, non-blocker comment can guide a revision. */
 export function hasActionableFeedback(comments: ClickUpComment[]): boolean {
-  return comments.some((comment) => commentBody(comment) !== "" && !isSystemComment(comment) && !isAgentDraftComment(comment));
+  return comments.some(
+    (comment) =>
+      commentBody(comment) !== "" &&
+      !isSystemComment(comment) &&
+      !isAgentDraftComment(comment) &&
+      !isCqPointerComment(comment) &&
+      !isCqBlockerComment(comment)
+  );
 }
 
 function commentTimestamp(comment: ClickUpComment): number {
@@ -470,8 +630,59 @@ export function statusName(fieldMapping: FieldMapping, key: string): string {
   return String(fieldMapping.statuses?.[key] ?? "");
 }
 
+/**
+ * Resolve a stage status name from field mapping.
+ * Throws descriptive error if the status key is not in the mapping.
+ */
+export function stagedStatusName(fieldMapping: FieldMapping, statusKey: string): string {
+  const name = statusName(fieldMapping, statusKey);
+  if (!name) {
+    throw new Error(
+      `Missing status '${statusKey}' in field mapping. ` +
+      `Available statuses: ${Object.keys(fieldMapping.statuses ?? {}).join(", ")}`
+    );
+  }
+  return name;
+}
+
+/**
+ * Validate that a stage status key exists in the field mapping.
+ * Throws descriptive error if missing.
+ */
+export function validateStageStatus(fieldMapping: FieldMapping, statusKey: string): void {
+  const name = statusName(fieldMapping, statusKey);
+  if (!name) {
+    throw new Error(
+      `Missing staged status '${statusKey}' in field mapping. ` +
+      `Staged statuses required: investigate, brief_review, write, content_review, format, final_review. ` +
+      `Available: ${Object.keys(fieldMapping.statuses ?? {}).join(", ")}`
+    );
+  }
+}
+
 export function fieldId(fieldMapping: FieldMapping, key: string): string {
   return String(fieldMapping.custom_fields?.[key]?.clickup_field_id ?? "");
+}
+
+/**
+ * Validate that all required stage statuses are present in the field mapping.
+ * Throws descriptive error if any required status is missing.
+ */
+export function validateAllStageStatuses(fieldMapping: FieldMapping): void {
+  const requiredStatuses = ["investigate", "brief_review", "write", "content_review", "format", "final_review"];
+  const missing: string[] = [];
+  for (const statusKey of requiredStatuses) {
+    if (!statusName(fieldMapping, statusKey)) {
+      missing.push(statusKey);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing staged statuses in field mapping: ${missing.join(", ")}. ` +
+      `Required: ${requiredStatuses.join(", ")}. ` +
+      `Available: ${Object.keys(fieldMapping.statuses ?? {}).join(", ")}`
+    );
+  }
 }
 
 /** Return first node path from start to end following main connections, or null. */
@@ -512,4 +723,89 @@ export function workflowConnectionPath(
     return null;
   }
   return walk(start, new Set());
+}
+
+/** Extract latest actionable lead feedback comment from thread. Filters out pointer comments and agent drafts. */
+export function extractLatestLeadFeedback(comments: ClickUpComment[]): string {
+  const actionable = comments.filter(
+    (comment) =>
+      commentBody(comment) !== "" &&
+      !isSystemComment(comment) &&
+      !isAgentDraftComment(comment) &&
+      !isCqPointerComment(comment) &&
+      !isCqBlockerComment(comment)
+  );
+  if (actionable.length === 0) {
+    return "";
+  }
+  const sorted = [...actionable].sort((left, right) => commentTimestamp(left) - commentTimestamp(right));
+  const latest = sorted[sorted.length - 1];
+  return latest ? commentBody(latest) : "";
+}
+
+/** Select prior stage Doc page name based on current stage. */
+export function selectPriorDocPageName(stage: string): string | null {
+  if (stage === "write") return "Brief";
+  if (stage === "format") return "Argument";
+  return null;
+}
+
+/** Build StageInput envelope from task fields, Doc content, and comments. */
+export function buildStageInput(
+  taskFields: TaskFields,
+  stage: string,
+  priorDocContent: string = "",
+  comments: ClickUpComment[] = [],
+  model: string = DEFAULT_MODEL
+): StageInput {
+  const feedback = extractLatestLeadFeedback(comments);
+  return {
+    agent_id: taskFields.agent_id,
+    stage: stage as "investigate" | "write" | "format",
+    task_title: taskFields.task_title,
+    task_description: taskFields.task_description,
+    criterios_de_aceite: taskFields.criterios_de_aceite,
+    prior_stage_artifact: priorDocContent || undefined,
+    lead_feedback: feedback || undefined,
+    model,
+  };
+}
+
+/** Detect if a stage agent output contains a blocker_question (task_18). */
+export function isBlockerOutput(output: Record<string, unknown>): boolean {
+  return Boolean((output as any).blocker_question);
+}
+
+/** Get human-readable stage name for blocker comments. */
+export function stageDisplayName(stage: string): string {
+  const names: Record<string, string> = {
+    investigate: "investigation phase",
+    write: "argument phase",
+    format: "formatting phase",
+  };
+  return names[stage] || stage;
+}
+
+/** Format ClickUp blocker comment for editorial blockers (task_18). */
+export function formatBlockerComment(
+  blockerQuestion: string,
+  stage: string
+): string {
+  const stageName = stageDisplayName(stage);
+  return (
+    `[CQ-BLOCKER] Cannot proceed to next stage\n\n` +
+    `**Stage:** ${stageName}\n\n` +
+    `**Question for you:**\n${blockerQuestion}\n\n` +
+    `Please provide the information requested above, then move the task back to this stage.`
+  );
+}
+
+/** Map stage to its previous human gate (task_18). */
+export function getPreviousGateForStage(stage: string): string | null {
+  const gateMap: Record<string, string> = {
+    investigate: "backlog",
+    write: "brief review",
+    format: "content review",
+  };
+  return gateMap[stage] || null;
 }

@@ -37,18 +37,17 @@ const PRD_F5_REQUIREMENTS = [
   "green run evidence",
   "skill copy",
   "sync script",
-  "adr-005",
+  "adr-003",
 ];
 
-// Grep-tested READMEs only — `agents/harness/io-contract.md`, `.env.example`, and
-// `webhook-contract.md` still document the coexisting Python tooling by design
-// (root README's "coexists until task 13" section) and are out of scope here;
-// task_12 owns the full python3 -> pnpm command rewrite across docs.
+// Committed docs should not mention the retired python3/.py command path.
 const PYTHON_COMMAND_GREP_PATHS: Record<string, string> = {
   "README.md": resolve(REPO_ROOT, "README.md"),
   "n8n/README.md": resolve(REPO_ROOT, "n8n", "README.md"),
   "clickup/README.md": resolve(REPO_ROOT, "clickup", "README.md"),
   "agents/harness/README.md": resolve(REPO_ROOT, "agents", "harness", "README.md"),
+  "agents/harness/io-contract.md": resolve(REPO_ROOT, "agents", "harness", "io-contract.md"),
+  "clickup/webhook-contract.md": resolve(REPO_ROOT, "clickup", "webhook-contract.md"),
 };
 
 const PYTHON_COMMAND_PATTERNS = [/\bpython3\b/, /\.py\b/];
@@ -57,7 +56,7 @@ function loadText(path: string): string {
   return readFileSync(path, "utf-8");
 }
 
-function loadEvidence(): {
+interface GreenRunEvidence {
   validation_status: string;
   main_workflow: {
     verified: boolean;
@@ -66,23 +65,31 @@ function loadEvidence(): {
     latency_seconds: number | null;
     status_path: string[];
   };
-} {
-  return JSON.parse(readFileSync(GREEN_RUN_EVIDENCE_PATH, "utf-8"));
+}
+
+/** green-run-evidence.json is gitignored (local-only, never committed) — absent is the normal CI/fresh-clone state. */
+function loadEvidence(): GreenRunEvidence | undefined {
+  try {
+    return JSON.parse(readFileSync(GREEN_RUN_EVIDENCE_PATH, "utf-8"));
+  } catch {
+    return undefined;
+  }
 }
 
 describe("green-run evidence cross-references", () => {
   const contract = loadText(IO_CONTRACT_PATH);
   const evidence = loadEvidence();
-  const main = evidence.main_workflow;
+  const main = evidence?.main_workflow;
 
-  it("main_workflow has the required evidence fields", () => {
+  it("main_workflow has the required evidence fields when a local evidence file is present", () => {
+    if (!main) return;
     for (const key of ["n8n_execution_id", "clickup_task_url", "latency_seconds", "status_path"]) {
       expect(main).toHaveProperty(key);
     }
   });
 
   it("documents the execution ID once a run has passed and verified", () => {
-    if (evidence.validation_status !== "passed" || !main.verified) {
+    if (!evidence || evidence.validation_status !== "passed" || !main?.verified) {
       expect(contract.toLowerCase()).toContain("validation_status");
       return;
     }
@@ -94,7 +101,7 @@ describe("green-run evidence cross-references", () => {
   });
 
   it("documents the ClickUp task URL once a run has passed and verified", () => {
-    if (evidence.validation_status !== "passed" || !main.verified) {
+    if (!evidence || evidence.validation_status !== "passed" || !main?.verified) {
       expect(contract).toContain("green-run-evidence.json");
       return;
     }
@@ -105,8 +112,8 @@ describe("green-run evidence cross-references", () => {
     }
   });
 
-  it("documents observed latency under the M1 target once a run has passed and verified", () => {
-    if (evidence.validation_status !== "passed" || !main.verified) {
+  it("documents observed latency once a run has passed and verified", () => {
+    if (!evidence || evidence.validation_status !== "passed" || !main?.verified) {
       expect(contract.toLowerCase()).toContain("latency");
       return;
     }
@@ -130,15 +137,15 @@ describe("troubleshooting", () => {
       "webhook url",
       "clickup webhook",
       "listen for test event",
-      "task-status-updated-ready-to-work.json",
+      "field-mapping.json",
     ]) {
       expect(contract).toContain(step);
     }
   });
 
-  it("documents task-stuck-in-In-Progress diagnostics", () => {
-    expect(contract).toContain("task stuck in in progress");
-    for (const step of ["n8n → executions", "execute call agent", "status → review"]) {
+  it("documents task-stuck-with-agent-working diagnostics", () => {
+    expect(contract).toContain("task stuck with agent-working");
+    for (const step of ["n8n → executions", "add agent-working", "collect task comments", "execute call agent"]) {
       expect(contract).toContain(step);
     }
   });
@@ -152,7 +159,7 @@ describe("troubleshooting", () => {
 
   it("documents field-ID mismatch diagnostics", () => {
     expect(contract).toContain("field id mismatches");
-    for (const step of ["field-mapping.json", "sync-field-mapping.py", "<tbd>"]) {
+    for (const step of ["field-mapping.json", "pnpm clickup:sync", "pnpm clickup:verify", "<tbd>"]) {
       expect(contract).toContain(step);
     }
   });
@@ -178,11 +185,11 @@ describe("reusable harness patterns", () => {
 });
 
 describe("domain READMEs", () => {
-  it("each domain README has an M2 operational runbook section", () => {
+  it("each domain README has an operational runbook section", () => {
     for (const [domain, path] of Object.entries(DOMAIN_READMES)) {
       const lower = loadText(path).toLowerCase();
-      const hasM2 = lower.includes("m2 operational runbook") || lower.includes("m2 section");
-      expect(hasM2, `${domain}/README.md missing M2 operational runbook section`).toBe(true);
+      const hasRunbook = lower.includes("operational runbook") || lower.includes("m2 operational runbook");
+      expect(hasRunbook, `${domain}/README.md missing operational runbook section`).toBe(true);
     }
   });
 
@@ -201,7 +208,7 @@ describe("domain READMEs", () => {
 
   it("agents README documents skill copy and drift risk", () => {
     const readme = loadText(DOMAIN_READMES.agents).toLowerCase();
-    for (const topic of ["skill-vault", "drift risk", "sync script", "adr-005"]) {
+    for (const topic of ["skill-vault", "drift risk", "sync script", "adr-003"]) {
       expect(readme).toContain(topic);
     }
   });
@@ -225,8 +232,8 @@ describe("troubleshooting simulated webhook walkthrough", () => {
   const n8nReadme = loadText(DOMAIN_READMES.n8n);
 
   it("references the simulated-failure fixture and replay step", () => {
-    expect(contract).toContain("task-status-updated-ready-to-work.json");
     expect(contract.toLowerCase()).toContain("listen for test event");
+    expect(n8nReadme.toLowerCase()).toContain("webhook replay test");
   });
 
   it("n8n README cross-links the webhook replay test to the troubleshooting doc", () => {
@@ -313,4 +320,274 @@ describe("workflow command references", () => {
       expect(rootReadme).toContain(command);
     });
   }
+});
+
+describe("live proof and rollout readiness (task_22–23)", () => {
+  const listSchema = loadText(resolve(REPO_ROOT, "clickup", "list-schema.md"));
+  const n8nReadme = loadText(DOMAIN_READMES.n8n);
+
+  describe("production status is documented", () => {
+    it("list-schema.md has a Production Status section", () => {
+      const lower = listSchema.toLowerCase();
+      expect(lower).toContain("production status");
+    });
+
+    it("list-schema.md states the staged workflow is live and passed validation", () => {
+      const lower = listSchema.toLowerCase();
+      expect(lower).toContain("live");
+      expect(lower).toContain("passed live validation");
+    });
+
+    it("list-schema.md references the live validation runbook", () => {
+      expect(listSchema).toContain("LIVE-PROOF-RUNBOOK.md");
+    });
+  });
+});
+
+describe("staged-only rollout documentation (task_31)", () => {
+  const webhookContract = loadText(resolve(REPO_ROOT, "clickup", "webhook-contract.md"));
+  const ioContract = loadText(resolve(REPO_ROOT, "agents", "harness", "io-contract.md"));
+  const n8nReadme = loadText(DOMAIN_READMES.n8n);
+  const listSchema = loadText(resolve(REPO_ROOT, "clickup", "list-schema.md"));
+
+  describe("no stale old-flow references in production sections", () => {
+    it("webhook-contract.md describes staged ingress (investigate/write/format) not ready/needs review", () => {
+      const lower = webhookContract.toLowerCase();
+      // Should mention staged statuses in ingress section
+      const ingresSection = webhookContract.slice(webhookContract.indexOf("## Ingress filters"), webhookContract.indexOf("## Self-echo"));
+      expect(ingresSection.toLowerCase()).toContain("investigate");
+      expect(ingresSection.toLowerCase()).toContain("write");
+      expect(ingresSection.toLowerCase()).toContain("format");
+      // Should not describe old ingress as current flow
+      expect(lower).not.toContain("first-draft ingress");
+      expect(lower).not.toContain("revision ingress");
+    });
+
+    it("n8n/README.md webhook path uses staged-ingress not ready-to-work", () => {
+      expect(n8nReadme).toContain("marketing-pipeline-staged-ingress");
+      expect(n8nReadme).not.toContain("marketing-pipeline-ready-to-work");
+    });
+
+    it("io-contract.md Live ClickUp status section documents staged flow only", () => {
+      const lower = ioContract.toLowerCase();
+      expect(lower).toContain("investigate");
+      expect(lower).toContain("brief_review");
+      expect(lower).toContain("write");
+      expect(lower).toContain("format");
+      // Old statuses should not be in the primary flow table
+      const statusesSection = ioContract.slice(ioContract.indexOf("## Live ClickUp status"), ioContract.indexOf("## M1 green run") || ioContract.length);
+      expect(statusesSection.toLowerCase()).not.toMatch(/^ready\s*\|/m);
+      expect(statusesSection.toLowerCase()).not.toMatch(/^needs review\s*\|/m);
+    });
+  });
+
+  describe("activity tag documentation (ADR-008)", () => {
+    it("io-contract.md documents agent-working and agent-blocked tags", () => {
+      expect(ioContract.toLowerCase()).toContain("agent-working");
+      expect(ioContract.toLowerCase()).toContain("agent-blocked");
+      expect(ioContract.toLowerCase()).toContain("activity tag");
+    });
+
+    it("io-contract.md explains when tags are set and cleared", () => {
+      const lower = ioContract.toLowerCase();
+      expect(lower).toContain("set when");
+      expect(lower).toContain("cleared when");
+      expect(lower).toContain("blocker");
+    });
+
+    it("n8n README documents activity tags in main workflow test procedure", () => {
+      expect(n8nReadme.toLowerCase()).toContain("agent-working");
+      expect(n8nReadme.toLowerCase()).toContain("tag");
+    });
+
+    it("LIVE-PROOF-RUNBOOK.md includes activity tag reference", () => {
+      const runbook = loadText(resolve(REPO_ROOT, "agents", "harness", "LIVE-PROOF-RUNBOOK.md"));
+      expect(runbook.toLowerCase()).toContain("activity tag");
+      expect(runbook.toLowerCase()).toContain("agent-working");
+    });
+  });
+
+  describe("proof exit-code contract documentation (ADR-010)", () => {
+    it("io-contract.md documents proof and green-run exit codes", () => {
+      expect(ioContract).toContain("Exit-code meanings");
+      expect(ioContract).toContain("Proof and green-run exit-code contract");
+      expect(ioContract).toContain("| **0** |");
+      expect(ioContract).toContain("| **2** |");
+      expect(ioContract).toContain("| **3** |");
+    });
+
+    it("io-contract.md documents that exit 3 means ready but unverified (not success)", () => {
+      expect(ioContract).toContain("Ready but unverified");
+      expect(ioContract).toContain("not");
+      expect(ioContract).toContain("success");
+    });
+
+    it("io-contract.md failure output includes concrete remediation steps", () => {
+      const lower = ioContract.toLowerCase();
+      expect(lower).toContain("failure output");
+      expect(lower).toContain("remediation");
+      expect(lower).toContain("check id");
+    });
+
+    it("LIVE-PROOF-RUNBOOK.md documents exit codes and when to use them", () => {
+      const runbook = loadText(resolve(REPO_ROOT, "agents", "harness", "LIVE-PROOF-RUNBOOK.md"));
+      const lower = runbook.toLowerCase();
+      expect(lower).toContain("exit code");
+      expect(lower).toContain("green_run_execute");
+    });
+  });
+
+  describe("staged webhook path documented where operators need it", () => {
+    it("webhook-contract.md references staged ingress in ingress filters section", () => {
+      expect(webhookContract.toLowerCase()).toContain("investigate");
+      expect(webhookContract.toLowerCase()).toContain("write");
+      expect(webhookContract.toLowerCase()).toContain("format");
+    });
+
+    it("io-contract.md troubleshooting references webhook path", () => {
+      expect(ioContract.toLowerCase()).toContain("marketing-pipeline-staged-ingress");
+    });
+
+    it("n8n README step-by-step setup includes webhook path", () => {
+      expect(n8nReadme).toContain("marketing-pipeline-staged-ingress");
+      const stepIdx = n8nReadme.indexOf("### Step 3");
+      expect(stepIdx).toBeGreaterThan(0);
+      expect(n8nReadme.slice(stepIdx, stepIdx + 500)).toContain("marketing-pipeline-staged-ingress");
+    });
+  });
+});
+
+describe("staged ClickUp workflow documentation (task_02)", () => {
+  const listSchema = loadText(resolve(REPO_ROOT, "clickup", "list-schema.md"));
+  const clickupReadme = loadText(DOMAIN_READMES.clickup);
+  const marketingPipelinesReadme = loadText(DOMAIN_READMES["marketing-pipelines"]);
+  const n8nReadme = loadText(DOMAIN_READMES.n8n);
+
+  describe("staged status names in documentation", () => {
+    const requiredStatuses = [
+      "backlog",
+      "investigate",
+      "brief review",
+      "brief_review",
+      "write",
+      "content review",
+      "content_review",
+      "format",
+      "final review",
+      "final_review",
+      "publish",
+      "closed",
+    ];
+
+    it("list-schema.md documents all staged status names", () => {
+      const lower = listSchema.toLowerCase();
+      for (const status of requiredStatuses) {
+        expect(lower, `list-schema.md should mention "${status}"`).toContain(status);
+      }
+    });
+
+    it("no longer describes ready/writing/approval as the current workflow in primary docs", () => {
+      // List schema should not describe ready/writing/approval as the flow
+      const schemaLower = listSchema.toLowerCase();
+      const hasPrimaryFlow = schemaLower.includes("primary workflow") &&
+        (schemaLower.includes("ready") || schemaLower.includes("writing") || schemaLower.includes("approval"));
+      expect(hasPrimaryFlow, "list-schema.md should not describe ready/writing/approval as primary").toBe(false);
+
+      // ClickUp README should not describe ready/writing/approval as the current workflow
+      const clickupLower = clickupReadme.toLowerCase();
+      const clickupHasOldFlow =
+        (clickupLower.includes("backlog → ready") || clickupLower.includes("ready → writing")) &&
+        !clickupLower.includes("backlog → investigate");
+      expect(clickupHasOldFlow, "clickup/README.md should not describe the old ready/writing flow").toBe(false);
+    });
+  });
+
+  describe("comment vs Doc responsibilities", () => {
+    it("list-schema.md explains that comments instruct and Doc stores artifacts", () => {
+      const lower = listSchema.toLowerCase();
+      expect(lower).toContain("comments instruct");
+      expect(lower).toContain("doc stores");
+      expect(lower).toContain("artifact");
+    });
+
+    it("clickup/README.md documents comment-vs-Doc guidance", () => {
+      const lower = clickupReadme.toLowerCase();
+      expect(lower).toContain("comments instruct");
+      expect(lower).toContain("doc");
+      expect(lower).toContain("artifact");
+      expect(lower).toContain("free-form");
+    });
+
+    it("marketing-pipelines/README.md references the artifact-first model", () => {
+      const lower = marketingPipelinesReadme.toLowerCase();
+      expect(lower).toContain("artifact");
+      expect(lower).toContain("doc");
+      expect(lower).toContain("comment");
+    });
+  });
+
+  describe("rework and blocker behavior", () => {
+    it("list-schema.md documents manual rework behavior (moving back re-runs only that stage)", () => {
+      const lower = listSchema.toLowerCase();
+      expect(lower).toContain("rework");
+      expect(lower).toContain("moving");
+      expect(lower).toContain("back");
+      expect(lower).toContain("stage");
+    });
+
+    it("list-schema.md documents blocker behavior and return to previous gate", () => {
+      const lower = listSchema.toLowerCase();
+      expect(lower).toContain("blocker");
+      expect(lower).toContain("previous");
+      expect(lower).toContain("gate");
+    });
+
+    it("clickup/README.md documents blocker flow in operational runbook", () => {
+      const lower = clickupReadme.toLowerCase();
+      expect(lower).toContain("blocker");
+      expect(lower).toContain("question");
+      expect(lower).toContain("comment");
+    });
+
+    it("clickup/README.md flags that downstream artifacts are preserved until manually re-run", () => {
+      const lower = clickupReadme.toLowerCase();
+      expect(lower).toContain("downstream");
+      expect(lower).toContain("preserved");
+      expect(lower).toContain("re-run");
+    });
+  });
+
+  describe("user can infer workflow behavior from docs", () => {
+    it("documents the complete trigger flow (how to start a stage)", () => {
+      const combined = `${listSchema}\n${clickupReadme}\n${marketingPipelinesReadme}`.toLowerCase();
+      expect(combined).toContain("move");
+      expect(combined).toContain("trigger");
+      expect(combined).toContain("stage");
+    });
+
+    it("documents approval flow (how stages advance)", () => {
+      const combined = `${listSchema}\n${clickupReadme}`.toLowerCase();
+      expect(combined).toContain("auto-advance");
+      expect(combined).toContain("advance");
+      expect(combined).toContain("brief review");
+      expect(combined).toContain("content review");
+      expect(combined).toContain("final review");
+    });
+
+    it("documents when and how to rework (moving back to earlier stages)", () => {
+      const combined = `${listSchema}\n${clickupReadme}`.toLowerCase();
+      expect(combined).toContain("move back");
+      expect(combined).toContain("investigate");
+      expect(combined).toContain("write");
+      expect(combined).toContain("format");
+    });
+
+    it("documents the ClickUp Doc as the artifact storage and where to find stage outputs", () => {
+      const combined = `${clickupReadme}\n${marketingPipelinesReadme}`.toLowerCase();
+      expect(combined).toContain("doc");
+      expect(combined).toContain("brief");
+      expect(combined).toContain("argument");
+      expect(combined).toContain("final draft");
+    });
+  });
 });

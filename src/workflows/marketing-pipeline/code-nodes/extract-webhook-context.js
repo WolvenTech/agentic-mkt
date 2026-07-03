@@ -18,6 +18,7 @@ return [{
     ingress_mode: String(raw.ingress_mode ?? payload.ingress_mode ?? 'first_draft'),
     transition_before: statusValue(first.before),
     transition_after: statusValue(first.after),
+    stage: payload.stage || null,
   },
 }];
 }());

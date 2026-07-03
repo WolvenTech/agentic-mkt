@@ -101,3 +101,21 @@ export function clickupPut<T>(path: string, body: unknown, options: ClickUpClien
 export function clickupDelete<T>(path: string, options: ClickUpClientOptions): Promise<T> {
   return request<T>("DELETE", path, undefined, options);
 }
+
+/** Add a named task tag on a ClickUp task. */
+export async function addTaskTag(
+  taskId: string,
+  tagName: string,
+  options: ClickUpClientOptions
+): Promise<void> {
+  await request<void>("POST", `/task/${encodeURIComponent(taskId)}/tag/${encodeURIComponent(tagName)}`, undefined, options);
+}
+
+/** Remove a named task tag from a ClickUp task. */
+export async function removeTaskTag(
+  taskId: string,
+  tagName: string,
+  options: ClickUpClientOptions
+): Promise<void> {
+  await request<void>("DELETE", `/task/${encodeURIComponent(taskId)}/tag/${encodeURIComponent(tagName)}`, undefined, options);
+}

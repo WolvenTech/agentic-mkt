@@ -63,6 +63,45 @@ describe("vendor gate — offline subprocess (env checks)", () => {
 });
 
 describe("vendor gate — runGate (mocked fetch)", () => {
+  it("accepts CLICKUP_TOKEN fallback and uses the default N8N_API_URL", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("api.clickup.com")) {
+          if (url.includes("/field")) {
+            return jsonResponse({ fields: [{ name: "ACs" }, { name: "Agent" }] });
+          }
+          return jsonResponse({ name: "Marketing Pipeline" });
+        }
+        return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline" }] });
+      })
+    );
+
+    const env = {
+      CLICKUP_TOKEN: "pk_test_token",
+      CLICKUP_LIST_ID: "123",
+      N8N_API_KEY: "n8n_test_key",
+    };
+    const { checks, exitCode } = await runGate(env);
+    expect(exitCode).toBe(0);
+    expect(checks.find((c) => c.name === "clickup_token_configured")?.passed).toBe(true);
+    expect(checks.find((c) => c.name === "n8n_api_url_configured")?.passed).toBe(true);
+    expect(checks.find((c) => c.name === "n8n_api_url_configured")?.detail).toContain("https://n8n");
+  });
+
+  it("treats an explicit empty N8N_API_URL as unset", async () => {
+    const env = {
+      CLICKUP_API_TOKEN: "pk_test_token",
+      CLICKUP_LIST_ID: "123",
+      N8N_API_KEY: "n8n_test_key",
+      N8N_API_URL: "",
+    };
+    const { checks, exitCode } = await runGate(env);
+    expect(exitCode).toBe(1);
+    expect(checks.find((c) => c.name === "n8n_api_url_configured")?.passed).toBe(false);
+    expect(checks.find((c) => c.name === "n8n_api_url_configured")?.detail).toContain("unset");
+  });
+
   it("returns exit 2 with clickup_list_reachable FAIL on a mocked ClickUp 401", async () => {
     vi.stubGlobal(
       "fetch",
@@ -88,7 +127,7 @@ describe("vendor gate — runGate (mocked fetch)", () => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
             return jsonResponse({
-              fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }],
+              fields: [{ name: "ACs" }, { name: "Agent" }, { name: "revision_count" }],
             });
           }
           return jsonResponse({ name: "Marketing Pipeline" });
@@ -106,6 +145,26 @@ describe("vendor gate — runGate (mocked fetch)", () => {
     expect(checks.find((c) => c.name === "n8n_main_workflow_present")?.passed).toBe(false);
   });
 
+  it("uses fallback detail text when ClickUp responses omit names and field arrays", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("api.clickup.com")) {
+          if (url.includes("/field")) {
+            return jsonResponse({});
+          }
+          return jsonResponse({});
+        }
+        return jsonResponse({ data: [{ name: "Call Agent" }, { name: "Marketing Pipeline" }] });
+      })
+    );
+
+    const { checks, exitCode } = await runGate(VALID_ENV);
+    expect(exitCode).toBe(2);
+    expect(checks.find((c) => c.name === "clickup_list_reachable")?.detail).toContain("-> '?'");
+    expect(checks.find((c) => c.name === "clickup_custom_fields_present")?.detail).toContain("Missing custom fields");
+  });
+
   it("returns exit 0 with all checks PASS on mocked success responses", async () => {
     vi.stubGlobal(
       "fetch",
@@ -113,7 +172,7 @@ describe("vendor gate — runGate (mocked fetch)", () => {
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
             return jsonResponse({
-              fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }],
+              fields: [{ name: "ACs" }, { name: "Agent" }, { name: "revision_count" }],
             });
           }
           return jsonResponse({ name: "Marketing Pipeline" });
@@ -149,6 +208,19 @@ describe("vendor gate — runGate (mocked fetch)", () => {
     expect(checks.find((c) => c.name === "clickup_list_reachable")?.detail).toContain("connection failed");
     expect(checks.find((c) => c.name === "n8n_api_reachable")?.detail).toContain("connection failed");
   });
+
+  it("reports a non-Error fetch rejection as a connection failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw "boom";
+      })
+    );
+
+    const { checks, exitCode } = await runGate(VALID_ENV);
+    expect(exitCode).toBe(2);
+    expect(checks.find((c) => c.name === "clickup_list_reachable")?.detail).toContain("boom");
+  });
 });
 
 describe("vendor gate — main() CLI report (mocked fetch, isolated env)", () => {
@@ -181,7 +253,7 @@ describe("vendor gate — main() CLI report (mocked fetch, isolated env)", () =>
         if (url.includes("api.clickup.com")) {
           if (url.includes("/field")) {
             return jsonResponse({
-              fields: [{ name: "Critérios de Aceite" }, { name: "agent_id" }, { name: "revision_count" }],
+              fields: [{ name: "ACs" }, { name: "Agent" }, { name: "revision_count" }],
             });
           }
           return jsonResponse({ name: "Marketing Pipeline" });

@@ -4,37 +4,51 @@ const items = $input.all();
 const base = items[0]?.json ?? {};
 const agentConfig = base.agent_config;
 if (!agentConfig) {
-  return [{ json: { error: 'Missing agent_config after Merge Skill Fetch', raw_response: JSON.stringify(base) } }];
+  return [{ json: { error: 'Missing agent_config after Merge Agent Files Fetch', raw_response: JSON.stringify(base) } }];
 }
 const skillContents = {};
+const referenceContents = {};
 for (const item of items) {
   const skill = item.json.skill;
+  const reference = item.json.reference;
   const encoded = item.json.content;
-  if (!skill || !encoded) continue;
-  skillContents[skill] = Buffer.from(String(encoded).replace(/\n/g, ''), 'base64').toString('utf8');
+  if (!encoded) continue;
+  const decoded = Buffer.from(String(encoded).replace(/\n/g, ''), 'base64').toString('utf8');
+  if (skill) {
+    skillContents[skill] = decoded;
+  } else if (reference) {
+    referenceContents[reference] = decoded;
+  }
 }
 const schema = agentConfig.output_schema ?? {};
-const example = {
-  deliverable_markdown: schema.deliverable_markdown ?? 'Full LinkedIn post draft in markdown',
-  resumo: schema.resumo ?? '2-3 sentence summary of the draft',
-  autochecagem: schema.autochecagem ?? 'Bullet list validating draft against acceptance criteria',
-};
+const example = schema;
 const skillBlocks = (agentConfig.skills ?? []).map((skill) => {
   const body = (skillContents[skill] ?? '').trim();
   return `## Skill: ${skill}\n${body}`;
 }).join('\n\n');
-const systemPrompt = [
+const systemPromptLines = [
   '# Agent Role',
   `You are the \`${agentConfig.id}\` marketing worker agent.`,
   '',
   '# Skills',
   skillBlocks,
   '',
+];
+const references = agentConfig.references ?? [];
+if (references.length > 0) {
+  const referenceBlocks = references.map((ref) => {
+    const body = (referenceContents[ref] ?? '').trim();
+    return `## Reference: ${ref}\n${body}`;
+  }).join('\n\n');
+  systemPromptLines.push('# References', referenceBlocks, '');
+}
+systemPromptLines.push(
   '# Required Output Format',
   'Respond with JSON only. Do not wrap the JSON in markdown code fences.',
   'Required keys and semantics:',
   JSON.stringify(example, null, 2),
-].join('\n');
+);
+const systemPrompt = systemPromptLines.join('\n');
 const userMessage = [
   '# Task Title',
   base.task_title ?? '',
@@ -50,6 +64,7 @@ return [{
     ...base,
     agent_config: agentConfig,
     skill_contents: skillContents,
+    reference_contents: referenceContents,
     system_prompt: systemPrompt,
     user_message: userMessage,
     temperature: agentConfig.temperature ?? @@DEFAULT_TEMPERATURE@@,

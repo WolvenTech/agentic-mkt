@@ -1,8 +1,10 @@
 import type { AgentConfig } from "../types/agent-config.js";
-import type { AgentErrorEnvelope, CallAgentInput, ParseResult } from "../types/call-agent-io.js";
+import type { AgentErrorEnvelope, CallAgentInput, ParseResult, StageParsedResult, StageErrorEnvelope } from "../types/call-agent-io.js";
+import { isKnownStage, getStageDefinition } from "../marketing-pipeline/stages.js";
 
 export const REQUIRED_OUTPUT_KEYS = ["deliverable_markdown", "resumo", "autochecagem"] as const;
-export const GITHUB_REPO_OWNER = "rafiti052";
+export const REQUIRED_STAGE_OUTPUT_KEYS = ["stage", "artifact_markdown", "resumo", "self_check", "next_gate"] as const;
+export const GITHUB_REPO_OWNER = "WolvenTech";
 export const GITHUB_REPO_NAME = "agentic-mkt";
 export const DEFAULT_PROVIDER = "openai";
 export const DEFAULT_MODEL = "gpt-4.1-mini";
@@ -23,6 +25,29 @@ export function agentConfigPath(agentId: string): string {
 
 export function skillPath(skillName: string): string {
   return `agents/skills/${skillName}.md`;
+}
+
+/** Validate that a reference path is safe: not empty and no path traversal. */
+export function isValidReferencePath(referencePath: string): boolean {
+  if (!referencePath || typeof referencePath !== "string") {
+    return false;
+  }
+  const trimmed = referencePath.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+  if (trimmed.includes("..")) {
+    return false;
+  }
+  return true;
+}
+
+/** Build a GitHub fetch path for a reference file (already absolute or relative to repo root). */
+export function referencePath(referenceFile: string): string {
+  if (!isValidReferencePath(referenceFile)) {
+    throw new Error(`Invalid reference path: "${referenceFile}". References must be non-empty and not contain path traversal.`);
+  }
+  return referenceFile;
 }
 
 /** Decode a GitHub contents-API response (base64 `content` field) to UTF-8 text. */
@@ -139,6 +164,92 @@ export function parseAgentOutput(rawResponse: string): ParseResult {
   };
 }
 
+function stageErrorEnvelope(message: string, rawResponse: string): StageErrorEnvelope {
+  return { error: message, raw_response: rawResponse };
+}
+
+/** Parse LLM output into a StageAgentOutput, returning an error envelope on any parse/validation failure. */
+export function parseStageOutput(rawResponse: string): StageParsedResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripJsonFences(rawResponse));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return stageErrorEnvelope(`Failed to parse StageAgentOutput: ${message}`, rawResponse);
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return stageErrorEnvelope("Expected JSON object", rawResponse);
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const missing = REQUIRED_STAGE_OUTPUT_KEYS.filter((key) => !(key in record));
+  if (missing.length > 0) {
+    return stageErrorEnvelope(`Missing required keys: ${missing.join(", ")}`, rawResponse);
+  }
+
+  // Validate stage is a known stage
+  const stage = record.stage;
+  if (!isKnownStage(stage)) {
+    return stageErrorEnvelope(`Unknown stage '${String(stage)}'. Expected one of: investigate, write, format`, rawResponse);
+  }
+
+  // Get stage definition for next_gate validation
+  let stageDefinition;
+  try {
+    stageDefinition = getStageDefinition(stage);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown stage";
+    return stageErrorEnvelope(message, rawResponse);
+  }
+
+  // Validate required string fields are non-empty
+  const requiredStringFields = ["artifact_markdown", "resumo", "self_check"] as const;
+  const empty = requiredStringFields.filter((key) => {
+    const value = record[key];
+    return typeof value !== "string" || value.trim().length === 0;
+  });
+  if (empty.length > 0) {
+    return stageErrorEnvelope(`Empty or non-string values for: ${empty.join(", ")}`, rawResponse);
+  }
+
+  // Validate next_gate matches stage definition
+  const nextGate = record.next_gate;
+  if (nextGate !== stageDefinition.next_gate) {
+    return stageErrorEnvelope(
+      `Invalid next_gate '${String(nextGate)}' for stage '${stage}'. Expected '${stageDefinition.next_gate}'`,
+      rawResponse
+    );
+  }
+
+  // Validate blocker_question if present
+  const blockerQuestion = record.blocker_question;
+  if (blockerQuestion !== undefined) {
+    if (typeof blockerQuestion !== "string" || blockerQuestion.trim().length === 0) {
+      return stageErrorEnvelope("blocker_question must be a non-empty string when present", rawResponse);
+    }
+  }
+
+  return {
+    stage,
+    artifact_markdown: record.artifact_markdown as string,
+    resumo: record.resumo as string,
+    self_check: record.self_check as string,
+    next_gate: nextGate as "brief review" | "content review" | "final review",
+    ...(blockerQuestion ? { blocker_question: blockerQuestion as string } : {}),
+  };
+}
+
+/** Does this agent's output_schema declare the stage-aware contract (has a `stage` key)? */
+export function isStagedAgentConfig(agentConfig: AgentConfig): boolean {
+  return typeof agentConfig.output_schema.stage === "string";
+}
+
+/** Parse LLM output using whichever contract this agent's output_schema declares. */
+export function parseCallAgentOutput(agentConfig: AgentConfig, rawResponse: string): ParseResult | StageParsedResult {
+  return isStagedAgentConfig(agentConfig) ? parseStageOutput(rawResponse) : parseAgentOutput(rawResponse);
+}
+
 /** Merge Parse Agent Config items with GitHub fetch responses by index (n8n Merge node output shape). */
 export function mergeSkillFetchItems(
   parseItems: Array<Record<string, unknown>>,
@@ -169,8 +280,29 @@ export function pairSkillContentsFromFetch(
   return skillContents;
 }
 
-/** Build system prompt from agent config, inlined skills, and an output-schema example. */
-export function assembleSystemPrompt(agentConfig: AgentConfig, skillContents: Record<string, string>): string {
+/** Pair Parse Agent Config reference items with GitHub file responses (preserves reference file paths). */
+export function pairReferenceContentsFromFetch(
+  parseItems: Array<{ reference?: string }>,
+  fetchItems: Array<{ content?: unknown }>
+): Record<string, string> {
+  const referenceContents: Record<string, string> = {};
+  const merged = mergeSkillFetchItems(parseItems, fetchItems);
+  for (const item of merged) {
+    const reference = item.reference;
+    if (typeof reference !== "string" || !reference) {
+      continue;
+    }
+    referenceContents[reference] = decodeGithubFileContent(item as { content?: unknown });
+  }
+  return referenceContents;
+}
+
+/** Build system prompt from agent config, inlined skills, references, and an output-schema example. */
+export function assembleSystemPrompt(
+  agentConfig: AgentConfig,
+  skillContents: Record<string, string>,
+  referenceContents?: Record<string, string>
+): string {
   const lines: string[] = [
     "# Agent Role",
     `You are the \`${agentConfig.id}\` marketing worker agent.`,
@@ -183,17 +315,19 @@ export function assembleSystemPrompt(agentConfig: AgentConfig, skillContents: Re
     lines.push(`## Skill: ${skillName}`, body, "");
   }
 
-  const schema = agentConfig.output_schema;
-  const example: Record<string, string> = {};
-  for (const key of REQUIRED_OUTPUT_KEYS) {
-    example[key] = schema[key];
+  if (referenceContents && agentConfig.references && agentConfig.references.length > 0) {
+    lines.push("# References");
+    for (const referencePath of agentConfig.references) {
+      const body = (referenceContents[referencePath] ?? "").trim();
+      lines.push(`## Reference: ${referencePath}`, body, "");
+    }
   }
 
   lines.push(
     "# Required Output Format",
     "Respond with JSON only. Do not wrap the JSON in markdown code fences.",
     "Required keys and semantics:",
-    JSON.stringify(example, null, 2)
+    JSON.stringify(agentConfig.output_schema, null, 2)
   );
 
   return lines.join("\n").trim();
@@ -238,10 +372,19 @@ export function buildStructuredLog(params: {
   };
 }
 
+/**
+ * githubFetchPaths returns all GitHub file paths to fetch for an agent config:
+ * agent config JSON, all skill markdown files, and all reference/template files.
+ */
 export function githubFetchPaths(agentConfig: AgentConfig): string[] {
   const paths = [agentConfigPath(agentConfig.id)];
   for (const skill of agentConfig.skills) {
     paths.push(skillPath(skill));
+  }
+  if (agentConfig.references) {
+    for (const reference of agentConfig.references) {
+      paths.push(referencePath(reference));
+    }
   }
   return paths;
 }

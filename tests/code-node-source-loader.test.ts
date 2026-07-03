@@ -414,6 +414,7 @@ describe("Code node source loader", () => {
         tokens: {
           FIELD_ID_CRITERIOS_DE_ACEITE: "cf_001",
           FIELD_ID_AGENT_ID: "cf_002",
+          FIELD_ID_EDITORIAL_DOC_URL: "cf_003",
           DEFAULT_AGENT_ID: "default-agent",
           DEFAULT_MODEL: "gpt-4",
         },

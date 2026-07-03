@@ -10,8 +10,8 @@ export const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "clickup", "field-mapping.j
 
 /** ClickUp custom field display name -> field-mapping.json `custom_fields` key. */
 const EXPECTED_FIELDS: Record<string, string> = {
-  "Critérios de Aceite": "criterios_de_aceite",
-  agent_id: "agent_id",
+  ACs: "criterios_de_aceite",
+  Agent: "agent_id",
 };
 
 interface ListDetailResponse {

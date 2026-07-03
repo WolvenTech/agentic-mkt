@@ -24,8 +24,8 @@ describe("n8n Code Node Source Inventory", () => {
     expect(callAgentCodeNodeFiles.length).toBe(5);
   });
 
-  it("should have 15 Marketing Pipeline Code node source files", () => {
-    expect(marketingPipelineCodeNodeFiles.length).toBe(15);
+  it("should have 25 Marketing Pipeline Code node source files", () => {
+    expect(marketingPipelineCodeNodeFiles.length).toBe(25);
   });
 
   it("should have all expected Call Agent Code node files", () => {
@@ -43,21 +43,31 @@ describe("n8n Code Node Source Inventory", () => {
 
   it("should have all expected Marketing Pipeline Code node files", () => {
     const expectedFiles = [
-      "set-first-draft-ingress.js",
-      "set-revision-ingress.js",
+      "set-staged-ingress.js",
       "extract-webhook-context.js",
       "mark-history-item-seen.js",
       "extract-task-fields.js",
       "collect-task-comments.js",
-      "log-empty-feedback-guidance.js",
-      "format-empty-feedback-guidance.js",
-      "prepare-call-agent-input.js",
-      "prepare-revision-call-agent-input.js",
+      "prepare-staged-call-agent-input.js",
       "format-draft-comment.js",
       "agent-parse-failure.js",
-      "set-needs-review-skip-target.js",
-      "log-ingress-skipped.js",
       "log-duplicate-ingress.js",
+      "detect-blocker.js",
+      "doc-created.js",
+      "doc-ready.js",
+      "extract-latest-lead-feedback.js",
+      "extract-stage.js",
+      "find-stage-page.js",
+      "format-blocker-comment.js",
+      "format-pointer-comment.js",
+      "page-created.js",
+      "persist-doc-pointer.js",
+      "read-current-page.js",
+      "replace-doc-page.js",
+      "update-status-to-next-gate.js",
+      "update-status-to-previous-gate.js",
+      "use-existing-doc.js",
+      "validate-staged-artifact.js",
     ];
     expectedFiles.forEach((file) => {
       expect(marketingPipelineCodeNodeFiles).toContain(file);

@@ -30,8 +30,19 @@ function isSystemComment(comment) {
   return username === 'system' || username.includes('clickup') || username.includes('automation');
 }
 
+function isCqPointerComment(comment) {
+  const body = commentBody(comment);
+  return body.startsWith('[CQ-AI]');
+}
+
+function isCqBlockerComment(comment) {
+  const body = commentBody(comment);
+  return body.startsWith('[CQ-BLOCKER]');
+}
+
 function isActionableComment(comment) {
-  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment);
+  return commentBody(comment) !== '' && !isSystemComment(comment) && !isAgentDraftComment(comment) &&
+    !isCqPointerComment(comment) && !isCqBlockerComment(comment);
 }
 
 function actionableComments(comments) {

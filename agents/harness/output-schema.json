@@ -1,22 +1,36 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/wolven/agentic-mkt/agents/harness/output-schema.json",
-  "title": "AgentOutput",
-  "description": "Required Gemini response shape after parsing. Keys align with agents/linkedin-writer.json output_schema.",
+  "title": "StageAgentOutput",
+  "description": "Required stage-aware response shape after parsing. Keys align with the staged agent configs used by the production content quality pipeline.",
   "type": "object",
-  "required": ["deliverable_markdown", "resumo", "autochecagem"],
+  "required": ["stage", "artifact_markdown", "resumo", "self_check", "next_gate"],
   "properties": {
-    "deliverable_markdown": {
+    "stage": {
       "type": "string",
-      "description": "One valid deliverable in markdown: a blocker question, three angle options, or the selected final English LinkedIn post"
+      "enum": ["investigate", "write", "format"],
+      "description": "Which stage produced this output"
+    },
+    "artifact_markdown": {
+      "type": "string",
+      "description": "Stage artifact in markdown"
     },
     "resumo": {
       "type": "string",
-      "description": "2-3 sentence summary of the returned blocker, angles, or final post"
+      "description": "2-3 sentence summary of the stage output"
     },
-    "autochecagem": {
+    "self_check": {
       "type": "string",
-      "description": "Bullet list validating the output against the brief, evidence requirements, Wolven voice, and acceptance criteria"
+      "description": "Bullet list validating the artifact against the stage contract and acceptance criteria"
+    },
+    "next_gate": {
+      "type": "string",
+      "enum": ["brief review", "content review", "final review"],
+      "description": "Human gate to advance to on success"
+    },
+    "blocker_question": {
+      "type": "string",
+      "description": "Optional clarification question when the stage cannot complete"
     }
   },
   "additionalProperties": false
