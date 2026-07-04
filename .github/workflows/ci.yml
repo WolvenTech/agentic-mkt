@@ -23,5 +23,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - uses: gitleaks/gitleaks-action@v2
+
       - name: Unit tests and workflow export check
         run: pnpm test && pnpm build:workflows:check
