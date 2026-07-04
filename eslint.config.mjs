@@ -1,5 +1,9 @@
 import js from '@eslint/js';
 
+// Token pattern: @@TOKEN_NAME@@ (must match TOKEN_PATTERN in src/workflows/n8n-codegen.ts;
+// tests/n8n-code-nodes-lint-coverage.test.ts asserts the two stay in sync).
+export const CODE_NODE_TOKEN_PATTERN = /@@[A-Z_]+@@/g;
+
 export default [
   {
     ignores: ['dist/**', 'node_modules/**', 'marketing-pipelines/**'],
@@ -12,8 +16,9 @@ export default [
     // to a string literal of itself before parsing so lint coverage applies to the
     // whole file instead of excluding it; this does not affect the committed source.
     processor: {
+      meta: { name: 'code-node-token-processor', version: '1.0.0' },
       preprocess(text) {
-        return [text.replace(/@@[A-Z_]+@@/g, (token) => JSON.stringify(token))];
+        return [text.replace(CODE_NODE_TOKEN_PATTERN, (token) => JSON.stringify(token))];
       },
       postprocess(messages) {
         return messages[0] ?? [];

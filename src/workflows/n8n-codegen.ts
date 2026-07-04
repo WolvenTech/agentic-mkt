@@ -19,7 +19,16 @@ export function joinN8nJs(lines: string[]): string {
 const APPROVED_WORKFLOWS = new Set(["call-agent", "marketing-pipeline"]);
 
 // Token pattern: @@TOKEN_NAME@@
-const TOKEN_PATTERN = /@@([A-Z_]+)@@/g;
+// Exported so consumers that must recognize the same grammar (e.g. eslint.config.mjs's
+// pre-render lint processor) can be tested against this single source of truth instead
+// of maintaining an independently-drifting copy.
+export const TOKEN_PATTERN = /@@([A-Z_]+)@@/g;
+
+/** Absolute path to a workflow's code-nodes directory (single source for the directory shape). */
+export function codeNodeSourceDir(workflowSlug: string): string {
+  const baseDir = resolve(__dirname, "..");
+  return resolve(baseDir, "workflows", workflowSlug, "code-nodes");
+}
 
 export interface CodeNodeSourceRef {
   workflowSlug: "call-agent" | "marketing-pipeline";
@@ -47,12 +56,10 @@ function resolveSourcePath(workflowSlug: string, nodeSlug: string): string {
     );
   }
 
-  // __dirname points to src/workflows, so go up one level to src
-  const baseDir = resolve(__dirname, "..");
-  const targetPath = resolve(baseDir, "workflows", workflowSlug, "code-nodes", `${nodeSlug}.js`);
+  const expectedBase = codeNodeSourceDir(workflowSlug);
+  const targetPath = resolve(expectedBase, `${nodeSlug}.js`);
 
   // Path traversal protection: ensure target is within expected directory
-  const expectedBase = resolve(baseDir, "workflows", workflowSlug, "code-nodes");
   const normalized = normalize(targetPath);
   const normalizedBase = normalize(expectedBase);
 
@@ -153,11 +160,10 @@ export function loadCodeNodeSource(ref: CodeNodeSourceRef): string {
  * Returns relative paths like "call-agent/parse-agent-config.js"
  */
 export function listCodeNodeSourceFiles(): string[] {
-  const baseDir = resolve(__dirname, "..");
   const results: string[] = [];
 
   for (const workflow of APPROVED_WORKFLOWS) {
-    const codeNodesDir = resolve(baseDir, "workflows", workflow, "code-nodes");
+    const codeNodesDir = codeNodeSourceDir(workflow);
     try {
       const files = readdirSync(codeNodesDir, { withFileTypes: true });
       for (const file of files) {

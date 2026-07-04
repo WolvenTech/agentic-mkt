@@ -1,15 +1,10 @@
 import { existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildCallAgentWorkflow } from "../src/workflows/build-call-agent.js";
 import { buildMarketingPipelineWorkflow } from "../src/workflows/build-marketing-pipeline.js";
-import { listCodeNodeSourceFiles, loadCodeNodeSource } from "../src/workflows/n8n-codegen.js";
+import { listCodeNodeSourceFiles, loadCodeNodeSource, codeNodeSourceDir } from "../src/workflows/n8n-codegen.js";
 import { loadFieldMapping } from "../src/marketing-pipeline/logic.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const REPO_ROOT = resolve(__dirname, "..");
 
 /**
  * Code Node Ownership Test
@@ -55,7 +50,7 @@ describe("Code node ownership", () => {
     const missingFiles: string[] = [];
     for (const node of codeNodes) {
       const nodeSlug = nodeNameToSlug(node.name);
-      const sourceFile = resolve(REPO_ROOT, "src/workflows/call-agent/code-nodes", `${nodeSlug}.js`);
+      const sourceFile = resolve(codeNodeSourceDir("call-agent"), `${nodeSlug}.js`);
       if (!existsSync(sourceFile)) {
         missingFiles.push(`${node.name} (expected at code-nodes/${nodeSlug}.js)`);
       }
@@ -75,7 +70,7 @@ describe("Code node ownership", () => {
     const missingFiles: string[] = [];
     for (const node of codeNodes) {
       const nodeSlug = nodeNameToSlug(node.name);
-      const sourceFile = resolve(REPO_ROOT, "src/workflows/marketing-pipeline/code-nodes", `${nodeSlug}.js`);
+      const sourceFile = resolve(codeNodeSourceDir("marketing-pipeline"), `${nodeSlug}.js`);
       if (!existsSync(sourceFile)) {
         missingFiles.push(`${node.name} (expected at code-nodes/${nodeSlug}.js)`);
       }

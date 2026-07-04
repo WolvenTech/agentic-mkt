@@ -1356,6 +1356,17 @@ describe("staged success output handling (task_17)", () => {
     expect(code).not.toContain(".map(");
   });
 
+  it("Format Pointer Comment uses .first() for stable task identity reference", () => {
+    // Update Status to Next Gate no longer re-fetches Extract Task Fields directly (it
+    // inherits task_id via the ...commentData spread above); this test keeps the original
+    // regression guard against $input.all()/.map()-based identity lookups pinned to the
+    // file that actually performs the fetch now.
+    const code = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "format-pointer-comment" });
+    expect(code).toContain("$('Extract Task Fields').first()");
+    expect(code).not.toContain("$input.all()");
+    expect(code).not.toContain(".map(");
+  });
+
   it("status update maps next_gate to display status values", () => {
     const code = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "update-status-to-next-gate" });
     expect(code).toContain("'brief review': 'Brief Review'");
