@@ -8,7 +8,7 @@ if (!fields.doc_id || !fields.workspace_id) {
     if (persisted.doc_id && persisted.workspace_id) {
       fields = persisted;
     }
-  } catch (err) {
+  } catch {
     // Persist Doc Pointer only runs on the new-Doc branch; existing-Doc branch already has the fields.
   }
 }

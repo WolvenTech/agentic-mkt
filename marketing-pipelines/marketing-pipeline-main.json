@@ -461,7 +461,7 @@
         352
       ],
       "parameters": {
-        "jsCode": "let fields = $input.first().json;\n\nif (!fields.doc_id || !fields.workspace_id) {\n  try {\n    const persisted = $('Persist Doc Pointer').first().json;\n    if (persisted.doc_id && persisted.workspace_id) {\n      fields = persisted;\n    }\n  } catch (err) {\n    // Persist Doc Pointer only runs on the new-Doc branch; existing-Doc branch already has the fields.\n  }\n}\n\nif (!fields.doc_id || !fields.workspace_id) {\n  throw new Error('Doc Ready missing doc_id or workspace_id after Doc resolution');\n}\n\nreturn [{ json: fields }];"
+        "jsCode": "let fields = $input.first().json;\n\nif (!fields.doc_id || !fields.workspace_id) {\n  try {\n    const persisted = $('Persist Doc Pointer').first().json;\n    if (persisted.doc_id && persisted.workspace_id) {\n      fields = persisted;\n    }\n  } catch {\n    // Persist Doc Pointer only runs on the new-Doc branch; existing-Doc branch already has the fields.\n  }\n}\n\nif (!fields.doc_id || !fields.workspace_id) {\n  throw new Error('Doc Ready missing doc_id or workspace_id after Doc resolution');\n}\n\nreturn [{ json: fields }];"
       }
     },
     {
@@ -1184,7 +1184,7 @@
         256
       ],
       "parameters": {
-        "jsCode": "const taskFields = $('Extract Task Fields').first().json;\nconst commentData = $('Format Pointer Comment').first().json;\nconst nextGate =  $('Execute Call Agent').first().json.next_gate || '';\n\nconst STATUS_MAP = {\n  'brief review': 'Brief Review',\n  'content review': 'Content Review',\n  'final review': 'Final Review',\n};\n\nconst statusValue = STATUS_MAP[nextGate];\nif (!statusValue) {\n  throw new Error(`Invalid next_gate '${nextGate}'. Expected one of: brief review, content review, final review`);\n}\n\nreturn [{\n  json: {\n    ...commentData,\n    status_to_set: statusValue,\n  },\n}];"
+        "jsCode": "const commentData = $('Format Pointer Comment').first().json;\nconst nextGate =  $('Execute Call Agent').first().json.next_gate || '';\n\nconst STATUS_MAP = {\n  'brief review': 'Brief Review',\n  'content review': 'Content Review',\n  'final review': 'Final Review',\n};\n\nconst statusValue = STATUS_MAP[nextGate];\nif (!statusValue) {\n  throw new Error(`Invalid next_gate '${nextGate}'. Expected one of: brief review, content review, final review`);\n}\n\nreturn [{\n  json: {\n    ...commentData,\n    status_to_set: statusValue,\n  },\n}];"
       }
     },
     {

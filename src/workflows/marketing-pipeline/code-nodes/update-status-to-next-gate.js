@@ -1,6 +1,5 @@
 // n8n Code node source - wrapped in IIFE for parsing
 (function() {
-const taskFields = $('Extract Task Fields').first().json;
 const commentData = $('Format Pointer Comment').first().json;
 const nextGate =  $('Execute Call Agent').first().json.next_gate || '';
 

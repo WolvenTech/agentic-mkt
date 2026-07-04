@@ -1349,9 +1349,9 @@ describe("staged success output handling (task_17)", () => {
     expect(code).toContain("final review");
   });
 
-  it("status update uses .first() for stable task identity reference", () => {
+  it("status update carries task identity from Format Pointer Comment (no direct re-fetch)", () => {
     const code = loadCodeNodeSource({ workflowSlug: "marketing-pipeline", nodeSlug: "update-status-to-next-gate" });
-    expect(code).toContain("$('Extract Task Fields').first()");
+    expect(code).toContain("...commentData");
     expect(code).not.toContain("$input.all()");
     expect(code).not.toContain(".map(");
   });
