@@ -3,6 +3,7 @@ import { loadFieldMapping } from "../marketing-pipeline/logic.js";
 import { loadRepoDotenv, REPO_ROOT } from "../load-env.js";
 import { clickupDelete, clickupGet, clickupPost } from "./client.js";
 import type { ClickUpClientOptions } from "./client.js";
+import { runGate } from "./vendor-gate.js";
 
 export const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "clickup", "field-mapping.json");
 
@@ -99,6 +100,16 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<number
   if (!token || !listId) {
     console.error("Set CLICKUP_API_TOKEN and CLICKUP_LIST_ID");
     return 1;
+  }
+
+  // Route through the vendor gate before performing live ClickUp operations
+  const gateResult = await runGate(env);
+  if (gateResult.exitCode !== 0) {
+    console.error("Vendor gate failed — cannot proceed with verify");
+    for (const check of gateResult.checks.filter((c) => !c.passed)) {
+      console.error(`  - ${check.name}: ${check.detail}`);
+    }
+    return gateResult.exitCode;
   }
 
   try {
