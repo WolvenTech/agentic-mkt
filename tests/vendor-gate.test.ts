@@ -54,11 +54,70 @@ describe("vendor gate — offline subprocess (env checks)", () => {
     expect(result.stdout).toContain("N8N_API_KEY unset");
   });
 
-  it("continues with exit 0 in VENDOR_GATE_STRICT=0 warn-only mode despite missing env", () => {
+  it("continues with exit 0 in VENDOR_GATE_STRICT=0 warn-only mode despite missing env (local dev)", () => {
     const env = { PATH: process.env.PATH ?? "", SKIP_DOTENV: "1", VENDOR_GATE_STRICT: "0" };
     const result = runGateSubprocess(env);
     expect(result.status).toBe(0);
     expect(result.stderr).toContain("warn-only mode");
+  });
+
+  it("rejects VENDOR_GATE_STRICT=0 bypass in CI=true context", () => {
+    const env = {
+      PATH: process.env.PATH ?? "",
+      SKIP_DOTENV: "1",
+      VENDOR_GATE_STRICT: "0",
+      CI: "true",
+    };
+    const result = runGateSubprocess(env);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("CLICKUP_API_TOKEN unset");
+    expect(result.stderr).not.toContain("warn-only mode");
+  });
+
+  it("allows VENDOR_GATE_STRICT=0 bypass when CI=false", () => {
+    const env = {
+      PATH: process.env.PATH ?? "",
+      SKIP_DOTENV: "1",
+      VENDOR_GATE_STRICT: "0",
+      CI: "false",
+    };
+    const result = runGateSubprocess(env);
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("warn-only mode");
+  });
+});
+
+describe("vendor gate — isStrict() bypass enforcement", () => {
+  it("enforces strict mode when VENDOR_GATE_STRICT=0 and CI=true", async () => {
+    const env = { VENDOR_GATE_STRICT: "0", CI: "true" };
+    // Import and test isStrict directly via main() behavior
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const code = await main({ SKIP_DOTENV: "1", VENDOR_GATE_STRICT: "0", CI: "true" });
+    expect(code).toBe(1); // Should fail because strict mode enforced and env missing
+    expect(errorSpy.mock.calls.flat().join("\n")).not.toContain("warn-only mode");
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it("allows warn-only when VENDOR_GATE_STRICT=0 and CI is not set", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const code = await main({ SKIP_DOTENV: "1", VENDOR_GATE_STRICT: "0" });
+    expect(code).toBe(0); // Should succeed in warn-only mode
+    expect(errorSpy.mock.calls.flat().join("\n")).toContain("warn-only mode");
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it("allows warn-only when VENDOR_GATE_STRICT=0 and CI=false", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const code = await main({ SKIP_DOTENV: "1", VENDOR_GATE_STRICT: "0", CI: "false" });
+    expect(code).toBe(0); // Should succeed in warn-only mode
+    expect(errorSpy.mock.calls.flat().join("\n")).toContain("warn-only mode");
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });
 
