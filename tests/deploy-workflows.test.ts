@@ -10,6 +10,7 @@ import {
   publishNewWorkflows,
   type N8nDeployNode,
 } from "../src/n8n/deploy-workflows.js";
+import { runGate } from "../src/clickup/vendor-gate.js";
 
 const REPO_ROOT = resolve(__dirname, "..");
 
@@ -305,6 +306,21 @@ describe("applyCredentialsByType", () => {
     const { unresolvedCredentials } = applyCredentialsByType(localNodes, credMap);
     expect(unresolvedCredentials).toContain("githubApi");
     expect(unresolvedCredentials).toContain("someOtherCred");
+  });
+});
+
+describe("gate routing (task_15)", () => {
+  it("imports runGate from vendor-gate.ts for gating live n8n mutations", async () => {
+    const gateModule = await import("../src/clickup/vendor-gate.js");
+    expect(typeof gateModule.runGate).toBe("function");
+    expect(typeof runGate).toBe("function");
+  });
+
+  it("the deploy-workflows script imports runGate and calls it before deploying", async () => {
+    const scriptContent = readFileSync(resolve(REPO_ROOT, "scripts/deploy-workflows.ts"), "utf-8");
+    expect(scriptContent).toContain("import { runGate }");
+    expect(scriptContent).toContain("await runGate()");
+    expect(scriptContent).toMatch(/gateResult\.exitCode/);
   });
 });
 
