@@ -23,12 +23,14 @@ import {
   ingressMatchesInvestigate,
   ingressMatchesFormat,
   ingressMatchesWrite,
+  ingressMatchesStage,
   isBlockerOutput,
   loadFieldMapping,
   selectPriorDocPageName,
   stagedFormatIfExpression,
   stagedInvestigateIfExpression,
   stagedWriteIfExpression,
+  stagedIfExpression,
   statusName,
   stagedStatusName,
   stageDisplayName,
@@ -99,6 +101,25 @@ describe("marketing pipeline ingress logic", () => {
     expect(ingressMatchesInvestigate(formatPayload, mapping)).toBe(false);
     expect(ingressMatchesWrite(formatPayload, mapping)).toBe(false);
     expect(ingressMatchesFormat(formatPayload, mapping)).toBe(true);
+  });
+
+  it("consolidates ingress matcher logic into parameterized ingressMatchesStage()", () => {
+    const mapping = fixtureFieldMapping();
+    const investigatePayload = readJson<ClickUpWebhookPayload>(INVESTIGATE_WEBHOOK_FIXTURE_PATH);
+    const writePayload = readJson<ClickUpWebhookPayload>(WRITE_WEBHOOK_FIXTURE_PATH);
+    const formatPayload = readJson<ClickUpWebhookPayload>(FORMAT_WEBHOOK_FIXTURE_PATH);
+
+    expect(ingressMatchesStage(investigatePayload, mapping, "investigate")).toBe(true);
+    expect(ingressMatchesStage(investigatePayload, mapping, "write")).toBe(false);
+    expect(ingressMatchesStage(investigatePayload, mapping, "format")).toBe(false);
+
+    expect(ingressMatchesStage(writePayload, mapping, "investigate")).toBe(false);
+    expect(ingressMatchesStage(writePayload, mapping, "write")).toBe(true);
+    expect(ingressMatchesStage(writePayload, mapping, "format")).toBe(false);
+
+    expect(ingressMatchesStage(formatPayload, mapping, "investigate")).toBe(false);
+    expect(ingressMatchesStage(formatPayload, mapping, "write")).toBe(false);
+    expect(ingressMatchesStage(formatPayload, mapping, "format")).toBe(true);
   });
 
   it("skips non-status history items before staged extraction", () => {
@@ -585,6 +606,31 @@ describe("staged ingress n8n IF expressions", () => {
     expect(expression).toContain("status");
     expect(expression).not.toContain("investigate");
     expect(expression).not.toContain("write");
+  });
+
+  it("consolidates IF expression logic into parameterized stagedIfExpression()", () => {
+    const investigateExpression = stagedIfExpression(mapping, "investigate");
+    const writeExpression = stagedIfExpression(mapping, "write");
+    const formatExpression = stagedIfExpression(mapping, "format");
+
+    expect(investigateExpression).toContain("={{");
+    expect(investigateExpression).toContain("investigate");
+    expect(investigateExpression).not.toContain("write");
+    expect(investigateExpression).not.toContain("format");
+
+    expect(writeExpression).toContain("={{");
+    expect(writeExpression).toContain("write");
+    expect(writeExpression).not.toContain("investigate");
+    expect(writeExpression).not.toContain("format");
+
+    expect(formatExpression).toContain("={{");
+    expect(formatExpression).toContain("format");
+    expect(formatExpression).not.toContain("investigate");
+    expect(formatExpression).not.toContain("write");
+
+    expect(stagedInvestigateIfExpression(mapping)).toBe(investigateExpression);
+    expect(stagedWriteIfExpression(mapping)).toBe(writeExpression);
+    expect(stagedFormatIfExpression(mapping)).toBe(formatExpression);
   });
 });
 

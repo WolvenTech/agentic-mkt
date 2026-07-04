@@ -346,12 +346,20 @@ export function extractStageFromWebhook(
   return null;
 }
 
+export function ingressMatchesStage(
+  payload: ClickUpWebhookPayload,
+  fieldMapping: FieldMapping,
+  stage: string
+): boolean {
+  return extractStageFromWebhook(payload, fieldMapping) === stage;
+}
+
 /** Return true when webhook payload enters the investigate stage. */
 export function ingressMatchesInvestigate(
   payload: ClickUpWebhookPayload,
   fieldMapping: FieldMapping = loadFieldMapping()
 ): boolean {
-  return extractStageFromWebhook(payload, fieldMapping) === "investigate";
+  return ingressMatchesStage(payload, fieldMapping, "investigate");
 }
 
 /** Return true when webhook payload enters the write stage. */
@@ -359,7 +367,7 @@ export function ingressMatchesWrite(
   payload: ClickUpWebhookPayload,
   fieldMapping: FieldMapping = loadFieldMapping()
 ): boolean {
-  return extractStageFromWebhook(payload, fieldMapping) === "write";
+  return ingressMatchesStage(payload, fieldMapping, "write");
 }
 
 /** Return true when webhook payload enters the format stage. */
@@ -367,55 +375,37 @@ export function ingressMatchesFormat(
   payload: ClickUpWebhookPayload,
   fieldMapping: FieldMapping = loadFieldMapping()
 ): boolean {
-  return extractStageFromWebhook(payload, fieldMapping) === "format";
+  return ingressMatchesStage(payload, fieldMapping, "format");
+}
+
+export function stagedIfExpression(fieldMapping: FieldMapping, stageName: string): string {
+  const stageStatus = normalizeStatusValue(statusName(fieldMapping, stageName));
+  const root = webhookPayloadRootExpression();
+  return (
+    `={{ (() => { ` +
+    `const payload = ${root}; ` +
+    `const item = payload?.history_items?.[0]; ` +
+    `if (!item || item.field !== "status") return false; ` +
+    `const after = item.after; ` +
+    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
+    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(stageStatus)}; ` +
+    `})() }}`
+  );
 }
 
 /** n8n IF node expression for investigate stage ingress. */
 export function stagedInvestigateIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
-  const investigateStatus = normalizeStatusValue(statusName(fieldMapping, "investigate"));
-  const root = webhookPayloadRootExpression();
-  return (
-    `={{ (() => { ` +
-    `const payload = ${root}; ` +
-    `const item = payload?.history_items?.[0]; ` +
-    `if (!item || item.field !== "status") return false; ` +
-    `const after = item.after; ` +
-    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
-    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(investigateStatus)}; ` +
-    `})() }}`
-  );
+  return stagedIfExpression(fieldMapping, "investigate");
 }
 
 /** n8n IF node expression for write stage ingress. */
 export function stagedWriteIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
-  const writeStatus = normalizeStatusValue(statusName(fieldMapping, "write"));
-  const root = webhookPayloadRootExpression();
-  return (
-    `={{ (() => { ` +
-    `const payload = ${root}; ` +
-    `const item = payload?.history_items?.[0]; ` +
-    `if (!item || item.field !== "status") return false; ` +
-    `const after = item.after; ` +
-    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
-    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(writeStatus)}; ` +
-    `})() }}`
-  );
+  return stagedIfExpression(fieldMapping, "write");
 }
 
 /** n8n IF node expression for format stage ingress. */
 export function stagedFormatIfExpression(fieldMapping: FieldMapping = loadFieldMapping()): string {
-  const formatStatus = normalizeStatusValue(statusName(fieldMapping, "format"));
-  const root = webhookPayloadRootExpression();
-  return (
-    `={{ (() => { ` +
-    `const payload = ${root}; ` +
-    `const item = payload?.history_items?.[0]; ` +
-    `if (!item || item.field !== "status") return false; ` +
-    `const after = item.after; ` +
-    `const status = (after !== null && typeof after === "object") ? after.status : after; ` +
-    `return String(status ?? "").trim().toLowerCase() === ${JSON.stringify(formatStatus)}; ` +
-    `})() }}`
-  );
+  return stagedIfExpression(fieldMapping, "format");
 }
 
 /** Normalize webhook payload into task context for downstream nodes. */
