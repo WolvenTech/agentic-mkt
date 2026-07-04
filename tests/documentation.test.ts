@@ -1,9 +1,10 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = resolve(__dirname, "..");
 
+const AGENTS_MD_PATH = resolve(REPO_ROOT, "AGENTS.md");
 const IO_CONTRACT_PATH = resolve(REPO_ROOT, "agents", "harness", "io-contract.md");
 const GREEN_RUN_EVIDENCE_PATH = resolve(REPO_ROOT, "agents", "harness", "green-run-evidence.json");
 
@@ -75,6 +76,96 @@ function loadEvidence(): GreenRunEvidence | undefined {
     return undefined;
   }
 }
+
+describe("root AGENTS.md canonical contract", () => {
+  it("exists at repo root", () => {
+    expect(existsSync(AGENTS_MD_PATH)).toBe(true);
+  });
+
+  it("contains the source-of-truth map section", () => {
+    const content = loadText(AGENTS_MD_PATH).toLowerCase();
+    expect(content).toContain("source-of-truth map");
+    expect(content).toContain("surface");
+    expect(content).toContain("owner");
+    expect(content).toContain("edit policy");
+  });
+
+  it("contains the deterministic command matrix section", () => {
+    const content = loadText(AGENTS_MD_PATH).toLowerCase();
+    expect(content).toContain("deterministic command matrix");
+    expect(content).toContain("pnpm test");
+    expect(content).toContain("offline");
+    expect(content).toContain("live");
+  });
+
+  it("documents generated workflow JSON rules and pnpm build:workflows", () => {
+    const content = loadText(AGENTS_MD_PATH).toLowerCase();
+    expect(content).toContain("generated");
+    expect(content).toContain("pnpm build:workflows");
+    expect(content).toContain("hand-edit");
+    expect(content).toContain("marketing-pipelines");
+  });
+
+  it("documents pnpm vendor:gate and live-operation gating", () => {
+    const content = loadText(AGENTS_MD_PATH).toLowerCase();
+    expect(content).toContain("vendor gate");
+    expect(content).toContain("pnpm vendor:gate");
+    expect(content).toContain("exit code");
+    expect(content).toContain("live");
+  });
+
+  it("documents secrets and sensitive data handling rules", () => {
+    const content = loadText(AGENTS_MD_PATH).toLowerCase();
+    expect(content).toContain("secrets");
+    expect(content).toContain("sensitive data");
+    expect(content).toContain(".env");
+    expect(content).toContain("gitleaks");
+  });
+
+  it("documents local-adapter policy and unversioned state", () => {
+    const content = loadText(AGENTS_MD_PATH).toLowerCase();
+    expect(content).toContain("local");
+    expect(content).toContain("adapter");
+    expect(content).toContain(".agents");
+    expect(content).toContain(".compozy");
+  });
+
+  it("documents modular scaffolding principles and boundaries", () => {
+    const content = loadText(AGENTS_MD_PATH).toLowerCase();
+    expect(content).toContain("modular");
+    expect(content).toContain("boundary");
+    expect(content).toContain("ownership");
+    expect(content).toContain("contract");
+  });
+
+  it("documents all six cleanup finding categories", () => {
+    const content = loadText(AGENTS_MD_PATH).toLowerCase();
+    const categories = ["delete", "consolidate", "document", "fix", "protect", "defer"];
+    for (const category of categories) {
+      expect(content).toContain(category);
+    }
+  });
+
+  it("warns that local adapters must not define independent project policy", () => {
+    const content = loadText(AGENTS_MD_PATH).toLowerCase();
+    expect(content).toContain("independent");
+    expect(content).toContain("policy");
+    expect(content).toContain("adapter");
+  });
+});
+
+describe("root README points to AGENTS.md canonical policy", () => {
+  const readme = loadText(ROOT_README);
+
+  it("references AGENTS.md as canonical policy", () => {
+    expect(readme).toContain("AGENTS.md");
+  });
+
+  it("describes AGENTS.md as authoritative or canonical", () => {
+    const context = readme.toLowerCase();
+    expect(context).toMatch(/agents\.md.*(authoritative|canonical|policy)/);
+  });
+});
 
 describe("green-run evidence cross-references", () => {
   const contract = loadText(IO_CONTRACT_PATH);

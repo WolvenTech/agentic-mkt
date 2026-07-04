@@ -2,6 +2,10 @@
 
 Configuration-first home for Wolven's **agentic marketing pipeline**: ClickUp briefs trigger n8n workflows that call OpenAI worker agents and deliver drafts back as task comments. This repository holds runtime configs, workflow exports, harness contracts, and build/test tooling — not an application server.
 
+## For Agents and Maintainers
+
+See **[`AGENTS.md`](AGENTS.md)** for the canonical policy document. It contains the authoritative source-of-truth map, command matrix, protected surfaces, live-operation gating rules, secrets handling policy, and cleanup guidance. Start there when in doubt about repository standards.
+
 ## Architecture
 
 | Layer | Role |
