@@ -35,6 +35,33 @@ ClickUp: backlog → investigate → brief review → write → content review �
 
 Planning artifacts (PRD, TechSpec, tasks) live in `.compozy/tasks/` (local, gitignored).
 
+### Source-of-Truth Surfaces and Local State
+
+This repository contains several types of surfaces with different versioning and edit policies:
+
+**Committed & Versioned**
+- `src/`, `scripts/`, `tests/` — Source code, utilities, and test fixtures
+- `agents/`, `clickup/`, `n8n/` — Agent configs, field contracts, deployment runbooks
+- `.env.example` — Committed environment template (never contains real secrets)
+- `AGENTS.md` — Canonical agent policy (the authoritative source for repository standards)
+
+**Generated (Protected from Hand-Edit)**
+- `marketing-pipelines/*.json` — Workflow exports, auto-generated from TypeScript builders in `src/workflows/`. Use `pnpm build:workflows` to regenerate; never hand-edit. Validated by `pnpm build:workflows:check` in CI.
+
+**Runtime Configs**
+- `.env` — Local secrets and API keys (not committed; copy from `.env.example`)
+- `clickup/field-mapping.json` — ClickUp schema snapshot, synced via `pnpm clickup:sync`
+
+**Local-Only & Gitignored**
+- `.compozy/` — Planning state, task records, cleanup reports (unversioned, local-only)
+- `logs/` — Run output from `pnpm green-run` and scripts (ephemeral, untracked except README)
+- `agents/harness/green-run-evidence.json` — Local inspection artifact from live proof runs
+- `.agents/`, `.cursorrules`, `.clauderules`, `.claude/` — Local IDE/tool adapters (optional, can be symlinks to canonical `AGENTS.md`)
+
+**Key Principle:** Only durable architectural rules are committed (in `AGENTS.md` and this README). Generated outputs, local planning state, and tool-specific adapters remain local-only or unversioned.
+
+For the full source-of-truth map and edit policies, see [`AGENTS.md`](AGENTS.md) — especially the "Source-of-Truth Map" section.
+
 ## Workflow Architecture
 
 ### Code Node Source Ownership
