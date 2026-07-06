@@ -9,14 +9,11 @@ const TASK_01_PATHS = [
   "package.json",
   "tsconfig.json",
   "vitest.config.ts",
-  "logs/.gitkeep",
-  "logs/README.md",
-  "n8n/README.md",
-  "marketing-pipelines/README.md",
-  "marketing-pipelines/marketing-pipeline-main.json",
-  "marketing-pipelines/call-agent-subworkflow.json",
-  "clickup/README.md",
-  "clickup/field-mapping.json",
+  "integrations/marketing-pipelines/README.md",
+  "integrations/marketing-pipelines/marketing-pipeline-main.json",
+  "integrations/marketing-pipelines/call-agent-subworkflow.json",
+  "integrations/clickup/README.md",
+  "integrations/clickup/field-mapping.json",
   "agents/harness/README.md",
   "agents/harness/io-contract.md",
   "agents/harness/output-schema.json",
@@ -24,7 +21,8 @@ const TASK_01_PATHS = [
   "agents/skills",
 ];
 
-const TOP_LEVEL_DOMAIN_FOLDERS = ["n8n", "clickup", "marketing-pipelines", "agents"];
+const TOP_LEVEL_DOMAIN_FOLDERS = ["agents"];
+const INTEGRATION_FOLDERS = ["integrations/clickup", "integrations/marketing-pipelines"];
 
 const README_REQUIRED_SECTIONS = ["purpose", "key files", "manual setup"];
 const ROOT_README_REQUIRED_SECTIONS = ["architecture", "quick start", "repository layout"];
@@ -37,6 +35,13 @@ describe("task_01 scaffold", () => {
 
   it("keeps the top-level domain folders", () => {
     const missing = TOP_LEVEL_DOMAIN_FOLDERS.filter(
+      (dir) => !statSync(resolve(REPO_ROOT, dir), { throwIfNoEntry: false })?.isDirectory()
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it("keeps the integration folders", () => {
+    const missing = INTEGRATION_FOLDERS.filter(
       (dir) => !statSync(resolve(REPO_ROOT, dir), { throwIfNoEntry: false })?.isDirectory()
     );
     expect(missing).toEqual([]);
@@ -58,13 +63,6 @@ describe("task_01 scaffold", () => {
     expect(lower).toContain("pnpm vendor:gate");
   });
 
-  it("has the logs scaffold", () => {
-    const logs = resolve(REPO_ROOT, "logs");
-    expect(statSync(logs).isDirectory()).toBe(true);
-    expect(existsSync(resolve(logs, ".gitkeep"))).toBe(true);
-    expect(existsSync(resolve(logs, "README.md"))).toBe(true);
-  });
-
   it("keeps domain READMEs non-empty with the required sections", () => {
     for (const folder of TOP_LEVEL_DOMAIN_FOLDERS) {
       const readme = resolve(REPO_ROOT, folder, "README.md");
@@ -78,8 +76,21 @@ describe("task_01 scaffold", () => {
     }
   });
 
+  it("keeps integration READMEs non-empty with the required sections", () => {
+    for (const folder of INTEGRATION_FOLDERS) {
+      const readme = resolve(REPO_ROOT, folder, "README.md");
+      expect(existsSync(readme)).toBe(true);
+      const content = readFileSync(readme, "utf-8").trim();
+      expect(content.length).toBeGreaterThan(0);
+      const lower = content.toLowerCase();
+      for (const section of README_REQUIRED_SECTIONS) {
+        expect(lower).toContain(section);
+      }
+    }
+  });
+
   it("keeps the workflow placeholder filenames", () => {
-    const workflows = resolve(REPO_ROOT, "marketing-pipelines");
+    const workflows = resolve(REPO_ROOT, "integrations", "marketing-pipelines");
     const expected = ["marketing-pipeline-main.json", "call-agent-subworkflow.json"];
     const actual = readdirSync(workflows);
     for (const name of expected) {
@@ -98,7 +109,7 @@ describe("task_01 scaffold", () => {
   });
 
   it("keeps field-mapping.json structurally valid", () => {
-    const path = resolve(REPO_ROOT, "clickup", "field-mapping.json");
+    const path = resolve(REPO_ROOT, "integrations", "clickup", "field-mapping.json");
     const data = JSON.parse(readFileSync(path, "utf-8"));
     const customFields = data.custom_fields ?? {};
     expect(Object.keys(customFields).length).toBeGreaterThan(0);
@@ -111,14 +122,14 @@ describe("task_01 scaffold", () => {
   });
 
   it("keeps the marketing-pipeline-main workflow export non-empty", () => {
-    const path = resolve(REPO_ROOT, "marketing-pipelines", "marketing-pipeline-main.json");
+    const path = resolve(REPO_ROOT, "integrations", "marketing-pipelines", "marketing-pipeline-main.json");
     const data = JSON.parse(readFileSync(path, "utf-8"));
     expect(data).not.toHaveProperty("_comment");
     expect((data.nodes ?? []).length).toBeGreaterThan(0);
   });
 
   it("keeps the call-agent-subworkflow export non-empty", () => {
-    const path = resolve(REPO_ROOT, "marketing-pipelines", "call-agent-subworkflow.json");
+    const path = resolve(REPO_ROOT, "integrations", "marketing-pipelines", "call-agent-subworkflow.json");
     const data = JSON.parse(readFileSync(path, "utf-8"));
     expect(data).not.toHaveProperty("_comment");
     expect((data.nodes ?? []).length).toBeGreaterThan(0);

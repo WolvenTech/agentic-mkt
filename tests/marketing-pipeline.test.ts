@@ -55,11 +55,11 @@ import {
 import { buildMarketingPipelineWorkflow } from "../src/workflows/build-marketing-pipeline.js";
 
 const REPO_ROOT = resolve(__dirname, "..");
-const INVESTIGATE_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-investigate.json");
-const WRITE_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-write.json");
-const FORMAT_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-format.json");
-const TASK_GET_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-get-response.json");
-const TASK_COMMENTS_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-comments-response.json");
+const INVESTIGATE_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "integrations", "clickup", "fixtures", "task-status-updated-investigate.json");
+const WRITE_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "integrations", "clickup", "fixtures", "task-status-updated-write.json");
+const FORMAT_WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "integrations", "clickup", "fixtures", "task-status-updated-format.json");
+const TASK_GET_FIXTURE_PATH = resolve(REPO_ROOT, "integrations", "clickup", "fixtures", "task-get-response.json");
+const TASK_COMMENTS_FIXTURE_PATH = resolve(REPO_ROOT, "integrations", "clickup", "fixtures", "task-comments-response.json");
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf-8")) as T;

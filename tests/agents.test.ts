@@ -9,7 +9,7 @@ import type { FieldMapping } from "../src/types/field-mapping.js";
 const REPO_ROOT = resolve(__dirname, "..");
 const AGENT_JSON_PATH = resolve(REPO_ROOT, "agents", "linkedin-writer.json");
 const SKILLS_DIR = resolve(REPO_ROOT, "agents", "skills");
-const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "clickup", "field-mapping.json");
+const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "integrations", "clickup", "field-mapping.json");
 
 const REQUIRED_AGENT_KEYS = [
   "id",

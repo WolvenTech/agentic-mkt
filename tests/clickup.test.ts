@@ -9,7 +9,7 @@ import type { FieldMapping } from "../src/types/field-mapping.js";
 import { main as verifyMain, verify } from "../src/clickup/verify-api.js";
 
 const REPO_ROOT = resolve(__dirname, "..");
-const FIXTURES_DIR = resolve(REPO_ROOT, "clickup", "fixtures");
+const FIXTURES_DIR = resolve(REPO_ROOT, "integrations", "clickup", "fixtures");
 
 function loadFixture<T>(name: string): T {
   return JSON.parse(readFileSync(resolve(FIXTURES_DIR, name), "utf-8")) as T;

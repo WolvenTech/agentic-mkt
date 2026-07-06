@@ -23,9 +23,9 @@ import type { ClickUpComment, ClickUpTask, ClickUpWebhookPayload } from "../src/
 import { firstCodeNodeJson, loadCodeNodeSource, runN8nCodeNode } from "../src/workflows/n8n-codegen.js";
 
 const REPO_ROOT = resolve(__dirname, "..");
-const WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-status-updated-ready-to-work.json");
-const TASK_GET_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-get-response.json");
-const TASK_COMMENTS_FIXTURE_PATH = resolve(REPO_ROOT, "clickup", "fixtures", "task-comments-response.json");
+const WEBHOOK_FIXTURE_PATH = resolve(REPO_ROOT, "integrations", "clickup", "fixtures", "task-status-updated-ready-to-work.json");
+const TASK_GET_FIXTURE_PATH = resolve(REPO_ROOT, "integrations", "clickup", "fixtures", "task-get-response.json");
+const TASK_COMMENTS_FIXTURE_PATH = resolve(REPO_ROOT, "integrations", "clickup", "fixtures", "task-comments-response.json");
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf-8")) as T;

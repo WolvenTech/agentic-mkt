@@ -33,12 +33,12 @@ Each row documents an artifact type, owner role, edit policy, and validation com
 | `agents/harness/io-contract.md` | File | Harness Maintainers | Strictly document harness I/O shape; breaking changes require dual validation | `pnpm test && grep -E "(input\|output)" agents/harness/io-contract.md` | 25KB; harness contract |
 | `agents/harness/output-schema.json` | File | Harness Maintainers | JSON schema for harness output; validate against all callers before changes | `pnpm test && jq '.properties' agents/harness/output-schema.json > /dev/null` | Protected |
 | `agents/harness/green-run-evidence.json` | File | Local Run Output | Generated during `pnpm test:live`; ignored in `.gitignore`; local-only proof | `git check-ignore agents/harness/green-run-evidence.json` | Ignored; never committed |
-| `clickup/field-mapping.json` | File | ClickUp Integration Owner | Synced via `pnpm clickup:sync`; manual edits risk desynchronization | `pnpm clickup:verify && jq '.fields' clickup/field-mapping.json > /dev/null` | External API contract |
-| `clickup/webhook-contract.md` | File | ClickUp Integration Owner | Operational reference for webhook shapes; update only when ClickUp API changes | `pnpm test && grep -q "signature\|validation" clickup/webhook-contract.md` | 8.4KB; API contract |
-| `clickup/list-schema.md` | File | ClickUp Integration Owner | Operational reference for ClickUp list structure; update when API version changes | `pnpm test && grep -q "task\|field" clickup/list-schema.md` | 5.3KB; API reference |
-| `clickup/fixtures/` | Directory | ClickUp Integration Owner | Test fixtures lock ClickUp API response shapes; update only when API version changes (document the change in fixture comments) | `jq '.' clickup/fixtures/*.json > /dev/null` | 10 JSON contracts |
-| `marketing-pipelines/` | Directory | n8n Workflow Owner | DO NOT hand-edit `.json` files; change via `src/workflows/` builders + `pnpm build:workflows` | `pnpm build:workflows:check` | Generated; read-only |
-| `marketing-pipelines/*.json` | Files | Generated (`pnpm build:workflows`) | Generated from `src/workflows/`; never hand-edited; delete and regenerate if cleanup needed | `pnpm build:workflows:check` | Bitwise-stable; 2 files |
+| `integrations/clickup/field-mapping.json` | File | ClickUp Integration Owner | Synced via `pnpm clickup:sync`; manual edits risk desynchronization | `pnpm clickup:verify && jq '.fields' integrations/clickup/field-mapping.json > /dev/null` | External API contract |
+| `integrations/clickup/webhook-contract.md` | File | ClickUp Integration Owner | Operational reference for webhook shapes; update only when ClickUp API changes | `pnpm test && grep -q "signature\|validation" integrations/clickup/webhook-contract.md` | 8.4KB; API contract |
+| `integrations/clickup/list-schema.md` | File | ClickUp Integration Owner | Operational reference for ClickUp list structure; update when API version changes | `pnpm test && grep -q "task\|field" integrations/clickup/list-schema.md` | 5.3KB; API reference |
+| `integrations/clickup/fixtures/` | Directory | ClickUp Integration Owner | Test fixtures lock ClickUp API response shapes; update only when API version changes (document the change in fixture comments) | `jq '.' integrations/clickup/fixtures/*.json > /dev/null` | 10 JSON contracts |
+| `integrations/marketing-pipelines/` | Directory | n8n Workflow Owner | DO NOT hand-edit `.json` files; change via `src/workflows/` builders + `pnpm build:workflows` | `pnpm build:workflows:check` | Generated; read-only |
+| `integrations/marketing-pipelines/*.json` | Files | Generated (`pnpm build:workflows`) | Generated from `src/workflows/`; never hand-edited; delete and regenerate if cleanup needed | `pnpm build:workflows:check` | Bitwise-stable; 2 files |
 | `src/workflows/` | Directory | Workflow Builders | Source-of-truth for workflow logic; edit to change n8n behavior; regenerate JSON after | `pnpm build:workflows && pnpm build:workflows:check` | 5 builders; authoritative |
 | `src/workflows/build-marketing-pipeline.ts` | File | Workflow Builders | Edit to change marketing pipeline behavior and Code node logic | `pnpm build:workflows && pnpm build:workflows:check` | 32KB builder |
 | `src/workflows/build-call-agent.ts` | File | Workflow Builders | Edit to change call-agent workflow behavior | `pnpm build:workflows && pnpm build:workflows:check` | 9.6KB builder |
@@ -47,8 +47,7 @@ Each row documents an artifact type, owner role, edit policy, and validation com
 | `.env.example` | File | Repo Maintainers | Committed environment contract; never expose real secrets | `grep -v "^#" .env.example \| grep -E "^[A-Z_]+="`  | Template; never secrets |
 | `.github/workflows/ci.yml` | File | CI/CD Owner | Modify to add CI steps (e.g., secret scanning); preserve validation gates | `pnpm test && pnpm build:workflows:check` | Lives CI pipeline |
 | `.gitignore` | File | Repo Maintainers | Preserve ignore rules for secrets, local state, logs, adapters (per ADR-002) | `git check-ignore .compozy/ .agents/ .env logs/ .claude/` | Protective |
-| `logs/` | Directory | Local Run Output | Local-only logs and run evidence; explicitly ignored except for README and .gitkeep | `git check-ignore logs/example.log && git ls-files logs/` | Ignored; ephemeral |
-| `logs/README.md` | File | Repo Maintainers | Document log layout, purpose, and redaction rule for log writers | `grep -q "content-quality-proof\|redaction" logs/README.md` | (Incomplete; task_18) |
+| `logs/` | Directory | Local Run Output | Local-only logs and run evidence; never versioned (no tracked files) | `git check-ignore logs/example.log && ! git ls-files logs/ \| grep .` | Ignored; ephemeral |
 | `.agents/` | Directory | Local/Tool Adapters | Local guidance for agents; can symlink or mirror `AGENTS.md`; NOT versioned | `git check-ignore .agents/ && ! git ls-files .agents/` | Ignored; optional mirror |
 | `.cursorrules` | Symlink | Cursor IDE | Symlink to canonical `AGENTS.md`; never hand-edit | `ls -l .cursorrules && git check-ignore .cursorrules` | Ignored; optional |
 | `.clauderules` | Symlink | Claude IDE | Symlink to canonical `AGENTS.md`; never hand-edit | `ls -l .clauderules && git check-ignore .clauderules` | Ignored; optional |
@@ -75,11 +74,11 @@ Every command is classified as **Offline** (safe to run without live API access)
 | `pnpm test:coverage` | Unit tests with V8 coverage | Same scope, with coverage stats | Offline | None | Before release; CI gate |
 | `pnpm vendor:gate` | Verify ClickUp/n8n credentials & connectivity | Environment validation; gate prerequisite | Live | Valid `.env` with CLICKUP_API_TOKEN, N8N_API_KEY | Before any live command; required for `pnpm test:live` |
 | `pnpm test:live` | Run live integration tests | Tests touching ClickUp/n8n APIs | Live | `pnpm vendor:gate` must pass first | In gated CI only; never in offline tests |
-| `pnpm build:workflows` | Regenerate workflow JSON from builders | Produces `marketing-pipelines/*.json` from TypeScript builders | Offline | Valid TypeScript; no live dependencies | After editing `src/workflows/` builders |
-| `pnpm build:workflows:check` | Verify committed JSON matches generated output | Compares `marketing-pipelines/*.json` against `pnpm build:workflows` output | Offline | None | Before commit; CI gate |
-| `pnpm deploy:workflows` | Deploy generated workflows to live n8n | Pushes `marketing-pipelines/*.json` to n8n endpoint | Live | `pnpm vendor:gate` must pass; valid N8N_API_KEY | Only after `pnpm build:workflows` and `pnpm build:workflows:check` |
+| `pnpm build:workflows` | Regenerate workflow JSON from builders | Produces `integrations/marketing-pipelines/*.json` from TypeScript builders | Offline | Valid TypeScript; no live dependencies | After editing `src/workflows/` builders |
+| `pnpm build:workflows:check` | Verify committed JSON matches generated output | Compares `integrations/marketing-pipelines/*.json` against `pnpm build:workflows` output | Offline | None | Before commit; CI gate |
+| `pnpm deploy:workflows` | Deploy generated workflows to live n8n | Pushes `integrations/marketing-pipelines/*.json` to n8n endpoint | Live | `pnpm vendor:gate` must pass; valid N8N_API_KEY | Only after `pnpm build:workflows` and `pnpm build:workflows:check` |
 | `pnpm validate` | Run all validation checks | Combines test, build check, ClickUp verify | Offline (mostly) | None | Before PR; convenience wrapper |
-| `pnpm clickup:sync` | Sync ClickUp custom field mapping | Updates `clickup/field-mapping.json` from live ClickUp API | Live | `pnpm vendor:gate` must pass; valid CLICKUP_API_TOKEN | After ClickUp custom field changes |
+| `pnpm clickup:sync` | Sync ClickUp custom field mapping | Updates `integrations/clickup/field-mapping.json` from live ClickUp API | Live | `pnpm vendor:gate` must pass; valid CLICKUP_API_TOKEN | After ClickUp custom field changes |
 | `pnpm clickup:verify` | Verify ClickUp connection and schema | Validates connectivity and field-mapping structure | Live | `pnpm vendor:gate` must pass | Before live operations; part of vendor gate |
 | `pnpm green-run` | Run end-to-end green-run validation | Validates pipeline logic without breaking production ClickUp | Live | `pnpm vendor:gate` must pass; safe test list configured | Staged CI or manual validation before deploy |
 | `pnpm executions:inspect` | Inspect latest n8n execution results | Query and display n8n execution logs and status | Live | `pnpm vendor:gate` must pass; valid N8N_API_KEY | Debugging live workflows |
@@ -102,12 +101,12 @@ The following surfaces are **protected** from direct edits. Breaking changes req
 - **Validation**: `pnpm test tests/agents.test.ts` after any agent config or skill modification.
 
 ### 2. ClickUp Field Contract and API Schemas
-- **Files**: `clickup/field-mapping.json`, `clickup/webhook-contract.md`, `clickup/list-schema.md`, `clickup/fixtures/*`
+- **Files**: `integrations/clickup/field-mapping.json`, `integrations/clickup/webhook-contract.md`, `integrations/clickup/list-schema.md`, `integrations/clickup/fixtures/*`
 - **Rule**: The field-mapping.json is synced from the live ClickUp API via `pnpm clickup:sync`. Never hand-edit. Webhook and list schemas are operational references; update only when ClickUp API shapes change (document the change in fixture comments).
 - **Validation**: `pnpm clickup:verify && pnpm test tests/clickup.test.ts` before commit.
 
 ### 3. Generated n8n Workflow JSON
-- **Files**: `marketing-pipelines/*.json` (call-agent, marketing-pipeline-main)
+- **Files**: `integrations/marketing-pipelines/*.json` (call-agent, marketing-pipeline-main)
 - **Rule**: These are generated from TypeScript builders in `src/workflows/` and must never be hand-edited. Change workflow behavior via builders, then run `pnpm build:workflows` to regenerate JSON. All Code node runtime logic lives in `.js` source files, not in the JSON `jsCode` parameters.
 - **Validation**: `pnpm build:workflows` to regenerate, then `pnpm build:workflows:check` to verify. The check is enforced in CI on every PR.
 
@@ -126,8 +125,8 @@ Every generated artifact has an identified producer. Generated output is **bitwi
 
 | Generated Artifact | Producer | Validation Command | CI Gate |
 |--------------------|----------|-------------------|---------|
-| `marketing-pipelines/*.json` | `pnpm build:workflows` (runs `scripts/build-workflows.ts`) | `pnpm build:workflows:check` | `.github/workflows/ci.yml` line 27 |
-| `clickup/field-mapping.json` | `pnpm clickup:sync` | `pnpm clickup:verify` | Not in CI (live-only command) |
+| `integrations/marketing-pipelines/*.json` | `pnpm build:workflows` (runs `scripts/build-workflows.ts`) | `pnpm build:workflows:check` | `.github/workflows/ci.yml` line 27 |
+| `integrations/clickup/field-mapping.json` | `pnpm clickup:sync` | `pnpm clickup:verify` | Not in CI (live-only command) |
 | `agents/harness/green-run-evidence.json` | `pnpm test:live` | (Local-only; ignored) | N/A |
 
 **Procedure When Generated Output Drifts:**
@@ -183,16 +182,23 @@ Secrets (API keys, tokens, credentials) and sensitive data (raw ClickUp task bod
 
 ### Rule: Log Writers Must Redact Sensitive Data
 
-Log writers in `scripts/green-run.ts` and `scripts/content-quality-proof.ts` persist structured output to `logs/green-run/` and `logs/content-quality-proof/`, which are untracked and local-only.
+Log writers in `scripts/green-run.ts` and `scripts/content-quality-proof.ts` persist structured output to `logs/green-run/` and `logs/content-quality-proof/`, which are untracked and local-only (nothing under `logs/` is committed — the directory is created on demand via `mkdirSync(path, { recursive: true })`).
+
+**Layout:**
+
+| Path | Contents |
+|------|----------|
+| `logs/green-run/<timestamp>/evidence.json` | Green run preflight + execution evidence snapshot |
+| `logs/green-run/<timestamp>/run.log` | Stdout/stderr capture from the validation script |
+| `logs/content-quality-proof/<timestamp>.json` | Content quality pipeline proof evidence (status/summary only) |
+
+Safe to delete any subdirectory under `logs/green-run/` or `logs/content-quality-proof/` at any time.
 
 **Redaction Policy:**
-- Log writers must not persist raw ClickUp task bodies, Doc content, or API payload content.
-- Only structured status/evidence summaries are permitted.
-- Known-sensitive key names (`token`, `apiKey`, `authorization`, and full `body` fields) must be excluded from log output.
-- `logs/README.md` documents the layout and redaction rule.
-- A test validates log-writer output for compliance.
-
-**Implementation note**: The logs/README.md update and redaction test are task_18; currently deferred.
+- Log writers must not persist raw ClickUp task/Doc/API-payload content or credential values — only structured status/evidence summaries.
+- Log output must exclude: raw API response bodies (do not serialize fetched tasks, documents, or full HTTP payloads); credential values (`token`, `apiKey`, `authorization`, etc.); sensitive field names from the raw schema (task body, doc content, full comment text).
+- Log evidence should instead contain: task/doc IDs and URLs (identifiers, not sensitive payloads); status summaries (e.g., "task_id=xyz; status=investigate"); extracted metadata (field values, error messages, latency measurements); boolean results or pass/fail indicators.
+- `tests/logs.test.ts` validates log-writer output for compliance against this policy whenever evidence files are present (skipped on a fresh checkout where no local run has happened yet).
 
 ---
 
@@ -271,13 +277,13 @@ The repository is organized around **4-5 data-ownership and contract-crossing bo
    - Policy: Edit freely; validate with `pnpm test && pnpm build:workflows`.
    - Boundary Crossing: Code imports from other modules via TypeScript imports.
 
-2. **Generated n8n Workflow Exports** (`marketing-pipelines/*.json`, produced by `pnpm build:workflows`)
+2. **Generated n8n Workflow Exports** (`integrations/marketing-pipelines/*.json`, produced by `pnpm build:workflows`)
    - Owner: n8n Workflow Owner (producers are the builders in `src/workflows/`)
    - Policy: Never hand-edit. Change via builders, then regenerate.
    - Boundary Crossing: n8n consumes the JSON; agents/scripts consume the JSON; CI validates the JSON.
    - Validation: `pnpm build:workflows:check`
 
-3. **ClickUp API Contract** (`clickup/field-mapping.json`, `clickup/webhook-contract.md`, `clickup/list-schema.md`, `clickup/fixtures/`)
+3. **ClickUp API Contract** (`integrations/clickup/field-mapping.json`, `integrations/clickup/webhook-contract.md`, `integrations/clickup/list-schema.md`, `integrations/clickup/fixtures/`)
    - Owner: ClickUp Integration Owner (external API)
    - Policy: Synced via `pnpm clickup:sync`. Never hand-edit the field-mapping. Schemas updated when API version changes.
    - Boundary Crossing: External ClickUp API ↔ Local field-mapping; workflows consume field-mapping; tests validate with fixtures.
@@ -298,7 +304,7 @@ The repository is organized around **4-5 data-ownership and contract-crossing bo
 ### Rule: Boundaries Are Defined by Data Ownership and Contracts, Not Folder Location
 
 A new boundary is created when a distinct artifact type or consumer shape crosses existing boundaries. For example:
-- If a new script consumes `marketing-pipelines/*.json` in a different shape (not just reading it as-is), it may require a new boundary definition and validation check in this source-of-truth map.
+- If a new script consumes `integrations/marketing-pipelines/*.json` in a different shape (not just reading it as-is), it may require a new boundary definition and validation check in this source-of-truth map.
 - If `agents/` expands to include runtime configs *and* persistent state, two separate boundaries (one per contract) should be listed.
 
 ---

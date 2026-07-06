@@ -5,7 +5,7 @@ import { clickupDelete, clickupGet, clickupPost } from "./client.js";
 import type { ClickUpClientOptions } from "./client.js";
 import { runGate } from "./vendor-gate.js";
 
-export const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "clickup", "field-mapping.json");
+export const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "integrations", "clickup", "field-mapping.json");
 
 interface CustomFieldValue {
   id?: string;

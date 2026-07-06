@@ -1,19 +1,43 @@
-# n8n — Staged Content Quality Pipeline Orchestration
+# Marketing Pipelines — n8n Workflow Exports
 
 ## Purpose
 
-n8n host configuration, credentials runbook, and MCP stub for the **staged content quality pipeline** — a three-stage editorial workflow (investigate, write, format) with human gates in between. Workflow JSON exports live in [`marketing-pipelines/`](../marketing-pipelines/README.md).
+Version-controlled n8n workflow JSON, host configuration, credentials runbook, and MCP stub for the **staged content quality pipeline** — a three-stage editorial workflow for Wolven LinkedIn posts, with human gates in between each stage. The workflow is triggered by ClickUp status changes, orchestrates three independent AI stages (investigate, write, format), writes artifacts to a ClickUp Doc per task, and posts pointer comments to keep the lead informed. Generated from TypeScript builders in `src/workflows/` — **do not hand-edit these files**. All runtime Code node logic lives in source `.js` files; see [Workflow Architecture](#workflow-architecture) below.
 
 ## Key files
 
 | Path | Purpose |
 |------|---------|
-| [`../marketing-pipelines/`](../marketing-pipelines/README.md) | Workflow JSON exports (import/deploy from there) |
+| `call-agent-subworkflow.json` | Sub-workflow: load agent config and references from GitHub, invoke OpenAI, parse typed stage output (`investigate` / `write` / `format`) |
+| `marketing-pipeline-main.json` | Main workflow: webhook ingress on `investigate/write/format`, stage ingress filtering, status advance to next human gate, Doc/comment creation, blocker handling |
 | `mcp-config.stub.json` | MCP stub only — no implementation yet |
+
+For workflow operation details: [`../clickup/README.md`](../clickup/README.md). I/O contracts and troubleshooting: [`agents/harness/io-contract.md`](../../agents/harness/io-contract.md).
+
+## Workflow Architecture
+
+### Code Node Source Files
+
+All n8n Code node runtime logic is authored as normal JavaScript source files. **Do not hand-edit the `jsCode` parameter in the workflow JSON** — instead, edit the corresponding `.js` source file.
+
+| Workflow | Code Node | Source File |
+|----------|-----------|--------------|
+| Call Agent | `Assemble Prompt` | `../../src/workflows/call-agent/code-nodes/assemble-prompt.js` |
+| Call Agent | `Parse Agent Config` | `../../src/workflows/call-agent/code-nodes/parse-agent-config.js` |
+| Call Agent | `Parse Agent Output` | `../../src/workflows/call-agent/code-nodes/parse-agent-output.js` |
+| Call Agent | `Store Input Context` | `../../src/workflows/call-agent/code-nodes/store-input-context.js` |
+| Call Agent | `Unsupported Provider Error` | `../../src/workflows/call-agent/code-nodes/unsupported-provider-error.js` |
+| Marketing Pipeline | (25 Code nodes) | `../../src/workflows/marketing-pipeline/code-nodes/*.js` |
+
+When Code node source files change, regenerate the workflow JSON using `pnpm build:workflows` from the repo root.
+
+### Token Placeholders in Source Files
+
+Code node `.js` files may contain placeholder tokens (e.g., `@@FIELD_IDS@@`) for build-time values. These are replaced during workflow generation. Placeholder lines may have lint exceptions for `@eslint-disable` — that is expected and safe. The rendered JavaScript is what n8n executes.
 
 ## GitHub repository (Call Agent config fetch)
 
-Runtime agent configs and skills are loaded from this repository via the n8n GitHub node ([ADR-002](../adrs/adr-002.md)).
+Runtime agent configs and skills are loaded from this repository via the n8n GitHub node ([ADR-002](../../adrs/adr-002.md)).
 
 | Setting | Value |
 |---------|-------|
@@ -43,21 +67,21 @@ The Call Agent sub-workflow depends on this repo being pushed before isolation t
 
 ## Call Agent sub-workflow
 
-Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) into `n8n.wolven.com.br` before the main workflow. This sub-workflow is a single, stage-parameterized pure function — the main workflow invokes it once per AI stage (investigate, write, format), passing `stage` as part of its input rather than the sub-workflow having separate paths per stage. It accepts `StageInput` (stage name, task fields, `prior_stage_artifact`, `lead_feedback`), fetches the appropriate agent config and reference/template files from GitHub, invokes OpenAI, and returns `StageAgentOutput` (artifact, resumo, self-check, next gate, optional blocker) or an error envelope — no ClickUp writes.
+Import [`call-agent-subworkflow.json`](call-agent-subworkflow.json) into `n8n.wolven.com.br` before the main workflow. This sub-workflow is a single, stage-parameterized pure function — the main workflow invokes it once per AI stage (investigate, write, format), passing `stage` as part of its input rather than the sub-workflow having separate paths per stage. It accepts `StageInput` (stage name, task fields, `prior_stage_artifact`, `lead_feedback`), fetches the appropriate agent config and reference/template files from GitHub, invokes OpenAI, and returns `StageAgentOutput` (artifact, resumo, self-check, next gate, optional blocker) or an error envelope — no ClickUp writes.
 
 | Node | Purpose |
 |------|---------|
 | When Executed by Another Workflow | Production entry (called by main workflow with stage context) |
 | Manual Trigger (Isolation Test) | Operator test path with hardcoded input for a specific stage |
 | Fetch Agent Config / Fetch Reference Files | GitHub PAT fetch (`retryOnFail`, max 2 tries) — loads `agents/{agent_id}.json` and reference/template files per stage |
-| OpenAI Chat Model | `gpt-4.1-mini` with JSON output mode (default from [`src/call-agent/logic.ts`](../src/call-agent/logic.ts)) |
+| OpenAI Chat Model | `gpt-4.1-mini` with JSON output mode (default from [`src/call-agent/logic.ts`](../../src/call-agent/logic.ts)) |
 | Parse Agent Output | Validates `StageAgentOutput` structure (stage, artifact_markdown, resumo, self_check, next_gate, optional blocker_question); logs `parse_success` |
 
 After import, replace placeholder credential IDs (`GITHUB_CREDENTIAL_ID`, `OPENAI_CREDENTIAL_ID`) with your n8n credential IDs, or re-select credentials in the editor.
 
 ### Sub-workflow isolation test procedure
 
-1. Import [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json) and configure **GitHub** (read-only PAT on `WolvenTech/agentic-mkt`) and **OpenAI** credentials.
+1. Import [`call-agent-subworkflow.json`](call-agent-subworkflow.json) and configure **GitHub** (read-only PAT on `WolvenTech/agentic-mkt`) and **OpenAI** credentials.
 2. Open the workflow and run **Manual Trigger (Isolation Test)** — this executes the **Hardcoded Test Input** node with stage and agent settings.
 3. Confirm execution succeeds and **Parse Agent Output** returns JSON with all required keys: `stage`, `artifact_markdown`, `resumo`, `self_check`, `next_gate`, and optionally `blocker_question` (all non-empty strings).
 4. In the execution log for **Parse Agent Output**, verify structured log fields include `parse_success: true`, `stage`, `agent_id`, `execution_id`, and `latency_ms`.
@@ -70,7 +94,7 @@ Alternative: pin the same hardcoded `StageInput` on **When Executed by Another W
 
 ## Marketing Pipeline main workflow (multi-stage staged workflow)
 
-Import [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelines/marketing-pipeline-main.json) after the Call Agent sub-workflow is imported and active. The main workflow orchestrates three independent stages and manages human gates: webhook ingress → stage ingress filter → task fetch + Doc setup → sub-workflow call → Doc write + comment post → status advance (or blocker return).
+Import [`marketing-pipeline-main.json`](marketing-pipeline-main.json) after the Call Agent sub-workflow is imported and active. The main workflow orchestrates three independent stages and manages human gates: webhook ingress → stage ingress filter → task fetch + Doc setup → sub-workflow call → Doc write + comment post → status advance (or blocker return).
 
 ### Key workflow paths
 
@@ -121,7 +145,7 @@ Ensure `clickup/field-mapping.json` has real field IDs (run `pnpm clickup:sync` 
 
 ### Main workflow activation and ClickUp webhook
 
-1. Import [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelines/marketing-pipeline-main.json) into `n8n.wolven.com.br`.
+1. Import [`marketing-pipeline-main.json`](marketing-pipeline-main.json) into `n8n.wolven.com.br`.
 2. Bind **ClickUp** credential on all ClickUp nodes and set **Execute Call Agent** → workflow = **Call Agent**.
 3. **Activate** the Marketing Pipeline workflow.
 4. Copy the production webhook URL from the **ClickUp Webhook** node (format: `https://n8n.wolven.com.br/webhook/marketing-pipeline-staged-ingress`).
@@ -170,13 +194,19 @@ Re-export the workflow from n8n after credential binding and commit to `marketin
 
 Regenerate repo export: `pnpm build:workflows`.
 
-## Operational runbook (import and activate)
+## Rework and approval
+
+- **Approval is movement forward:** moving a task from a human gate into an AI column triggers that stage.
+- **Rework re-runs only the selected stage:** moving a task back to an earlier AI column runs only that stage; downstream artifacts are preserved until manually re-run.
+- **Comments instruct; the Doc stores artifacts:** all human feedback flows through task comments; the Doc is the readable workspace.
+
+## Manual setup and operational runbook (import and activate)
 
 An operator can re-import and activate both workflows using this section alone.
 
 ### Prerequisites
 
-- Run `pnpm vendor:gate` first — exit 0 required before any live ClickUp/n8n operation below; stop and fix `.env`/vendor setup on exit 1 or 2 (see root [README.md](../README.md#vendor-gate-required-before-live-operations)).
+- Run `pnpm vendor:gate` first — exit 0 required before any live ClickUp/n8n operation below; stop and fix `.env`/vendor setup on exit 1 or 2 (see root [README.md](../../README.md#vendor-gate-required-before-live-operations)).
 - Repo pushed to GitHub (`WolvenTech/agentic-mkt`, branch `main`) — Call Agent fetches agent configs at runtime.
 - n8n credentials configured: **ClickUp**, **GitHub** (read-only PAT), **OpenAI**.
 - [`clickup/field-mapping.json`](../clickup/field-mapping.json) synced with real field IDs (`pnpm clickup:sync`).
@@ -184,14 +214,14 @@ An operator can re-import and activate both workflows using this section alone.
 ### Step 1 — Import Call Agent sub-workflow
 
 1. In `n8n.wolven.com.br`, go to **Workflows → Import from File**.
-2. Select [`marketing-pipelines/call-agent-subworkflow.json`](../marketing-pipelines/call-agent-subworkflow.json).
+2. Select [`call-agent-subworkflow.json`](call-agent-subworkflow.json).
 3. Open the workflow and bind credentials on **Fetch Agent Config**, **Fetch Skill Markdown** (GitHub), and **OpenAI Chat Model**.
 4. Run **Manual Trigger (Isolation Test)** — confirm **Parse Agent Output** returns the staged `StageAgentOutput` keys with `parse_success: true`.
 5. Leave the sub-workflow **Inactive** (it is invoked by the main workflow, not by webhook).
 
 ### Step 2 — Import and activate Marketing Pipeline main workflow
 
-1. **Import** [`marketing-pipelines/marketing-pipeline-main.json`](../marketing-pipelines/marketing-pipeline-main.json).
+1. **Import** [`marketing-pipeline-main.json`](marketing-pipeline-main.json).
 2. Bind **ClickUp** credential on all ClickUp nodes.
 3. On **Execute Call Agent**, select workflow = **Call Agent** (imported sub-workflow).
 4. **Activate** the Marketing Pipeline workflow.
@@ -208,7 +238,7 @@ An operator can re-import and activate both workflows using this section alone.
 
 ### Step 4 — Verify stage timing
 
-Expected behavior documented in [`agents/harness/io-contract.md`](../agents/harness/io-contract.md#workflow-sequence-expectations):
+Expected behavior documented in [`agents/harness/io-contract.md`](../../agents/harness/io-contract.md#workflow-sequence-expectations):
 
 | Stage | Target |
 |-------|--------|
@@ -216,11 +246,11 @@ Expected behavior documented in [`agents/harness/io-contract.md`](../agents/harn
 | Write → Content Review | ≤ 60 s |
 | Format → Final Review | ≤ 60 s |
 
-Target latency: **≤ 60 s** per stage (record actuals in [`agents/harness/green-run-evidence.json`](../agents/harness/green-run-evidence.json) after validation).
+Target latency: **≤ 60 s** per stage (record actuals in [`agents/harness/green-run-evidence.json`](../../agents/harness/green-run-evidence.json) after validation).
 
 ### Troubleshooting
 
-See [`agents/harness/io-contract.md` → Troubleshooting](../agents/harness/io-contract.md#troubleshooting) for webhook, stuck with `agent-working`, OpenAI parse, and field-mapping failures.
+See [`agents/harness/io-contract.md` → Troubleshooting](../../agents/harness/io-contract.md#troubleshooting) for webhook, stuck with `agent-working`, OpenAI parse, and field-mapping failures.
 
 **Update live n8n after builder changes:**
 
@@ -239,8 +269,10 @@ pnpm build:workflows
 
 > **Re-import note:** `pnpm build:workflows` alone only updates JSON files in this repo. Prefer `pnpm deploy:workflows` for routine updates; fall back to re-importing both `call-agent-subworkflow.json` and `marketing-pipeline-main.json` (Workflows → Import from File) and re-bind credentials/workflow IDs as in Steps 1–2 above when deploy is not an option.
 
-## Manual setup
+### Key workflow characteristics
 
-1. Import workflow JSON from [`marketing-pipelines/`](../marketing-pipelines/README.md) into `n8n.wolven.com.br` after tasks 06–07 populate exports.
-2. Configure credentials: ClickUp, GitHub (read-only PAT on `agentic-mkt` — see above), OpenAI.
-3. Activate the main workflow and copy the HTTPS webhook URL into ClickUp (see `clickup/webhook-contract.md`).
+- **Three independent stages** — investigate, write, format — each runs in the Call Agent sub-workflow and returns typed output.
+- **One ClickUp Doc per task** — the workflow creates a Doc with one page per stage (Brief, Argument, Final Draft) and stores the Doc URL in the **Editorial Doc Url** custom field.
+- **Auto-advance to the next human gate** — when a stage succeeds, the workflow posts a pointer comment and moves status to the next human column.
+- **Blocker handling** — if a stage lacks material, it posts a blocker question and returns to the previous human column.
+- **Preservation of downstream artifacts** — re-running an earlier stage preserves later artifacts until they are re-run.

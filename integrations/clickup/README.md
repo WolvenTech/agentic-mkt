@@ -14,7 +14,7 @@ Schema, webhook contract, and field mapping for the **staged editorial workflow*
 | `pnpm vendor:gate` | **Run first** — verifies ClickUp + n8n connectivity before live scripts or integration tests |
 | `pnpm clickup:sync` | Pull field IDs from ClickUp API into `field-mapping.json` |
 | `pnpm clickup:verify` | Integration check — create test task and verify custom fields via GET |
-| `pnpm green-run` | Green run preflight + execution; writes `logs/green-run/<timestamp>/evidence.json` (see [`logs/README.md`](../logs/README.md)) |
+| `pnpm green-run` | Green run preflight + execution; writes `logs/green-run/<timestamp>/evidence.json` (see [`logs/README.md`](../../logs/README.md)) |
 | [`fixtures/task-status-updated-investigate.json`](fixtures/task-status-updated-investigate.json) | Sample stage-ingress webhook payload for Investigate |
 | [`fixtures/task-status-updated-write.json`](fixtures/task-status-updated-write.json) | Sample stage-ingress webhook payload for Write |
 | [`fixtures/task-status-updated-format.json`](fixtures/task-status-updated-format.json) | Sample stage-ingress webhook payload for Format |
@@ -105,7 +105,7 @@ See [`list-schema.md` → Approval and control model](list-schema.md#approval-an
 | `CLICKUP_API_TOKEN` | API sync/verify | Personal token from ClickUp Settings → Apps |
 | `CLICKUP_LIST_ID` | API sync/verify | Numeric list ID |
 
-See [`.env.example`](../.env.example) at repo root.
+See [`.env.example`](../../.env.example) at repo root.
 
 ## Operational runbook
 
@@ -133,7 +133,7 @@ Confirm `field-mapping.json` has no `<TBD>` values before n8n deployment.
 
 1. Copy production webhook URL from n8n **ClickUp Webhook** node.
 2. ClickUp → Integrations → Webhooks → **Task Status Updated** → Marketing Pipeline list.
-3. Replay test: POST a sample webhook payload to n8n test webhook URL to confirm ingress (see [`n8n/README.md`](../n8n/README.md)).
+3. Replay test: POST a sample webhook payload to n8n test webhook URL to confirm ingress (see [`marketing-pipelines/README.md`](../marketing-pipelines/README.md)).
 
 ### Brief gate (operator discipline)
 
@@ -180,4 +180,4 @@ Answer the blocker question in the comment thread, then move the task forward ag
 | Empty custom fields in n8n | Re-run `pnpm clickup:sync`; verify field names match UI exactly |
 | Task stuck In Progress | n8n Executions for main workflow run |
 
-Full diagnostics: [`agents/harness/io-contract.md` → Troubleshooting](../agents/harness/io-contract.md#troubleshooting).
+Full diagnostics: [`agents/harness/io-contract.md` → Troubleshooting](../../agents/harness/io-contract.md#troubleshooting).

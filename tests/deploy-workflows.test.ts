@@ -121,11 +121,11 @@ describe("allowedSettings", () => {
 describe("deployWorkflows", () => {
   it("PUTs merged local workflow JSON for Call Agent and Marketing Pipeline", async () => {
     const callAgentLocal = readFileSync(
-      resolve(REPO_ROOT, "marketing-pipelines/call-agent-subworkflow.json"),
+      resolve(REPO_ROOT, "integrations/marketing-pipelines/call-agent-subworkflow.json"),
       "utf-8"
     );
     const marketingLocal = readFileSync(
-      resolve(REPO_ROOT, "marketing-pipelines/marketing-pipeline-main.json"),
+      resolve(REPO_ROOT, "integrations/marketing-pipelines/marketing-pipeline-main.json"),
       "utf-8"
     );
 
@@ -326,8 +326,8 @@ describe("gate routing (task_15)", () => {
 
 describe("publishNewWorkflows", () => {
   it("creates new workflows, renames and deactivates old ones, activates new Marketing Pipeline", async () => {
-    const callAgentLocal = readFileSync(resolve(REPO_ROOT, "marketing-pipelines/call-agent-subworkflow.json"), "utf-8");
-    const marketingLocal = readFileSync(resolve(REPO_ROOT, "marketing-pipelines/marketing-pipeline-main.json"), "utf-8");
+    const callAgentLocal = readFileSync(resolve(REPO_ROOT, "integrations/marketing-pipelines/call-agent-subworkflow.json"), "utf-8");
+    const marketingLocal = readFileSync(resolve(REPO_ROOT, "integrations/marketing-pipelines/marketing-pipeline-main.json"), "utf-8");
 
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith("/api/v1/workflows?limit=100") && init?.method !== "POST") {

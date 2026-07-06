@@ -9,9 +9,8 @@ const IO_CONTRACT_PATH = resolve(REPO_ROOT, "agents", "harness", "io-contract.md
 const GREEN_RUN_EVIDENCE_PATH = resolve(REPO_ROOT, "agents", "harness", "green-run-evidence.json");
 
 const DOMAIN_READMES = {
-  n8n: resolve(REPO_ROOT, "n8n", "README.md"),
-  clickup: resolve(REPO_ROOT, "clickup", "README.md"),
-  "marketing-pipelines": resolve(REPO_ROOT, "marketing-pipelines", "README.md"),
+  clickup: resolve(REPO_ROOT, "integrations", "clickup", "README.md"),
+  "marketing-pipelines": resolve(REPO_ROOT, "integrations", "marketing-pipelines", "README.md"),
   agents: resolve(REPO_ROOT, "agents", "README.md"),
 } as const;
 
@@ -44,11 +43,10 @@ const PRD_F5_REQUIREMENTS = [
 // Committed docs should not mention the retired python3/.py command path.
 const PYTHON_COMMAND_GREP_PATHS: Record<string, string> = {
   "README.md": resolve(REPO_ROOT, "README.md"),
-  "n8n/README.md": resolve(REPO_ROOT, "n8n", "README.md"),
-  "clickup/README.md": resolve(REPO_ROOT, "clickup", "README.md"),
+  "clickup/README.md": resolve(REPO_ROOT, "integrations", "clickup", "README.md"),
   "agents/harness/README.md": resolve(REPO_ROOT, "agents", "harness", "README.md"),
   "agents/harness/io-contract.md": resolve(REPO_ROOT, "agents", "harness", "io-contract.md"),
-  "clickup/webhook-contract.md": resolve(REPO_ROOT, "clickup", "webhook-contract.md"),
+  "clickup/webhook-contract.md": resolve(REPO_ROOT, "integrations", "clickup", "webhook-contract.md"),
 };
 
 const PYTHON_COMMAND_PATTERNS = [/\bpython3\b/, /\.py\b/];
@@ -284,8 +282,8 @@ describe("domain READMEs", () => {
     }
   });
 
-  it("n8n README documents the workflow re-import procedure", () => {
-    const readme = loadText(DOMAIN_READMES.n8n).toLowerCase();
+  it("marketing-pipelines README documents the workflow re-import procedure", () => {
+    const readme = loadText(DOMAIN_READMES["marketing-pipelines"]).toLowerCase();
     for (const step of [
       "import call agent sub-workflow",
       "import and activate marketing pipeline",
@@ -320,17 +318,17 @@ describe("PRD F5 coverage", () => {
 
 describe("troubleshooting simulated webhook walkthrough", () => {
   const contract = loadText(IO_CONTRACT_PATH);
-  const n8nReadme = loadText(DOMAIN_READMES.n8n);
+  const marketingPipelinesReadme = loadText(DOMAIN_READMES["marketing-pipelines"]);
 
   it("references the simulated-failure fixture and replay step", () => {
     expect(contract.toLowerCase()).toContain("listen for test event");
-    expect(n8nReadme.toLowerCase()).toContain("webhook replay test");
+    expect(marketingPipelinesReadme.toLowerCase()).toContain("webhook replay test");
   });
 
-  it("n8n README cross-links the webhook replay test to the troubleshooting doc", () => {
-    const lower = n8nReadme.toLowerCase();
+  it("marketing-pipelines README cross-links the webhook replay test to the troubleshooting doc", () => {
+    const lower = marketingPipelinesReadme.toLowerCase();
     expect(lower).toContain("webhook replay test");
-    expect(n8nReadme).toContain("io-contract.md");
+    expect(marketingPipelinesReadme).toContain("io-contract.md");
   });
 });
 
@@ -414,8 +412,7 @@ describe("workflow command references", () => {
 });
 
 describe("live proof and rollout readiness (task_22–23)", () => {
-  const listSchema = loadText(resolve(REPO_ROOT, "clickup", "list-schema.md"));
-  const n8nReadme = loadText(DOMAIN_READMES.n8n);
+  const listSchema = loadText(resolve(REPO_ROOT, "integrations", "clickup", "list-schema.md"));
 
   describe("production status is documented", () => {
     it("list-schema.md has a Production Status section", () => {
@@ -436,10 +433,10 @@ describe("live proof and rollout readiness (task_22–23)", () => {
 });
 
 describe("staged-only rollout documentation (task_31)", () => {
-  const webhookContract = loadText(resolve(REPO_ROOT, "clickup", "webhook-contract.md"));
+  const webhookContract = loadText(resolve(REPO_ROOT, "integrations", "clickup", "webhook-contract.md"));
   const ioContract = loadText(resolve(REPO_ROOT, "agents", "harness", "io-contract.md"));
-  const n8nReadme = loadText(DOMAIN_READMES.n8n);
-  const listSchema = loadText(resolve(REPO_ROOT, "clickup", "list-schema.md"));
+  const marketingPipelinesReadme = loadText(DOMAIN_READMES["marketing-pipelines"]);
+  const listSchema = loadText(resolve(REPO_ROOT, "integrations", "clickup", "list-schema.md"));
 
   describe("no stale old-flow references in production sections", () => {
     it("webhook-contract.md describes staged ingress (investigate/write/format) not ready/needs review", () => {
@@ -454,9 +451,9 @@ describe("staged-only rollout documentation (task_31)", () => {
       expect(lower).not.toContain("revision ingress");
     });
 
-    it("n8n/README.md webhook path uses staged-ingress not ready-to-work", () => {
-      expect(n8nReadme).toContain("marketing-pipeline-staged-ingress");
-      expect(n8nReadme).not.toContain("marketing-pipeline-ready-to-work");
+    it("marketing-pipelines/README.md webhook path uses staged-ingress not ready-to-work", () => {
+      expect(marketingPipelinesReadme).toContain("marketing-pipeline-staged-ingress");
+      expect(marketingPipelinesReadme).not.toContain("marketing-pipeline-ready-to-work");
     });
 
     it("io-contract.md Live ClickUp status section documents staged flow only", () => {
@@ -486,9 +483,9 @@ describe("staged-only rollout documentation (task_31)", () => {
       expect(lower).toContain("blocker");
     });
 
-    it("n8n README documents activity tags in main workflow test procedure", () => {
-      expect(n8nReadme.toLowerCase()).toContain("agent-working");
-      expect(n8nReadme.toLowerCase()).toContain("tag");
+    it("marketing-pipelines README documents activity tags in main workflow test procedure", () => {
+      expect(marketingPipelinesReadme.toLowerCase()).toContain("agent-working");
+      expect(marketingPipelinesReadme.toLowerCase()).toContain("tag");
     });
 
     it("LIVE-PROOF-RUNBOOK.md includes activity tag reference", () => {
@@ -539,20 +536,19 @@ describe("staged-only rollout documentation (task_31)", () => {
       expect(ioContract.toLowerCase()).toContain("marketing-pipeline-staged-ingress");
     });
 
-    it("n8n README step-by-step setup includes webhook path", () => {
-      expect(n8nReadme).toContain("marketing-pipeline-staged-ingress");
-      const stepIdx = n8nReadme.indexOf("### Step 3");
+    it("marketing-pipelines README step-by-step setup includes webhook path", () => {
+      expect(marketingPipelinesReadme).toContain("marketing-pipeline-staged-ingress");
+      const stepIdx = marketingPipelinesReadme.indexOf("### Step 3");
       expect(stepIdx).toBeGreaterThan(0);
-      expect(n8nReadme.slice(stepIdx, stepIdx + 500)).toContain("marketing-pipeline-staged-ingress");
+      expect(marketingPipelinesReadme.slice(stepIdx, stepIdx + 500)).toContain("marketing-pipeline-staged-ingress");
     });
   });
 });
 
 describe("staged ClickUp workflow documentation (task_02)", () => {
-  const listSchema = loadText(resolve(REPO_ROOT, "clickup", "list-schema.md"));
+  const listSchema = loadText(resolve(REPO_ROOT, "integrations", "clickup", "list-schema.md"));
   const clickupReadme = loadText(DOMAIN_READMES.clickup);
   const marketingPipelinesReadme = loadText(DOMAIN_READMES["marketing-pipelines"]);
-  const n8nReadme = loadText(DOMAIN_READMES.n8n);
 
   describe("staged status names in documentation", () => {
     const requiredStatuses = [

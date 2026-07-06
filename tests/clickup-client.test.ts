@@ -13,7 +13,7 @@ import {
   removeTaskTag,
 } from "../src/clickup/client.js";
 
-const FIXTURES_DIR = resolve(__dirname, "..", "clickup", "fixtures");
+const FIXTURES_DIR = resolve(__dirname, "..", "integrations", "clickup", "fixtures");
 
 function loadFixture<T>(name: string): T {
   return JSON.parse(readFileSync(resolve(FIXTURES_DIR, name), "utf-8")) as T;
