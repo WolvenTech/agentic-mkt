@@ -128,6 +128,6 @@ Reviewed against ClickUp developer docs (2026-06):
 
 ## Verification
 
-- **Unit:** `tests/clickup.test.ts` validates fixtures against ingress filter logic and payload shape
+- **Unit:** `src/marketing-pipeline/logic.test.ts` validates fixtures against ingress filter logic and payload shape
 - **Integration:** Register webhook → move test task to Investigate, Write, or Format → confirm n8n receives payload matching this contract
 - **Pre-registration:** Use ClickUp webhook test tool or replay [`fixtures/task-status-updated-investigate.json`](fixtures/task-status-updated-investigate.json), [`fixtures/task-status-updated-write.json`](fixtures/task-status-updated-write.json), and [`fixtures/task-status-updated-format.json`](fixtures/task-status-updated-format.json) into n8n test webhook

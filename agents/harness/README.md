@@ -45,4 +45,4 @@ No runtime setup currently required. Contracts are enforced by:
 - Marketing Pipeline main workflow comment template from `io-contract.md`
 - Troubleshooting, reusable patterns, and green-run evidence documented in `io-contract.md`
 
-**Validation:** `pnpm test tests/harness.test.ts tests/documentation.test.ts`
+**Validation:** `pnpm test tests/contracts/harness.test.ts`

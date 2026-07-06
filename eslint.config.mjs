@@ -1,7 +1,7 @@
 import js from '@eslint/js';
 
 // Token pattern: @@TOKEN_NAME@@ (must match TOKEN_PATTERN in src/workflows/n8n-codegen.ts;
-// tests/n8n-code-nodes-lint-coverage.test.ts asserts the two stay in sync).
+// tests/consistency/n8n-code-nodes-lint-coverage.test.ts asserts the two stay in sync).
 export const CODE_NODE_TOKEN_PATTERN = /@@[A-Z_]+@@/g;
 
 export default [

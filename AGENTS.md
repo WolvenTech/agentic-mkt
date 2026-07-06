@@ -29,7 +29,7 @@ Each row documents an artifact type, owner role, edit policy, and validation com
 |---------|------|-------|------------|-------------------|--------|
 | `README.md` | File | Repo Maintainers | Edit to reflect major changes; points to `AGENTS.md` for canonical policy | `grep -q "AGENTS.md" README.md` | Exists; human onboarding |
 | `AGENTS.md` (root) | File | Repo Maintainers | Canonical policy; version-controlled; breaking changes require community review | `pnpm test && grep -E "(source-of-truth\|command matrix\|protected surfaces)" AGENTS.md` | This file |
-| `agents/` | Directory | Agent Config Maintainers | Modify agent JSON configs; add/update skills; protect from deletion | `pnpm test tests/agents.test.ts` | Runtime contracts; GitHub-loaded |
+| `agents/` | Directory | Agent Config Maintainers | Modify agent JSON configs; add/update skills; protect from deletion | `pnpm test tests/contracts/agent-config.test.ts` | Runtime contracts; GitHub-loaded |
 | `agents/harness/io-contract.md` | File | Harness Maintainers | Strictly document harness I/O shape; breaking changes require dual validation | `pnpm test && grep -E "(input\|output)" agents/harness/io-contract.md` | 25KB; harness contract |
 | `agents/harness/output-schema.json` | File | Harness Maintainers | JSON schema for harness output; validate against all callers before changes | `pnpm test && jq '.properties' agents/harness/output-schema.json > /dev/null` | Protected |
 | `agents/harness/green-run-evidence.json` | File | Local Run Output | Generated during `pnpm test:live`; ignored in `.gitignore`; local-only proof | `git check-ignore agents/harness/green-run-evidence.json` | Ignored; never committed |
@@ -42,8 +42,8 @@ Each row documents an artifact type, owner role, edit policy, and validation com
 | `src/workflows/` | Directory | Workflow Builders | Source-of-truth for workflow logic; edit to change n8n behavior; regenerate JSON after | `pnpm build:workflows && pnpm build:workflows:check` | 5 builders; authoritative |
 | `src/workflows/build-marketing-pipeline.ts` | File | Workflow Builders | Edit to change marketing pipeline behavior and Code node logic | `pnpm build:workflows && pnpm build:workflows:check` | 32KB builder |
 | `src/workflows/build-call-agent.ts` | File | Workflow Builders | Edit to change call-agent workflow behavior | `pnpm build:workflows && pnpm build:workflows:check` | 9.6KB builder |
-| `src/`, `scripts/` | Directories | Source Code Owner | Edit to add/refactor source modules and CLI scripts; validate with `pnpm test && pnpm build:workflows` | `pnpm test && pnpm build:workflows:check` | Authoritative logic |
-| `tests/` | Directory | Test Maintainers | Add/modify unit and integration tests; protect test fixtures | `pnpm test` | 20+ test files |
+| `src/`, `scripts/` | Directories | Source Code Owner | Edit to add/refactor source modules and CLI scripts; unit tests co-locate as `<module>.test.ts` next to source; validate with `pnpm test && pnpm build:workflows` | `pnpm test && pnpm build:workflows:check` | Authoritative logic |
+| `tests/` | Directory | Test Maintainers | Holds only `consistency/` (generated-artifact vs. source), `integration/` (CLI/process boundary, gate routing), `contracts/` (non-`src/` runtime artifacts), and `live/` (credentialed, `*.live.test.ts`) suites; no loose files at root; protect test fixtures | `pnpm test` | Structured by test kind |
 | `.env.example` | File | Repo Maintainers | Committed environment contract; never expose real secrets | `grep -v "^#" .env.example \| grep -E "^[A-Z_]+="`  | Template; never secrets |
 | `.github/workflows/ci.yml` | File | CI/CD Owner | Modify to add CI steps (e.g., secret scanning); preserve validation gates | `pnpm test && pnpm build:workflows:check` | Lives CI pipeline |
 | `.gitignore` | File | Repo Maintainers | Preserve ignore rules for secrets, local state, logs, adapters (per ADR-002) | `git check-ignore .compozy/ .agents/ .env logs/ .claude/` | Protective |
@@ -69,7 +69,7 @@ Every command is classified as **Offline** (safe to run without live API access)
 
 | Command | Purpose | Scope | Offline/Live | Prerequisites | When to Run |
 |---------|---------|-------|-------------|---------------|------------|
-| `pnpm test` | Run all offline unit tests | Unit tests for src/, scripts/, contracts, CLI | Offline | None | On every commit; CI gate |
+| `pnpm test` | Run all offline unit tests | Co-located unit tests under `src/`, plus `tests/consistency/`, `tests/integration/`, and `tests/contracts/` | Offline | None | On every commit; CI gate |
 | `pnpm test:watch` | Watch mode for unit tests | Same as `pnpm test` | Offline | None | During local development |
 | `pnpm test:coverage` | Unit tests with V8 coverage | Same scope, with coverage stats | Offline | None | Before release; CI gate |
 | `pnpm vendor:gate` | Verify ClickUp/n8n credentials & connectivity | Environment validation; gate prerequisite | Live | Valid `.env` with CLICKUP_API_TOKEN, N8N_API_KEY | Before any live command; required for `pnpm test:live` |
@@ -98,12 +98,12 @@ The following surfaces are **protected** from direct edits. Breaking changes req
 ### 1. Agent Runtime Configs and Harness Contracts
 - **Files**: `agents/{id}.json`, `agents/harness/io-contract.md`, `agents/harness/output-schema.json`
 - **Rule**: Agent JSON configs are loaded from GitHub at execution time; local files are source-of-truth references only. Do not hand-edit. All agent changes flow through GitHub updates and n8n workflow reimport.
-- **Validation**: `pnpm test tests/agents.test.ts` after any agent config or skill modification.
+- **Validation**: `pnpm test tests/contracts/agent-config.test.ts` after any agent config or skill modification.
 
 ### 2. ClickUp Field Contract and API Schemas
 - **Files**: `integrations/clickup/field-mapping.json`, `integrations/clickup/webhook-contract.md`, `integrations/clickup/list-schema.md`, `integrations/clickup/fixtures/*`
 - **Rule**: The field-mapping.json is synced from the live ClickUp API via `pnpm clickup:sync`. Never hand-edit. Webhook and list schemas are operational references; update only when ClickUp API shapes change (document the change in fixture comments).
-- **Validation**: `pnpm clickup:verify && pnpm test tests/clickup.test.ts` before commit.
+- **Validation**: `pnpm clickup:verify && pnpm test src/clickup/sync-field-mapping.test.ts src/clickup/verify-api.test.ts src/marketing-pipeline/logic.test.ts` before commit.
 
 ### 3. Generated n8n Workflow JSON
 - **Files**: `integrations/marketing-pipelines/*.json` (call-agent, marketing-pipeline-main)
@@ -198,7 +198,7 @@ Safe to delete any subdirectory under `logs/green-run/` or `logs/content-quality
 - Log writers must not persist raw ClickUp task/Doc/API-payload content or credential values — only structured status/evidence summaries.
 - Log output must exclude: raw API response bodies (do not serialize fetched tasks, documents, or full HTTP payloads); credential values (`token`, `apiKey`, `authorization`, etc.); sensitive field names from the raw schema (task body, doc content, full comment text).
 - Log evidence should instead contain: task/doc IDs and URLs (identifiers, not sensitive payloads); status summaries (e.g., "task_id=xyz; status=investigate"); extracted metadata (field values, error messages, latency measurements); boolean results or pass/fail indicators.
-- `tests/logs.test.ts` validates log-writer output for compliance against this policy whenever evidence files are present (skipped on a fresh checkout where no local run has happened yet).
+- `tests/contracts/logs-redaction.test.ts` validates log-writer output for compliance against this policy whenever evidence files are present (skipped on a fresh checkout where no local run has happened yet).
 
 ---
 
@@ -266,6 +266,35 @@ When the same pattern appears in 3+ places, consider consolidating:
 
 ---
 
+## Test Organization
+
+### Rule: Unit Tests Co-Locate With Source
+
+Unit tests for a `src/` module live as `<module>.test.ts` in the same directory as the module (e.g. `src/clickup/client.ts` + `src/clickup/client.test.ts`), not in a parallel `tests/` mirror.
+
+- A new `src/` file with meaningful logic ships with a co-located test in the same commit.
+- **Validation**: `pnpm test` picks up co-located tests automatically via the `unit` project's `src/**/*.test.ts` glob in `vitest.config.ts`.
+
+### Rule: Non-Unit Suites Live Under `tests/`, Structured by Kind
+
+Tests that do not map 1:1 to a single `src/` module — because they validate cross-artifact consistency, CLI/process wiring, or contracts against non-`src/` runtime artifacts — live under `tests/`, split into exactly these subdirectories:
+
+- `tests/consistency/` — a generated artifact (workflow JSON, rendered Code node source) against its source (builder, code-node file, logic function).
+- `tests/integration/` — a CLI/process boundary (real subprocess spawn) or a cross-script security invariant (e.g. "script X must route through the vendor gate").
+- `tests/contracts/` — a non-`src/` runtime artifact (agent JSON configs, harness schema/docs, evidence logs) against documented policy.
+- `tests/live/` — requires live ClickUp/n8n/GitHub credentials; `describe.skipIf(...)`-gated; `*.live.test.ts` naming; runs only under `pnpm test:live`.
+
+No loose `.test.ts` files belong directly at `tests/` root.
+
+### Rule: Chore and Scaffolding Tests Are Not Persisted
+
+A test that only proves a one-off task or PR deliverable was completed — a scaffold file exists, a doc contains a specific string tied to one PR, a repo is a git repo — is not committed to the suite. That kind of check belongs to one-off PR review, not the durable test suite.
+
+- **Judgment**: ask "if a future engineer legitimately changes this behavior for a good reason, should this test force them to update the test, or should it just start failing as noise?" If the latter, it is a completion proof, not a regression test — do not persist it.
+- A durable regression test protects a property that must hold indefinitely (a security invariant, a generated-artifact contract, a parsing/formatting behavior). Keep those.
+
+---
+
 ## Modular Scaffolding Principles
 
 The repository is organized around **4-5 data-ownership and contract-crossing boundaries**, not folder structure. These boundaries define clear ownership, edit policy, and validation for the repository's major moving parts.
@@ -274,7 +303,7 @@ The repository is organized around **4-5 data-ownership and contract-crossing bo
 
 1. **Hand-Written Source and Scripts** (`src/`, `scripts/`, `tests/`, `package.json`)
    - Owner: Source Code Owner / Script Maintainers
-   - Policy: Edit freely; validate with `pnpm test && pnpm build:workflows`.
+   - Policy: Edit freely; validate with `pnpm test && pnpm build:workflows` (tests co-locate with source; cross-cutting suites live under `tests/`, see Test Organization).
    - Boundary Crossing: Code imports from other modules via TypeScript imports.
 
 2. **Generated n8n Workflow Exports** (`integrations/marketing-pipelines/*.json`, produced by `pnpm build:workflows`)
@@ -287,13 +316,13 @@ The repository is organized around **4-5 data-ownership and contract-crossing bo
    - Owner: ClickUp Integration Owner (external API)
    - Policy: Synced via `pnpm clickup:sync`. Never hand-edit the field-mapping. Schemas updated when API version changes.
    - Boundary Crossing: External ClickUp API ↔ Local field-mapping; workflows consume field-mapping; tests validate with fixtures.
-   - Validation: `pnpm clickup:verify && pnpm test tests/clickup.test.ts`
+   - Validation: `pnpm clickup:verify && pnpm test src/clickup/sync-field-mapping.test.ts src/clickup/verify-api.test.ts src/marketing-pipeline/logic.test.ts`
 
 4. **Agent Harness I/O Contract** (`agents/harness/io-contract.md`, `agents/harness/output-schema.json`, agent JSON configs in `agents/`)
    - Owner: Harness Maintainers
    - Policy: Protect from direct edits. Agent configs are GitHub-loaded; harness contracts document the expected I/O shape.
    - Boundary Crossing: Call Agent workflow ↔ Agent I/O; harness validates output against schema.
-   - Validation: `pnpm test tests/agents.test.ts`
+   - Validation: `pnpm test tests/contracts/agent-config.test.ts`
 
 5. **Local Planning State** (`.compozy/`, `logs/`, local adapter configs)
    - Owner: Local Planning / Task Runners

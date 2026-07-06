@@ -30,7 +30,7 @@ ClickUp: backlog → investigate → brief review → write → content review �
 | [`agents/harness/`](agents/harness/README.md) | I/O contracts, output schema, troubleshooting |
 | [`agents/`](agents/README.md) | Runtime agent configs and skills (loaded by n8n) |
 | [`logs/`](logs/README.md) | **Gitignored** local run output (green-run evidence, transcripts) |
-| [`tests/`](tests/) | Contract and scaffold validation suite |
+| [`tests/`](tests/) | Consistency, integration, contract, and live test suites (unit tests co-locate under `src/`) |
 
 Planning artifacts (PRD, TechSpec, tasks) live in `.compozy/tasks/` (local, gitignored).
 
@@ -39,7 +39,7 @@ Planning artifacts (PRD, TechSpec, tasks) live in `.compozy/tasks/` (local, giti
 This repository contains several types of surfaces with different versioning and edit policies:
 
 **Committed & Versioned**
-- `src/`, `scripts/`, `tests/` — Source code, utilities, and test fixtures
+- `src/`, `scripts/`, `tests/` — Source code and utilities (unit tests co-located under `src/`), CLI scripts, and cross-cutting test suites
 - `agents/`, `integrations/clickup/` — Agent configs, field contracts, deployment runbooks
 - `.env.example` — Committed environment template (never contains real secrets)
 - `AGENTS.md` — Canonical agent policy (the authoritative source for repository standards)

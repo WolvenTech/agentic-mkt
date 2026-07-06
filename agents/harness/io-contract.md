@@ -366,7 +366,7 @@ Actionable diagnostics for common failure modes. Primary diagnostic surface: **n
    pnpm vendor:gate
    pnpm clickup:sync
    ```
-3. Run `pnpm clickup:verify` and `pnpm test tests/clickup.test.ts`.
+3. Run `pnpm clickup:verify` and `pnpm test src/clickup/sync-field-mapping.test.ts src/clickup/verify-api.test.ts`.
 4. In n8n **Extract Task Fields** Code node, confirm expressions reference `field-mapping.json` IDs, not hardcoded stale values.
 5. Re-import main workflow JSON after updating `field-mapping.json` if the builder embeds IDs at export time: `pnpm build:workflows`.
 6. Verify custom field **names** in ClickUp UI match exactly: `ACs`, `Agent`.
