@@ -49,6 +49,16 @@ describe("vendor gate — isStrict() bypass enforcement", () => {
     logSpy.mockRestore();
     errorSpy.mockRestore();
   });
+
+  it("rejects warn-only mode when CI is set to a non-falsey conventional value", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const code = await main({ SKIP_DOTENV: "1", VENDOR_GATE_STRICT: "0", CI: "1" });
+    expect(code).toBe(1);
+    expect(errorSpy.mock.calls.flat().join("\n")).not.toContain("warn-only mode");
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
 });
 
 describe("vendor gate — runGate (mocked fetch)", () => {

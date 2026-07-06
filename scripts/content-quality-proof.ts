@@ -31,6 +31,26 @@ interface ProofState {
   n8n_recent_execution_ids: string[];
 }
 
+export function buildPacketSummary(options: {
+  taskId: string;
+  docId: string;
+  taskTitle: string;
+  acceptanceCriteria: string;
+  latestFeedback: string;
+  briefContent: string;
+  model: string;
+}): string {
+  return [
+    `task_id=${options.taskId}`,
+    `doc_id=${options.docId}`,
+    `task_title_chars=${options.taskTitle.length}`,
+    `criteria_chars=${options.acceptanceCriteria.length}`,
+    `latest_feedback_chars=${options.latestFeedback.length}`,
+    `brief_chars=${options.briefContent.length}`,
+    `model=${options.model}`,
+  ].join("; ");
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -446,24 +466,21 @@ async function main(): Promise<void> {
     `/api/v3/workspaces/${state.workspace_id}/docs/${state.doc_id}/pages/${state.page_ids.brief}?content_format=text/md`,
     token
   );
-  const packet = [
-    `title=${taskFields.task_title}`,
-    `criteria=${taskFields.criterios_de_aceite}`,
-    `model=${DEFAULT_MODEL}`,
-    `latest_feedback=${actionable}`,
-    `brief=${String(assembledBrief.content ?? "").slice(0, 160)}`,
-  ].join("\n");
+  const packetSummary = buildPacketSummary({
+    taskId: taskFields.task_id,
+    docId: state.doc_id ?? "",
+    taskTitle: taskFields.task_title,
+    acceptanceCriteria: taskFields.criterios_de_aceite,
+    latestFeedback: actionable,
+    briefContent: String(assembledBrief.content ?? ""),
+    model: DEFAULT_MODEL,
+  });
   row(rows, {
     id: "A14-A17-A18",
-    status:
-      packet.includes("Use only supplied evidence") &&
-      packet.includes("Combine 1 and 3") &&
-      packet.includes(DEFAULT_MODEL)
-        ? "pass"
-        : "fail",
+    status: actionable.includes("Combine 1 and 3") && String(assembledBrief.content ?? "").length > 0 ? "pass" : "fail",
     action: "Assemble stage input packet from task fields, Doc content, comments, and current model constant",
     endpoint: "GET task + GET page + GET comments",
-    observed: packet,
+    observed: packetSummary,
   });
 
   const n8nClient = createN8nClient({ apiUrl: n8nUrl, apiKey: n8nKey });

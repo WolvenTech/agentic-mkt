@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RUN_LOG_ROOT } from "../../src/clickup/green-run-validation.js";
+import { buildPacketSummary } from "../../scripts/content-quality-proof.js";
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const TSX_BIN = resolve(REPO_ROOT, "node_modules/.bin/tsx");
@@ -120,6 +121,27 @@ describe("pnpm test:live — gate enforcement", () => {
 });
 
 describe("scripts/content-quality-proof.ts — local mode", () => {
+  it("buildPacketSummary redacts raw task and doc content", () => {
+    const summary = buildPacketSummary({
+      taskId: "task-123",
+      docId: "doc-456",
+      taskTitle: "Launch post for Q3 product update",
+      acceptanceCriteria: "Mention the dashboard and keep it under 300 words.",
+      latestFeedback: "Combine 1 and 3 but emphasize proof before polish.",
+      briefContent: "# Investigative Brief\n\nSensitive body text.",
+      model: "gpt-4.1-mini",
+    });
+
+    expect(summary).toContain("task_id=task-123");
+    expect(summary).toContain("doc_id=doc-456");
+    expect(summary).toContain("task_title_chars=");
+    expect(summary).toContain("criteria_chars=");
+    expect(summary).toContain("latest_feedback_chars=");
+    expect(summary).toContain("brief_chars=");
+    expect(summary).not.toContain("Launch post for Q3 product update");
+    expect(summary).not.toContain("Sensitive body text");
+  });
+
   it("runs local proof checks without credentials and outputs JSON", () => {
     const result = runScript(resolve(REPO_ROOT, "scripts/content-quality-proof.ts"), {
       PATH: process.env.PATH ?? "",
