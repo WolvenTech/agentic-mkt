@@ -16,23 +16,6 @@ export interface StageInput {
   model: string;
 }
 
-export interface AgentOutput {
-  deliverable_markdown: string;
-  resumo: string;
-  autochecagem: string;
-}
-
-export type AgentErrorEnvelope = {
-  error: string;
-  raw_response: string;
-};
-
-export type ParseResult = AgentOutput | AgentErrorEnvelope;
-
-export function isAgentError(result: ParseResult): result is AgentErrorEnvelope {
-  return "error" in result;
-}
-
 // Stage-aware agent output contract for the Content Quality Pipeline.
 // See ADR-006 for architectural context.
 export interface StageAgentOutput {

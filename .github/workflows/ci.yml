@@ -2,10 +2,29 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint workflow Code nodes
+        run: pnpm lint:code-nodes
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -23,5 +42,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Unit tests and workflow export check
-        run: pnpm test && pnpm build:workflows:check
+      - name: Unit tests
+        run: pnpm test
+
+  workflow-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Workflow export check
+        run: pnpm build:workflows:check

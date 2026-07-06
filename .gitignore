@@ -32,10 +32,8 @@ coverage/
 # Compozy task tracking (local planning; not runtime artifacts)
 .compozy/
 
-# Local run logs (see logs/README.md — only .gitkeep and README are tracked)
-logs/**
-!logs/.gitkeep
-!logs/README.md
+# Local run logs
+logs/
 
 # Green-run evidence is local-only proof of the latest run; never a versioned surface
 # (see logs/README.md — GREEN_RUN_UPDATE_CANONICAL writes here for local inspection only)

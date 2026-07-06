@@ -6,6 +6,7 @@ import {
   type N8nClient,
   type N8nExecution,
 } from "../src/n8n/client.js";
+import { runGate } from "../src/clickup/vendor-gate.js";
 
 export const MARKETING_PIPELINE_NAME = "Marketing Pipeline";
 export const DEFAULT_MINUTES = 15;
@@ -124,6 +125,16 @@ export async function main(
   argv: string[] = process.argv.slice(2)
 ): Promise<number> {
   loadRepoDotenv(undefined, env);
+
+  // Route through the vendor gate before performing live n8n operations
+  const gateResult = await runGate(env);
+  if (gateResult.exitCode !== 0) {
+    console.error("Vendor gate failed — cannot proceed with inspect");
+    for (const check of gateResult.checks.filter((c) => !c.passed)) {
+      console.error(`  - ${check.name}: ${check.detail}`);
+    }
+    return gateResult.exitCode;
+  }
 
   let minutes: number;
   try {

@@ -1,7 +1,6 @@
 // n8n Code node source - wrapped in IIFE for parsing
 (function() {
-const REQUIRED_KEYS = @@REQUIRED_OUTPUT_KEYS@@;
-const REQUIRED_STAGE_KEYS = @@REQUIRED_STAGE_OUTPUT_KEYS@@;
+const REQUIRED_KEYS = @@REQUIRED_STAGE_OUTPUT_KEYS@@;
 const STAGE_DEFINITIONS = {
   investigate: { next_gate: 'brief review' },
   write: { next_gate: 'content review' },
@@ -12,8 +11,6 @@ const input = $('Store Input Context').first().json;
 const agentId = input.agent_id ?? 'unknown';
 const taskId = input.task_id ?? input.task_title ?? 'unknown';
 const executionId = $execution.id;
-const agentConfig = $('Assemble Prompt').first().json.agent_config ?? {};
-const isStaged = typeof (agentConfig.output_schema ?? {}).stage === 'string';
 
 function stripFences(text) {
   const trimmed = (text ?? '').trim();
@@ -61,56 +58,44 @@ try {
     throw new Error('Expected JSON object');
   }
 
-  if (isStaged) {
-    const missing = REQUIRED_STAGE_KEYS.filter((key) => !(key in parsed));
-    if (missing.length) throw new Error(`Missing required keys: ${missing.join(', ')}`);
+  const missing = REQUIRED_KEYS.filter((key) => !(key in parsed));
+  if (missing.length) throw new Error(`Missing required keys: ${missing.join(', ')}`);
 
-    const stage = parsed.stage;
-    if (!stage || !STAGE_DEFINITIONS[stage]) {
-      throw new Error(`Unknown stage '${String(stage)}'. Expected one of: investigate, write, format`);
+  const stage = parsed.stage;
+  if (!stage || !STAGE_DEFINITIONS[stage]) {
+    throw new Error(`Unknown stage '${String(stage)}'. Expected one of: investigate, write, format`);
+  }
+  const stageDefinition = STAGE_DEFINITIONS[stage];
+
+  const requiredStringFields = ['artifact_markdown', 'resumo', 'self_check'];
+  const empty = requiredStringFields.filter((key) => typeof parsed[key] !== 'string' || !parsed[key].trim());
+  if (empty.length) throw new Error(`Empty or non-string values for: ${empty.join(', ')}`);
+
+  const nextGate = parsed.next_gate;
+  if (nextGate !== stageDefinition.next_gate) {
+    throw new Error(`Invalid next_gate '${String(nextGate)}' for stage '${stage}'. Expected '${stageDefinition.next_gate}'`);
+  }
+
+  if (parsed.blocker_question !== undefined) {
+    if (typeof parsed.blocker_question !== 'string' || !parsed.blocker_question.trim()) {
+      throw new Error('blocker_question must be a non-empty string when present');
     }
-    const stageDefinition = STAGE_DEFINITIONS[stage];
+  }
 
-    const requiredStringFields = ['artifact_markdown', 'resumo', 'self_check'];
-    const empty = requiredStringFields.filter((key) => typeof parsed[key] !== 'string' || !parsed[key].trim());
-    if (empty.length) throw new Error(`Empty or non-string values for: ${empty.join(', ')}`);
-
-    const nextGate = parsed.next_gate;
-    if (nextGate !== stageDefinition.next_gate) {
-      throw new Error(`Invalid next_gate '${String(nextGate)}' for stage '${stage}'. Expected '${stageDefinition.next_gate}'`);
-    }
-
-    if (parsed.blocker_question !== undefined) {
-      if (typeof parsed.blocker_question !== 'string' || !parsed.blocker_question.trim()) {
-        throw new Error('blocker_question must be a non-empty string when present');
-      }
-    }
-
-    result = {
-      stage: parsed.stage,
-      artifact_markdown: parsed.artifact_markdown,
-      resumo: parsed.resumo,
-      self_check: parsed.self_check,
-      next_gate: parsed.next_gate,
-    };
-    if (parsed.blocker_question) {
-      result.blocker_question = parsed.blocker_question;
-    }
-  } else {
-    const missing = REQUIRED_KEYS.filter((key) => !(key in parsed));
-    if (missing.length) throw new Error(`Missing required keys: ${missing.join(', ')}`);
-    const invalid = REQUIRED_KEYS.filter((key) => typeof parsed[key] !== 'string' || !parsed[key].trim());
-    if (invalid.length) throw new Error(`Empty or non-string values for: ${invalid.join(', ')}`);
-    result = {
-      deliverable_markdown: parsed.deliverable_markdown,
-      resumo: parsed.resumo,
-      autochecagem: parsed.autochecagem,
-    };
+  result = {
+    stage: parsed.stage,
+    artifact_markdown: parsed.artifact_markdown,
+    resumo: parsed.resumo,
+    self_check: parsed.self_check,
+    next_gate: parsed.next_gate,
+  };
+  if (parsed.blocker_question) {
+    result.blocker_question = parsed.blocker_question;
   }
   parseSuccess = true;
 } catch (error) {
   result = {
-    error: `Failed to parse ${isStaged ? 'StageAgentOutput' : 'AgentOutput'}: ${error.message}`,
+    error: `Failed to parse StageAgentOutput: ${error.message}`,
     raw_response: rawResponse,
   };
 }

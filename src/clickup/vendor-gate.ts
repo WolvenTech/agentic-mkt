@@ -188,7 +188,17 @@ export async function runGate(env: NodeJS.ProcessEnv = process.env): Promise<Gat
 }
 
 function isStrict(env: NodeJS.ProcessEnv): boolean {
-  return !["0", "false", "no"].includes((env.VENDOR_GATE_STRICT ?? "1").toLowerCase());
+  const vendorGateStrict = (env.VENDOR_GATE_STRICT ?? "1").toLowerCase();
+  const ciValue = (env.CI ?? "").trim().toLowerCase();
+  const isInCI = ciValue !== "" && !["0", "false", "no"].includes(ciValue);
+
+  // In CI contexts, reject the VENDOR_GATE_STRICT=0 bypass to prevent silent degradation
+  if (isInCI && ["0", "false", "no"].includes(vendorGateStrict)) {
+    return true;
+  }
+
+  // Outside CI, allow the bypass for local development
+  return !["0", "false", "no"].includes(vendorGateStrict);
 }
 
 /** CLI entrypoint logic: loads `.env`, runs the gate, prints the report, returns the process exit code. */

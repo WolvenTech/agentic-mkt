@@ -9,6 +9,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
+      exclude: ["src/**/*.test.ts"],
       thresholds: {
         lines: 80,
         statements: 80,
@@ -20,14 +21,19 @@ export default defineConfig({
       {
         test: {
           name: "unit",
-          include: ["tests/**/*.test.ts"],
+          include: [
+            "src/**/*.test.ts",
+            "tests/integration/**/*.test.ts",
+            "tests/consistency/**/*.test.ts",
+            "tests/contracts/**/*.test.ts",
+          ],
           exclude: ["tests/**/*.live.test.ts", "node_modules/**"],
         },
       },
       {
         test: {
           name: "live",
-          include: ["tests/**/*.live.test.ts"],
+          include: ["tests/live/**/*.live.test.ts"],
           exclude: ["node_modules/**"],
         },
       },

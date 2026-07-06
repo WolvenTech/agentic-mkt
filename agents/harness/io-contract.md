@@ -189,12 +189,12 @@ GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run   # refresh the local green-run-evid
 
 **Failure observations (best-effort):**
 
-- **Missing ACs:** workflow still runs; brief-gate quality may suffer — brief gate is manual only ([`clickup/list-schema.md`](../../clickup/list-schema.md)).
+- **Missing ACs:** workflow still runs; brief-gate quality may suffer — brief gate is manual only ([`integrations/clickup/list-schema.md`](../../integrations/clickup/list-schema.md)).
 - **Duplicate webhook:** second delivery may produce a duplicate comment per [ADR-001](../../adrs/adr-001.md); no dedup currently.
 
 ## Live ClickUp status names vs n8n node labels
 
-[`clickup/field-mapping.json`](../../clickup/field-mapping.json) defines API status strings. n8n node names retain TechSpec labels for operator traceability in Executions.
+[`integrations/clickup/field-mapping.json`](../../integrations/clickup/field-mapping.json) defines API status strings. n8n node names retain TechSpec labels for operator traceability in Executions.
 
 **Staged workflow statuses** (active production path):
 
@@ -216,7 +216,7 @@ GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run   # refresh the local green-run-evid
 
 **Rework re-runs:** lead can move a task back to an earlier AI column to re-run only that stage (e.g., move from `content_review` back to `write` to revise the argument).
 
-**Self-echo executions (expected):** each workflow status PATCH emits another `taskStatusUpdated` webhook (e.g., `investigate → brief_review`). Ingress ignores these because `after.status` is not entering a stage status. They appear as short green n8n runs (~7 ms) — not duplicate pipeline work. See [`clickup/webhook-contract.md`](../../clickup/webhook-contract.md#self-echo-webhooks-expected-noise).
+**Self-echo executions (expected):** each workflow status PATCH emits another `taskStatusUpdated` webhook (e.g., `investigate → brief_review`). Ingress ignores these because `after.status` is not entering a stage status. They appear as short green n8n runs (~7 ms) — not duplicate pipeline work. See [`integrations/clickup/webhook-contract.md`](../../integrations/clickup/webhook-contract.md#self-echo-webhooks-expected-noise).
 
 ## Workflow sequence expectations
 
@@ -320,8 +320,8 @@ Actionable diagnostics for common failure modes. Primary diagnostic surface: **n
 2. Copy the production webhook URL from the **ClickUp Webhook** node — must be `https://n8n.wolven.com.br/webhook/marketing-pipeline-staged-ingress` (not the test URL unless using **Listen for test event**).
 3. In ClickUp → Integrations → Webhooks, verify the endpoint URL matches exactly (no trailing slash mismatch).
 4. Check ClickUp webhook delivery log for HTTP status codes (401/403/404/502 indicate credential, path, or host issues).
-5. **Simulate without ClickUp:** open the webhook node → **Listen for test event** → POST a staged ingress fixture to the test URL (e.g., `clickup/fixtures/task-status-updated-investigate.json` for the Investigate stage). If this succeeds but production fails, the ClickUp registration is wrong — re-register with the production URL.
-6. Verify ingress filter: payload must have `history_items[0].field === "status"` and be **entering** one of `investigate`, `write`, or `format` per [`field-mapping.json`](../../clickup/field-mapping.json) ([`clickup/webhook-contract.md`](../../clickup/webhook-contract.md)). Transitions such as `investigate → brief_review` are self-echo and correctly ignored.
+5. **Simulate without ClickUp:** open the webhook node → **Listen for test event** → POST a staged ingress fixture to the test URL (e.g., `integrations/clickup/fixtures/task-status-updated-investigate.json` for the Investigate stage). If this succeeds but production fails, the ClickUp registration is wrong — re-register with the production URL.
+6. Verify ingress filter: payload must have `history_items[0].field === "status"` and be **entering** one of `investigate`, `write`, or `format` per [`field-mapping.json`](../../integrations/clickup/field-mapping.json) ([`integrations/clickup/webhook-contract.md`](../../integrations/clickup/webhook-contract.md)). Transitions such as `investigate → brief_review` are self-echo and correctly ignored.
 
 ### Task stuck with agent-working
 
@@ -350,7 +350,7 @@ Actionable diagnostics for common failure modes. Primary diagnostic surface: **n
    - Non-JSON text → disable conversational preamble in OpenAI node settings.
 3. Check structured log fields: `parse_success: false`, `execution_id`, `agent_id`.
 4. Main workflow **Agent Parse Failure** node throws with logged `error` — execution must **not** post a partial comment or advance to approval (Status → Review).
-5. **Isolation test:** run **Manual Trigger (Isolation Test)** on Call Agent sub-workflow per [`n8n/README.md`](../../n8n/README.md#sub-workflow-isolation-test-procedure) before debugging the main workflow.
+5. **Isolation test:** run **Manual Trigger (Isolation Test)** on Call Agent sub-workflow per [`integrations/marketing-pipelines/README.md`](../../integrations/marketing-pipelines/README.md#sub-workflow-isolation-test-procedure) before debugging the main workflow.
 
 ### Field ID mismatches
 
@@ -358,7 +358,7 @@ Actionable diagnostics for common failure modes. Primary diagnostic surface: **n
 
 **Diagnostic steps:**
 
-1. Open [`clickup/field-mapping.json`](../../clickup/field-mapping.json) — `clickup_field_id` values must not be `<TBD>`.
+1. Open [`integrations/clickup/field-mapping.json`](../../integrations/clickup/field-mapping.json) — `clickup_field_id` values must not be `<TBD>`.
 2. Re-sync from ClickUp API (`pnpm clickup:sync`):
    ```bash
    export CLICKUP_API_TOKEN="pk_..."
@@ -366,7 +366,7 @@ Actionable diagnostics for common failure modes. Primary diagnostic surface: **n
    pnpm vendor:gate
    pnpm clickup:sync
    ```
-3. Run `pnpm clickup:verify` and `pnpm test tests/clickup.test.ts`.
+3. Run `pnpm clickup:verify` and `pnpm test src/clickup/sync-field-mapping.test.ts src/clickup/verify-api.test.ts`.
 4. In n8n **Extract Task Fields** Code node, confirm expressions reference `field-mapping.json` IDs, not hardcoded stale values.
 5. Re-import main workflow JSON after updating `field-mapping.json` if the builder embeds IDs at export time: `pnpm build:workflows`.
 6. Verify custom field **names** in ClickUp UI match exactly: `ACs`, `Agent`.
@@ -384,8 +384,8 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 | Artifact | Reference |
 |----------|-----------|
 | Input/output types | This doc — [Input](#input-callagentinput), [Output](#output-agentoutput), [Error envelope](#error-envelope) |
-| Sub-workflow export | [`marketing-pipelines/call-agent-subworkflow.json`](../../marketing-pipelines/call-agent-subworkflow.json) |
-| Isolation test | [`n8n/README.md`](../../n8n/README.md#sub-workflow-isolation-test-procedure) |
+| Sub-workflow export | [`integrations/marketing-pipelines/call-agent-subworkflow.json`](../../integrations/marketing-pipelines/call-agent-subworkflow.json) |
+| Isolation test | [`integrations/marketing-pipelines/README.md`](../../integrations/marketing-pipelines/README.md#sub-workflow-isolation-test-procedure) |
 | TechSpec | **Core Interfaces**, **Call Agent sub-workflow** |
 
 ### 2. Status Flow Pattern
@@ -396,9 +396,9 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 | Artifact | Reference |
 |----------|-----------|
-| Status definitions | [`clickup/list-schema.md`](../../clickup/list-schema.md) |
-| Webhook filter | [`clickup/webhook-contract.md`](../../clickup/webhook-contract.md) |
-| Main workflow | [`marketing-pipelines/marketing-pipeline-main.json`](../../marketing-pipelines/marketing-pipeline-main.json) |
+| Status definitions | [`integrations/clickup/list-schema.md`](../../integrations/clickup/list-schema.md) |
+| Webhook filter | [`integrations/clickup/webhook-contract.md`](../../integrations/clickup/webhook-contract.md) |
+| Main workflow | [`integrations/marketing-pipelines/marketing-pipeline-main.json`](../../integrations/marketing-pipelines/marketing-pipeline-main.json) |
 | TechSpec | **Integration Tests** green run checklist |
 
 ### 3. Brief Gate Pattern
@@ -409,8 +409,8 @@ Portable patterns for Wolven client projects using the same n8n + GitHub agent c
 
 | Artifact | Reference |
 |----------|-----------|
-| Field schema | [`clickup/list-schema.md`](../../clickup/list-schema.md) |
-| Operational checklist | [`clickup/README.md`](../../clickup/README.md#4-brief-gate-operational) |
+| Field schema | [`integrations/clickup/list-schema.md`](../../integrations/clickup/list-schema.md) |
+| Operational checklist | [`integrations/clickup/README.md`](../../integrations/clickup/README.md#4-brief-gate-operational) |
 | PRD | F2 — Brief gate requirements |
 
 ### 4. GitHub Runtime Config Pattern

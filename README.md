@@ -2,6 +2,10 @@
 
 Configuration-first home for Wolven's **agentic marketing pipeline**: ClickUp briefs trigger n8n workflows that call OpenAI worker agents and deliver drafts back as task comments. This repository holds runtime configs, workflow exports, harness contracts, and build/test tooling — not an application server.
 
+## For Agents and Maintainers
+
+See **[`AGENTS.md`](AGENTS.md)** for the canonical policy document. It contains the authoritative source-of-truth map, command matrix, protected surfaces, live-operation gating rules, secrets handling policy, and cleanup guidance. Start there when in doubt about repository standards.
+
 ## Architecture
 
 | Layer | Role |
@@ -21,15 +25,41 @@ ClickUp: backlog → investigate → brief review → write → content review �
 | Path | Purpose |
 |------|---------|
 | [`adrs/`](adrs/README.md) | Architecture Decision Records — durable rationale for major design choices |
-| [`n8n/`](n8n/README.md) | Host runbook, credentials, MCP stub |
-| [`marketing-pipelines/`](marketing-pipelines/README.md) | Workflow JSON exports, import/deploy runbook |
-| [`clickup/`](clickup/README.md) | List schema, field mapping, webhook contract |
+| [`integrations/marketing-pipelines/`](integrations/marketing-pipelines/README.md) | Workflow JSON exports, import/deploy runbook, host credentials, MCP stub |
+| [`integrations/clickup/`](integrations/clickup/README.md) | List schema, field mapping, webhook contract |
 | [`agents/harness/`](agents/harness/README.md) | I/O contracts, output schema, troubleshooting |
 | [`agents/`](agents/README.md) | Runtime agent configs and skills (loaded by n8n) |
 | [`logs/`](logs/README.md) | **Gitignored** local run output (green-run evidence, transcripts) |
-| [`tests/`](tests/) | Contract and scaffold validation suite |
+| [`tests/`](tests/) | Consistency, integration, contract, and live test suites (unit tests co-locate under `src/`) |
 
 Planning artifacts (PRD, TechSpec, tasks) live in `.compozy/tasks/` (local, gitignored).
+
+### Source-of-Truth Surfaces and Local State
+
+This repository contains several types of surfaces with different versioning and edit policies:
+
+**Committed & Versioned**
+- `src/`, `scripts/`, `tests/` — Source code and utilities (unit tests co-located under `src/`), CLI scripts, and cross-cutting test suites
+- `agents/`, `integrations/clickup/` — Agent configs, field contracts, deployment runbooks
+- `.env.example` — Committed environment template (never contains real secrets)
+- `AGENTS.md` — Canonical agent policy (the authoritative source for repository standards)
+
+**Generated (Protected from Hand-Edit)**
+- `integrations/marketing-pipelines/*.json` — Workflow exports, auto-generated from TypeScript builders in `src/workflows/`. Use `pnpm build:workflows` to regenerate; never hand-edit. Validated by `pnpm build:workflows:check` in CI.
+
+**Runtime Configs**
+- `.env` — Local secrets and API keys (not committed; copy from `.env.example`)
+- `integrations/clickup/field-mapping.json` — ClickUp schema snapshot, synced via `pnpm clickup:sync`
+
+**Local-Only & Gitignored**
+- `.compozy/` — Planning state, task records, cleanup reports (unversioned, local-only)
+- `logs/` — Run output from `pnpm green-run` and scripts (ephemeral, untracked except README)
+- `agents/harness/green-run-evidence.json` — Local inspection artifact from live proof runs
+- `.agents/`, `.cursorrules`, `.clauderules`, `.claude/` — Local IDE/tool adapters (optional, can be symlinks to canonical `AGENTS.md`)
+
+**Key Principle:** Only durable architectural rules are committed (in `AGENTS.md` and this README). Generated outputs, local planning state, and tool-specific adapters remain local-only or unversioned.
+
+For the full source-of-truth map and edit policies, see [`AGENTS.md`](AGENTS.md) — especially the "Source-of-Truth Map" section.
 
 ## Workflow Architecture
 
@@ -43,7 +73,7 @@ All n8n **Code node runtime logic** is authored as normal JavaScript source file
 |---------|-----------|------|------|
 | `src/workflows/*/code-nodes/**/*.js` | Code node runtime logic (source of truth) | Edit as normal JavaScript | `pnpm lint:code-nodes`, `pnpm test` |
 | `src/workflows/build-*.ts` | Workflow topology, shape, non-Code-node params | Edit TypeScript builders | `pnpm test`, `pnpm build:workflows` |
-| `marketing-pipelines/*.json` | Generated workflow exports (artifact) | Do not hand-edit | `pnpm build:workflows:check` |
+| `integrations/marketing-pipelines/*.json` | Generated workflow exports (artifact) | Do not hand-edit | `pnpm build:workflows:check` |
 
 ### Editing Code Node Logic
 
@@ -131,19 +161,18 @@ This writes `agents/harness/green-run-evidence.json`, which is itself gitignored
 After changing workflow builders or logic under `src/workflows/`:
 
 ```bash
-pnpm build:workflows    # regenerate marketing-pipelines/*.json in this repo
+pnpm build:workflows    # regenerate integrations/marketing-pipelines/*.json in this repo
 pnpm deploy:workflows   # upsert to n8n.wolven.com.br (requires N8N_API_KEY)
 ```
 
-Use manual import from [`marketing-pipelines/README.md`](marketing-pipelines/README.md) only for first-time setup or when API deploy is unavailable.
+Use manual import from [`integrations/marketing-pipelines/README.md`](integrations/marketing-pipelines/README.md) only for first-time setup or when API deploy is unavailable.
 
 ## Domain documentation
 
 Each top-level folder has a README with purpose, key files, and manual setup:
 
-- [n8n](n8n/README.md) — credentials, GitHub PAT, MCP stub
-- [marketing-pipelines](marketing-pipelines/README.md) — import workflows, activation, deploy
-- [clickup](clickup/README.md) — list creation, field sync, webhook binding
+- [marketing-pipelines](integrations/marketing-pipelines/README.md) — import workflows, activation, deploy, credentials, GitHub PAT, MCP stub
+- [clickup](integrations/clickup/README.md) — list creation, field sync, webhook binding
 - [agents/harness](agents/harness/README.md) — I/O envelopes, operational runbook
 - [agents](agents/README.md) — agent config, skill copy from skill-vault
 

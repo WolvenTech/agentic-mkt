@@ -5,10 +5,7 @@
  *   for stage agents. These files are fetched alongside skills and included in prompt assembly
  *   (see ADR-006: Use Stage-Aware Agent Contracts and Reference Files).
  *
- * - Legacy configs (e.g., linkedin-writer.json) do not require references; the field is optional
- *   for backward compatibility.
- *
- * - Stage agent configs (investigate, write, format) will include references for role-specific
+ * - Stage agent configs (investigate, write, format) include references for role-specific
  *   templates and examples (see ADR-003: Role-Focused Self-Contained Stage Agents).
  */
 export interface AgentConfig {

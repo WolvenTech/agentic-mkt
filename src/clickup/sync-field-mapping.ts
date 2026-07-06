@@ -6,7 +6,7 @@ import type { FieldMapping } from "../types/field-mapping.js";
 import { clickupGet } from "./client.js";
 import type { ClickUpClientOptions } from "./client.js";
 
-export const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "clickup", "field-mapping.json");
+export const FIELD_MAPPING_PATH = resolve(REPO_ROOT, "integrations", "clickup", "field-mapping.json");
 
 /** ClickUp custom field display name -> field-mapping.json `custom_fields` key. */
 const EXPECTED_FIELDS: Record<string, string> = {

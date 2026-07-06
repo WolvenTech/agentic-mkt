@@ -35,7 +35,7 @@ After the initial green run, operators use this harness for diagnosis and cross-
 3. **Understand timing** — [`io-contract.md` → Workflow sequence expectations](io-contract.md#workflow-sequence-expectations) documents the marketing lead experience and n8n node sequence.
 4. **Replicate on new projects** — adopt the four patterns in [`io-contract.md` → Reusable harness patterns](io-contract.md#reusable-harness-patterns) (sub-workflow contract, status flow, brief gate, GitHub runtime config).
 
-**MCP/CLI:** [`../../n8n/mcp-config.stub.json`](../../n8n/mcp-config.stub.json) remains a stub — no implementation required yet.
+**MCP/CLI:** [`../../integrations/marketing-pipelines/mcp-config.stub.json`](../../integrations/marketing-pipelines/mcp-config.stub.json) remains a stub — no implementation required yet.
 
 ## Manual setup
 
@@ -45,4 +45,4 @@ No runtime setup currently required. Contracts are enforced by:
 - Marketing Pipeline main workflow comment template from `io-contract.md`
 - Troubleshooting, reusable patterns, and green-run evidence documented in `io-contract.md`
 
-**Validation:** `pnpm test tests/harness.test.ts tests/documentation.test.ts`
+**Validation:** `pnpm test tests/contracts/harness.test.ts`

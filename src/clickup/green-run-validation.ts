@@ -21,6 +21,7 @@ import {
 } from "../n8n/client.js";
 import { ClickUpHttpError, clickupDelete, clickupGet, clickupPost, clickupPut } from "./client.js";
 import type { ClickUpClientOptions } from "./client.js";
+import { runGate } from "./vendor-gate.js";
 
 export { COMMENT_SECTIONS, N8N_API_URL_DEFAULT };
 export const EVIDENCE_PATH = resolve(REPO_ROOT, "agents", "harness", "green-run-evidence.json");
@@ -485,7 +486,7 @@ export async function executeGreenRun(
     await clickupPost(`/task/${taskId}/field/${criteriosId}`, { value: DEFAULT_TEST_BRIEF.criterios_de_aceite }, clientOptions);
     await clickupPost(
       `/task/${taskId}/field/${agentIdFieldId}`,
-      { value: agentIdField?.default ?? "linkedin-writer" },
+      { value: agentIdField?.default ?? "investigative-brief" },
       clientOptions
     );
 
@@ -765,7 +766,7 @@ export function buildEvidence(
       n8n_execution_id: "",
       latency_ms: null,
       parse_success: null,
-      agent_id: "linkedin-writer",
+      agent_id: "investigative-brief",
       model: "gpt-4.1-mini",
     },
     failure_observations: {
@@ -839,6 +840,21 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<number
     console.log(`Wrote ${out}`);
     console.error("Set CLICKUP_API_TOKEN");
     return 2;
+  }
+
+  // Route through the vendor gate before performing live ClickUp and n8n operations
+  const gateResult = await runGate(env);
+  if (gateResult.exitCode !== 0) {
+    console.error("Vendor gate failed — cannot proceed with green run");
+    for (const check of gateResult.checks.filter((c) => !c.passed)) {
+      console.error(`  - ${check.name}: ${check.detail}`);
+    }
+    const blockedPreflight = new PreflightReport();
+    blockedPreflight.results.push({ step: "vendor_gate", passed: false, detail: "Vendor gate check failed" });
+    const blocked = buildEvidence(blockedPreflight, undefined, env);
+    const out = writeRunEvidence(blocked);
+    console.log(`Wrote ${out}`);
+    return gateResult.exitCode;
   }
 
   const preflight = await runPreflight({ clickupToken, clickupListId, n8nApiUrl, n8nApiKey });

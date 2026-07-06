@@ -11,7 +11,7 @@
   "scripts": {
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
-    "test:coverage": "vitest run --project unit --coverage",
+    "test:coverage": "vitest run --project unit --coverage; status=$?; rm -rf coverage; exit $status",
     "test:live": "pnpm vendor:gate && vitest run --project live",
     "build:workflows": "tsx scripts/build-workflows.ts",
     "build:workflows:check": "tsx scripts/build-workflows-check.ts",

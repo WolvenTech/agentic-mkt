@@ -1,6 +1,6 @@
 # Live Proof Runbook: Staged Content Quality Pipeline
 
-**Status:** Live proof has passed; pipeline is in production (see [`clickup/list-schema.md` → Production Status](../../clickup/list-schema.md#production-status)). Use this runbook to re-validate after a significant workflow change.
+**Status:** Live proof has passed; pipeline is in production (see [`integrations/clickup/list-schema.md` → Production Status](../../integrations/clickup/list-schema.md#production-status)). Use this runbook to re-validate after a significant workflow change.
 
 This document guides manual validation of the staged Content Quality Pipeline in the live ClickUp/n8n environment.
 
@@ -9,7 +9,7 @@ This document guides manual validation of the staged Content Quality Pipeline in
 - **Evidence Tracking**: `agents/harness/green-run-evidence.json` (local-only, gitignored — refresh with `GREEN_RUN_UPDATE_CANONICAL=1 pnpm green-run`)
 - **ClickUp List**: [Linkedin Post Creator](https://app.clickup.com/901327635891)
 - **n8n Instance**: https://n8n.wolven.com.br
-- **Workflow Exports**: `marketing-pipelines/`
+- **Workflow Exports**: `integrations/marketing-pipelines/`
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ These tags are **orthogonal to status** — they answer "is AI actively on this?
 ### Setup
 
 1. **Import Call Agent sub-workflow** into n8n.wolven.com.br
-   - File: `marketing-pipelines/call-agent-subworkflow.json`
+   - File: `integrations/marketing-pipelines/call-agent-subworkflow.json`
    - Bind credentials:
      - **GitHub**: Read-only PAT on `WolvenTech/agentic-mkt`
      - **OpenAI**: API key for gpt-4.1-mini
@@ -113,7 +113,7 @@ Steps:
 ### Setup
 
 1. **Import Marketing Pipeline main workflow** into n8n.wolven.com.br
-   - File: `marketing-pipelines/marketing-pipeline-main.json`
+   - File: `integrations/marketing-pipelines/marketing-pipeline-main.json`
    - Bind **ClickUp** credential
 
 2. **Configure sub-workflow call**:
@@ -311,7 +311,7 @@ Or manually re-import and re-bind credentials if API deploy is unavailable.
 
 ### Step 2: Old-Status Migration
 
-Already complete — `Ready`, `Writing`, `Approval`, and `Needs Review` no longer exist on the live Marketing Pipeline list (see [`clickup/list-schema.md`](../../clickup/list-schema.md#production-status)). If this runbook is re-run after a future workflow change, re-check the live list for any tasks stuck in a non-staged status before proceeding.
+Already complete — `Ready`, `Writing`, `Approval`, and `Needs Review` no longer exist on the live Marketing Pipeline list (see [`integrations/clickup/list-schema.md`](../../integrations/clickup/list-schema.md#production-status)). If this runbook is re-run after a future workflow change, re-check the live list for any tasks stuck in a non-staged status before proceeding.
 
 ### Step 3: Record Green-Run Evidence
 
@@ -332,7 +332,7 @@ Document:
 
 ## Rollout Gate Checklist
 
-The staged pipeline is live and this gate has been satisfied (see [`clickup/list-schema.md` → Production Status](../../clickup/list-schema.md#production-status)). If re-running this runbook after a significant workflow change, re-verify each item before the next rollout:
+The staged pipeline is live and this gate has been satisfied (see [`integrations/clickup/list-schema.md` → Production Status](../../integrations/clickup/list-schema.md#production-status)). If re-running this runbook after a significant workflow change, re-verify each item before the next rollout:
 
 - [ ] **Phase 1 passed**: Call Agent isolation test confirms parsing and blocker outputs
 - [ ] **Phase 2 passed**: Happy path completes with Doc creation, comments, and status auto-advances

@@ -5,7 +5,7 @@ import { REPO_ROOT } from "../load-env.js";
 import { buildCallAgentWorkflow } from "./build-call-agent.js";
 import { buildMarketingPipelineWorkflow } from "./build-marketing-pipeline.js";
 
-export const WORKFLOWS_DIR = "marketing-pipelines";
+export const WORKFLOWS_DIR = "integrations/marketing-pipelines";
 export const CALL_AGENT_FILENAME = "call-agent-subworkflow.json";
 export const MARKETING_PIPELINE_FILENAME = "marketing-pipeline-main.json";
 
