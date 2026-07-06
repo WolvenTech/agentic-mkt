@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  REQUIRED_OUTPUT_KEYS,
   REQUIRED_STAGE_OUTPUT_KEYS,
   assembleSystemPrompt,
   pairSkillContentsFromFetch,
@@ -238,9 +237,9 @@ describe("marketing pipeline n8n code equivalence", () => {
   it("formatDraftComment jsCode matches TypeScript comment formatter", async () => {
     const fields = extractTaskFields(task, mapping);
     const agentOutput = {
-      deliverable_markdown: "Draft body",
+      artifact_markdown: "Draft body",
       resumo: "Short summary",
-      autochecagem: "- Criterion met",
+      self_check: "- Criterion met",
     };
     const jsCode = loadCodeNodeSource({
       workflowSlug: "marketing-pipeline",
@@ -368,9 +367,11 @@ describe("Call Agent n8n code equivalence", () => {
     skills: ["wolven-voice", "investigative-brief"],
     references: ["agents/references/editorial-brief.md", "agents/references/example-brief.md"],
     output_schema: {
-      deliverable_markdown: "Brief findings in markdown",
+      stage: "investigate",
+      artifact_markdown: "Brief findings in markdown",
       resumo: "Summary of findings",
-      autochecagem: "Self-check validation",
+      self_check: "Self-check validation",
+      next_gate: "brief review",
     },
   };
 
@@ -494,18 +495,21 @@ describe("Call Agent n8n code equivalence", () => {
     }
   });
 
-  it("assemble-prompt jsCode generates legacy agent prompt examples with legacy keys only", async () => {
-    const legacyAgentConfig: AgentConfig = {
-      id: "linkedin-writer",
+  it("assemble-prompt jsCode generates staged agent prompt examples with staged keys only", async () => {
+    const stagedAgentConfig: AgentConfig = {
+      id: "investigative-brief",
       provider: "openai",
       model: "gpt-4.1-mini",
       temperature: 0.7,
       max_output_tokens: 1024,
-      skills: ["wolven-voice", "linkedin-format"],
+      skills: ["wolven-voice", "investigative-brief"],
+      references: ["agents/references/editorial-brief.md"],
       output_schema: {
-        deliverable_markdown: "One valid deliverable in markdown",
+        stage: "investigate",
+        artifact_markdown: "One valid stage artifact in markdown",
         resumo: "2-3 sentence summary",
-        autochecagem: "Bullet list validating the output",
+        self_check: "Bullet list validating the output",
+        next_gate: "brief review",
       },
     };
 
@@ -522,7 +526,7 @@ describe("Call Agent n8n code equivalence", () => {
 
     const jsResult = firstCodeNodeJson(
       await runN8nCodeNode(jsCode, {
-        input: { all: [{ json: { agent_config: legacyAgentConfig } }] },
+        input: { all: [{ json: { agent_config: stagedAgentConfig } }] },
         nodeOutputs: {
           "Parse Agent Config": [],
         },
@@ -531,29 +535,24 @@ describe("Call Agent n8n code equivalence", () => {
 
     if (jsResult?.system_prompt && typeof jsResult.system_prompt === "string") {
       const prompt = jsResult.system_prompt;
-      // Verify legacy keys are present
-      expect(prompt).toContain("deliverable_markdown");
+      // Verify staged keys are present
+      expect(prompt).toContain('"stage"');
+      expect(prompt).toContain("artifact_markdown");
+      expect(prompt).toContain("self_check");
+      expect(prompt).toContain("next_gate");
       expect(prompt).toContain("resumo");
-      expect(prompt).toContain("autochecagem");
-      // Verify staged keys are NOT present
-      expect(prompt).not.toContain('"stage"');
-      expect(prompt).not.toContain("artifact_markdown");
-      expect(prompt).not.toContain("self_check");
-      expect(prompt).not.toContain("next_gate");
+      expect(prompt).not.toContain("deliverable_markdown");
+      expect(prompt).not.toContain("autochecagem");
     }
   });
 
-  function parseAgentOutputJsCode(): string {
+  function parseStageOutputJsCode(): string {
     return loadCodeNodeSource({
       workflowSlug: "call-agent",
       nodeSlug: "parse-agent-output",
-      tokens: { REQUIRED_OUTPUT_KEYS: [...REQUIRED_OUTPUT_KEYS], REQUIRED_STAGE_OUTPUT_KEYS: [...REQUIRED_STAGE_OUTPUT_KEYS] },
+      tokens: { REQUIRED_STAGE_OUTPUT_KEYS: [...REQUIRED_STAGE_OUTPUT_KEYS] },
     });
   }
-
-  const stagedDispatchAgentConfig = {
-    output_schema: { stage: "investigate", artifact_markdown: "x", resumo: "x", self_check: "x", next_gate: "x" },
-  };
 
   it("parse-agent-output jsCode accepts valid investigate stage output", async () => {
     const stageOutput = {
@@ -565,11 +564,10 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      await runN8nCodeNode(parseAgentOutputJsCode(), {
+      await runN8nCodeNode(parseStageOutputJsCode(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
-          "Assemble Prompt": { agent_config: stagedDispatchAgentConfig },
         },
       })
     );
@@ -590,11 +588,10 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      await runN8nCodeNode(parseAgentOutputJsCode(), {
+      await runN8nCodeNode(parseStageOutputJsCode(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
-          "Assemble Prompt": { agent_config: stagedDispatchAgentConfig },
         },
       })
     );
@@ -612,11 +609,10 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      await runN8nCodeNode(parseAgentOutputJsCode(), {
+      await runN8nCodeNode(parseStageOutputJsCode(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
-          "Assemble Prompt": { agent_config: stagedDispatchAgentConfig },
         },
       })
     );
@@ -634,11 +630,10 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      await runN8nCodeNode(parseAgentOutputJsCode(), {
+      await runN8nCodeNode(parseStageOutputJsCode(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
-          "Assemble Prompt": { agent_config: stagedDispatchAgentConfig },
         },
       })
     );
@@ -649,11 +644,10 @@ describe("Call Agent n8n code equivalence", () => {
 
   it("parse-agent-output jsCode returns error envelope for malformed JSON", async () => {
     const jsResult = firstCodeNodeJson(
-      await runN8nCodeNode(parseAgentOutputJsCode(), {
+      await runN8nCodeNode(parseStageOutputJsCode(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: "not-json-at-all" }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
-          "Assemble Prompt": { agent_config: stagedDispatchAgentConfig },
         },
       })
     );
@@ -670,11 +664,10 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      await runN8nCodeNode(parseAgentOutputJsCode(), {
+      await runN8nCodeNode(parseStageOutputJsCode(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(partial) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
-          "Assemble Prompt": { agent_config: stagedDispatchAgentConfig },
         },
       })
     );
@@ -692,11 +685,10 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      await runN8nCodeNode(parseAgentOutputJsCode(), {
+      await runN8nCodeNode(parseStageOutputJsCode(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "test-agent", task_id: "test-task" },
-          "Assemble Prompt": { agent_config: stagedDispatchAgentConfig },
         },
       })
     );
@@ -714,46 +706,16 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      await runN8nCodeNode(parseAgentOutputJsCode(), {
+      await runN8nCodeNode(parseStageOutputJsCode(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(stageOutput) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "investigative-brief", task_id: "test-task" },
-          "Assemble Prompt": { agent_config: stagedDispatchAgentConfig },
         },
       })
     );
 
     expect(jsResult?.next_gate).toBe("brief review");
     expect(jsResult?.stage).toBe("investigate");
-    expect(jsResult?.error).toBeUndefined();
-  });
-
-  it("parse-agent-output jsCode uses the legacy AgentOutput contract for a non-staged agent_config", async () => {
-    const legacyOutput = {
-      deliverable_markdown: "## Hook\n\nDraft content.",
-      resumo: "Summary of the draft.",
-      autochecagem: "- Checks pass",
-    };
-    const legacyAgentConfig = {
-      output_schema: {
-        deliverable_markdown: "Draft",
-        resumo: "Summary",
-        autochecagem: "Checks",
-      },
-    };
-
-    const jsResult = firstCodeNodeJson(
-      await runN8nCodeNode(parseAgentOutputJsCode(), {
-        input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(legacyOutput) }] }] },
-        nodeOutputs: {
-          "Store Input Context": { _started_at_ms: Date.now(), agent_id: "linkedin-writer", task_id: "test-task" },
-          "Assemble Prompt": { agent_config: legacyAgentConfig },
-        },
-      })
-    );
-
-    expect(jsResult?.deliverable_markdown).toBe(legacyOutput.deliverable_markdown);
-    expect(jsResult?.next_gate).toBeUndefined();
     expect(jsResult?.error).toBeUndefined();
   });
 
@@ -766,11 +728,10 @@ describe("Call Agent n8n code equivalence", () => {
     };
 
     const jsResult = firstCodeNodeJson(
-      await runN8nCodeNode(parseAgentOutputJsCode(), {
+      await runN8nCodeNode(parseStageOutputJsCode(), {
         input: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(incomplete) }] }] },
         nodeOutputs: {
           "Store Input Context": { _started_at_ms: Date.now(), agent_id: "investigative-brief", task_id: "test-task" },
-          "Assemble Prompt": { agent_config: stagedDispatchAgentConfig },
         },
       })
     );

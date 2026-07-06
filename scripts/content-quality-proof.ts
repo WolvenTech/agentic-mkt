@@ -193,7 +193,7 @@ async function main(): Promise<void> {
           },
           {
             id: agentField.clickup_field_id,
-            value: "linkedin-writer",
+            value: "investigative-brief",
           },
         ],
       },

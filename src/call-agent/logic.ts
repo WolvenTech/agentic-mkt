@@ -1,8 +1,7 @@
 import type { AgentConfig } from "../types/agent-config.js";
-import type { AgentErrorEnvelope, CallAgentInput, ParseResult, StageParsedResult, StageErrorEnvelope } from "../types/call-agent-io.js";
+import type { CallAgentInput, StageParsedResult, StageErrorEnvelope } from "../types/call-agent-io.js";
 import { isKnownStage, getStageDefinition } from "../marketing-pipeline/stages.js";
 
-export const REQUIRED_OUTPUT_KEYS = ["deliverable_markdown", "resumo", "autochecagem"] as const;
 export const REQUIRED_STAGE_OUTPUT_KEYS = ["stage", "artifact_markdown", "resumo", "self_check", "next_gate"] as const;
 export const GITHUB_REPO_OWNER = "WolvenTech";
 export const GITHUB_REPO_NAME = "agentic-mkt";
@@ -125,45 +124,6 @@ export function extractOpenAIText(response: Record<string, unknown>): string {
   return JSON.stringify(response);
 }
 
-function errorEnvelope(message: string, rawResponse: string): AgentErrorEnvelope {
-  return { error: message, raw_response: rawResponse };
-}
-
-/** Parse LLM output into an AgentOutput, returning an error envelope on any parse/validation failure. */
-export function parseAgentOutput(rawResponse: string): ParseResult {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stripJsonFences(rawResponse));
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return errorEnvelope(`Failed to parse AgentOutput: ${message}`, rawResponse);
-  }
-
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return errorEnvelope("Expected JSON object", rawResponse);
-  }
-
-  const record = parsed as Record<string, unknown>;
-  const missing = REQUIRED_OUTPUT_KEYS.filter((key) => !(key in record));
-  if (missing.length > 0) {
-    return errorEnvelope(`Missing required keys: ${missing.join(", ")}`, rawResponse);
-  }
-
-  const invalid = REQUIRED_OUTPUT_KEYS.filter((key) => {
-    const value = record[key];
-    return typeof value !== "string" || value.trim().length === 0;
-  });
-  if (invalid.length > 0) {
-    return errorEnvelope(`Empty or non-string values for: ${invalid.join(", ")}`, rawResponse);
-  }
-
-  return {
-    deliverable_markdown: record.deliverable_markdown as string,
-    resumo: record.resumo as string,
-    autochecagem: record.autochecagem as string,
-  };
-}
-
 function stageErrorEnvelope(message: string, rawResponse: string): StageErrorEnvelope {
   return { error: message, raw_response: rawResponse };
 }
@@ -240,14 +200,12 @@ export function parseStageOutput(rawResponse: string): StageParsedResult {
   };
 }
 
-/** Does this agent's output_schema declare the stage-aware contract (has a `stage` key)? */
-export function isStagedAgentConfig(agentConfig: AgentConfig): boolean {
-  return typeof agentConfig.output_schema.stage === "string";
-}
-
-/** Parse LLM output using whichever contract this agent's output_schema declares. */
-export function parseCallAgentOutput(agentConfig: AgentConfig, rawResponse: string): ParseResult | StageParsedResult {
-  return isStagedAgentConfig(agentConfig) ? parseStageOutput(rawResponse) : parseAgentOutput(rawResponse);
+/** Parse LLM output for a staged agent config. */
+export function parseCallAgentOutput(agentConfig: AgentConfig, rawResponse: string): StageParsedResult {
+  if (typeof agentConfig.output_schema.stage !== "string") {
+    return stageErrorEnvelope(`Expected staged agent config for ${agentConfig.id}`, rawResponse);
+  }
+  return parseStageOutput(rawResponse);
 }
 
 /** Merge Parse Agent Config items with GitHub fetch responses by index (n8n Merge node output shape). */
@@ -350,7 +308,7 @@ export function providerIsOpenAI(provider: string): boolean {
   return provider.trim().toLowerCase() === "openai";
 }
 
-/** M1 routes openai and legacy google agent configs to the same OpenAI node. */
+/** M1 routes openai and google agent configs to the same OpenAI node. */
 export function providerIsRouted(provider: string): boolean {
   const normalized = provider.trim().toLowerCase();
   return normalized === "openai" || normalized === "google";

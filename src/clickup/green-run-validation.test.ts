@@ -121,9 +121,9 @@ describe("GREEN_RUN_CHECKLIST", () => {
 
   it("comment_has_sections matches the io-contract comment formatter", () => {
     const comment = formatClickupComment({
-      deliverable_markdown: "Draft body",
+      artifact_markdown: "Draft body",
       resumo: "Short summary",
-      autochecagem: "- Criterion met",
+      self_check: "- Criterion met",
     });
     expect(commentHasSections(comment)).toBe(true);
     expect(COMMENT_SECTIONS.every((section) => comment.includes(section))).toBe(true);
@@ -561,7 +561,7 @@ describe("executeGreenRun (mocked ClickUp)", () => {
       }
       if (method === "GET" && url.endsWith("/comment")) {
         const text = commentReady
-          ? formatClickupComment({ deliverable_markdown: "Draft", resumo: "Summary", autochecagem: "Checked" })
+          ? formatClickupComment({ artifact_markdown: "Draft", resumo: "Summary", self_check: "Checked" })
           : "no sections here";
         return jsonResponse({ comments: [{ comment_text: text }] });
       }
@@ -764,11 +764,11 @@ describe("executeGreenRun (mocked ClickUp)", () => {
 
 describe("executeRevisionGreenRun (mocked ClickUp)", () => {
   function firstDraftComment(): string {
-    return formatClickupComment({ deliverable_markdown: "Draft v1", resumo: "Summary v1", autochecagem: "Checked v1" });
+    return formatClickupComment({ artifact_markdown: "Draft v1", resumo: "Summary v1", self_check: "Checked v1" });
   }
 
   function revisedDraftComment(): string {
-    return formatClickupComment({ deliverable_markdown: "Draft v2", resumo: "Summary v2", autochecagem: "Checked v2" });
+    return formatClickupComment({ artifact_markdown: "Draft v2", resumo: "Summary v2", self_check: "Checked v2" });
   }
 
   function stubRevisionFlow(): ReturnType<typeof vi.fn> {

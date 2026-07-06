@@ -67,7 +67,7 @@ describe("n8n Code Node lint coverage", () => {
     // Both patterns must recognize exactly the same token grammar; if n8n-codegen.ts's
     // TOKEN_PATTERN grammar changes without eslint.config.mjs following, tokenized files
     // would silently fall back to unparseable @@..@@ syntax under lint again.
-    const sampleTokens = ["@@DEFAULT_MODEL@@", "@@FIELD_ID_AGENT_ID@@", "@@REQUIRED_OUTPUT_KEYS@@"];
+    const sampleTokens = ["@@DEFAULT_MODEL@@", "@@FIELD_ID_AGENT_ID@@", "@@REQUIRED_STAGE_OUTPUT_KEYS@@"];
     const nonTokens = ["@@lowercase@@", "@@WITH_1_DIGIT@@", "plain text", "@@@@"];
 
     for (const sample of sampleTokens.concat(nonTokens)) {

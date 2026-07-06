@@ -67,7 +67,7 @@ export async function verify(token: string, listId: string, options: VerifyOptio
 
   try {
     await clickupPost(`/task/${taskId}/field/${criteriosId}`, { value: "Draft must mention Wolven brand voice." }, clientOptions);
-    await clickupPost(`/task/${taskId}/field/${agentFieldId}`, { value: "linkedin-writer" }, clientOptions);
+    await clickupPost(`/task/${taskId}/field/${agentFieldId}`, { value: "investigative-brief" }, clientOptions);
 
     const fetched = await clickupGet<ClickUpTask>(`/task/${taskId}`, clientOptions);
     const byName = fieldsByName(fetched);

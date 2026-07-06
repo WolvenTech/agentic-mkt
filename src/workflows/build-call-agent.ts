@@ -7,7 +7,6 @@ import {
   DEFAULT_TEMPERATURE,
   GITHUB_REPO_NAME,
   GITHUB_REPO_OWNER,
-  REQUIRED_OUTPUT_KEYS,
   REQUIRED_STAGE_OUTPUT_KEYS,
   agentConfigPath,
 } from "../call-agent/logic.js";
@@ -233,14 +232,14 @@ export function buildCallAgentWorkflow(): N8nWorkflowExport {
       type: "n8n-nodes-base.code",
       typeVersion: 2,
       position: [2240, 112],
-      parameters: {
-        jsCode: loadCodeNodeSource({
-          workflowSlug: "call-agent",
-          nodeSlug: "parse-agent-output",
-          tokens: { REQUIRED_OUTPUT_KEYS, REQUIRED_STAGE_OUTPUT_KEYS },
-        }),
+        parameters: {
+          jsCode: loadCodeNodeSource({
+            workflowSlug: "call-agent",
+            nodeSlug: "parse-agent-output",
+            tokens: { REQUIRED_STAGE_OUTPUT_KEYS },
+          }),
+        },
       },
-    },
     {
       id: nodeId("Unsupported Provider Error"),
       name: "Unsupported Provider Error",

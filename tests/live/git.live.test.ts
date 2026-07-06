@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 const REPO_ROOT = resolve(__dirname, "..", "..");
 
 const GITHUB_FETCH_PATHS = [
-  "agents/linkedin-writer.json",
+  "agents/investigative-brief.json",
   "agents/skills/wolven-voice.md",
-  "agents/skills/linkedin-format.md",
+  "agents/skills/investigative-brief.md",
 ];
 
 interface GithubRemote {
@@ -60,14 +60,14 @@ describe.skipIf(!remote || !authenticated)(
 
     it("fetches the agent config via the GitHub API", () => {
       const { owner, repo } = remote!;
-      const body = fetchGithubContent(owner, repo, "agents/linkedin-writer.json");
+      const body = fetchGithubContent(owner, repo, "agents/investigative-brief.json");
       const data = JSON.parse(body) as { id?: string };
-      expect(data.id).toBe("linkedin-writer");
+      expect(data.id).toBe("investigative-brief");
     });
 
     it("fetches every skill file via the GitHub API", () => {
       const { owner, repo } = remote!;
-      for (const path of ["agents/skills/wolven-voice.md", "agents/skills/linkedin-format.md"]) {
+      for (const path of ["agents/skills/wolven-voice.md", "agents/skills/investigative-brief.md"]) {
         const content = fetchGithubContent(owner, repo, path);
         expect(content.trim().length).toBeGreaterThan(0);
       }

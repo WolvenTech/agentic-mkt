@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { REQUIRED_OUTPUT_KEYS, REQUIRED_STAGE_OUTPUT_KEYS } from "../call-agent/logic.js";
+import { REQUIRED_STAGE_OUTPUT_KEYS } from "../call-agent/logic.js";
 import { buildCallAgentWorkflow, GPT_NODE_NAME } from "./build-call-agent.js";
 import type { N8nNode } from "./build-call-agent.js";
 
@@ -60,7 +60,7 @@ describe("buildCallAgentWorkflow (sub-workflow topology)", () => {
     expect(params.options?.maxTokens).toContain("max_output_tokens");
   });
 
-  it("Route Provider accepts openai and legacy google", () => {
+  it("Route Provider accepts openai and google", () => {
     const route = nodesByName.get("Route Provider");
     const conditions = (route?.parameters as { conditions?: { combinator?: string; conditions?: Array<{ rightValue?: string }> } })
       ?.conditions;
@@ -69,22 +69,16 @@ describe("buildCallAgentWorkflow (sub-workflow topology)", () => {
     expect(values).toEqual(["google", "openai"]);
   });
 
-  it("Parse Agent Output node uses the staged-aware parser dispatcher", () => {
+  it("Parse Agent Output node uses the staged-only parser", () => {
     const parseNode = nodesByName.get("Parse Agent Output");
     const code = String((parseNode?.parameters as { jsCode?: string }).jsCode ?? "");
-    // Dispatcher includes both legacy and staged validation
-    for (const key of REQUIRED_OUTPUT_KEYS) {
-      expect(code).toContain(key);
-    }
     for (const key of REQUIRED_STAGE_OUTPUT_KEYS) {
       expect(code).toContain(key);
     }
-    // Dispatcher checks output_schema.stage to decide which parser to use
-    expect(code).toContain("isStaged");
-    expect(code).toContain("output_schema");
+    expect(code).toContain("STAGE_DEFINITIONS");
     expect(code).toContain("stage");
-    expect(code).toContain("REQUIRED_STAGE_KEYS");
-    expect(code).toContain("if (isStaged)");
+    expect(code).toContain("artifact_markdown");
+    expect(code).not.toContain("deliverable_markdown");
   });
 
   it("pins a hardcoded test input for isolation runs", () => {

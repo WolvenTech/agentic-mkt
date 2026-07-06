@@ -486,7 +486,7 @@ export async function executeGreenRun(
     await clickupPost(`/task/${taskId}/field/${criteriosId}`, { value: DEFAULT_TEST_BRIEF.criterios_de_aceite }, clientOptions);
     await clickupPost(
       `/task/${taskId}/field/${agentIdFieldId}`,
-      { value: agentIdField?.default ?? "linkedin-writer" },
+      { value: agentIdField?.default ?? "investigative-brief" },
       clientOptions
     );
 
@@ -766,7 +766,7 @@ export function buildEvidence(
       n8n_execution_id: "",
       latency_ms: null,
       parse_success: null,
-      agent_id: "linkedin-writer",
+      agent_id: "investigative-brief",
       model: "gpt-4.1-mini",
     },
     failure_observations: {
