@@ -2,7 +2,7 @@
 type: note
 title: Harness init 2026-09-28
 description: Record of the harness-init run that set up the Wolven harness in this repo.
-status: draft
+status: stable
 ---
 
 # Harness init 2026-09-28
@@ -95,20 +95,80 @@ README row pointed at `docs/adrs/`. `harness:validate` exits 0 with
 
 ## Discovery
 
-Pending.
+Context, from the repo's own files:
+
+- agentic-mkt runs a staged Content Quality Pipeline: ClickUp webhooks start
+  n8n workflows that call stage agents (investigate, write, format), write
+  one ClickUp Doc per task, and advance human gates.
+- TypeScript builders under `src/workflows/` generate the n8n workflow JSON
+  in `integrations/marketing-pipelines/`; Code node logic lives in `.js`
+  sources. Agent configs, skills, and references live under `agents/` and are
+  fetched from GitHub at run time.
+- Tests: Vitest with co-located unit tests plus `tests/consistency`,
+  `integration`, `contracts`, and gated `live` suites. CI (GitHub Actions)
+  runs Code node lint, `pnpm test`, and `build:workflows:check`.
+- Architecture is recorded in twelve profile ADRs (000–011) and in
+  `AGENTS.md`'s source-of-truth map and protected surfaces.
+- QMD was configured (`.qmd/index.yml`) but its index had never been built;
+  `qmd update` indexed 13 documents. Embeddings were not generated.
+
+Lifecycle: **prototype** (named by the Human).
+
+Decided tools: n8n (self-hosted), ClickUp API v2 and Docs v3, OpenAI
+`gpt-4.1-mini` through n8n, GitHub (agent-config fetch), TypeScript with
+`tsx`, Vitest, ESLint, ajv, pnpm, Node, GitHub Actions, QMD, and the Wolven
+harness. The Human named no decisions beyond the code.
 
 ## Research
 
-Pending.
+Repo-only: the Human declined the optional web pass. Findings come from the
+repo and the QMD index: `integrations/clickup/webhook-contract.md`,
+`integrations/clickup/list-schema.md`, `agents/harness/io-contract.md`,
+`src/workflows/`, `src/clickup/`, and the ADRs in `docs/adrs/`.
 
 ## Suggestions
 
-Pending.
+Three suggested, none duplicating an installed skill:
+
+- **n8n-workflow-builders**: builders, Code node sources, generate/check/
+  deploy flow. Picked.
+- **clickup-contract**: ClickUp API v2 and Docs v3, field-mapping sync,
+  webhook and list contracts, fixtures, vendor gate. Picked.
+- **stage-agent-configs**: agent JSON, skills, references, output schema.
+  Not picked.
+
+The evidence did not support a fourth.
 
 ## Stubs
 
-Pending.
+- `.agents/skills/n8n-workflow-builders/` (`SKILL.md`, `agents/openai.yaml`)
+- `.agents/skills/clickup-contract/` (`SKILL.md`, `agents/openai.yaml`)
+
+Both are ask-only (`disable-model-invocation: true`,
+`allow_implicit_invocation: false`) and carry the `wolven-harness: stub`
+marker, so `harness:validate` warns `skill-stub-open` for each.
+
+Also in the setup phase: `.qmd/index.sqlite*` added to `.gitignore`, and the
+`models:` block `qmd update` wrote into `.qmd/index.yml` kept, both on the
+Human's choice.
 
 ## Next steps for the Human
 
-Pending.
+- **Define the stubs.** For each, answer When to use, Conventions, What to
+  avoid, and How to verify, then remove `wolven-harness: stub`. Remove
+  `disable-model-invocation` and `agents/openai.yaml` only if the skill
+  should be model-invocable.
+- **Open gaps now visible in `AGENTS.md`** (they lost their tracker when
+  Compozy was dropped): `scripts/green-run.ts` and `scripts/verify-clickup.ts`
+  do not call `runGate()`, and the gitleaks step is missing from CI. Both
+  touch irreversible-harm surfaces, so either fix them or record deferrals
+  under `docs/deferrals/` with a risk-acceptance owner and trigger date.
+- **Stale leftovers:** `GOOGLE_API_KEY` in `.env.example` belongs to the
+  Gemini path (003); planning task IDs remain in source comments
+  (`src/marketing-pipeline/logic.ts`, `src/clickup/verify-api.ts`,
+  `src/workflows/build-marketing-pipeline.test.ts`), which the `comments`
+  rule forbids in new comments.
+- **QMD:** run `qmd embed` for vector search, and `qmd update` after
+  `docs/` changes.
+- **Review before pushing:** the three phase commits sit on
+  `chore/wolven-harness`, unpushed.

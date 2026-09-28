@@ -51,3 +51,6 @@ agents/harness/green-run-evidence.json
 !.claude/
 .claude/*
 !.claude/skills
+
+# QMD local search index (rebuilt per machine by `qmd update`)
+.qmd/index.sqlite*
