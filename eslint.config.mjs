@@ -11,7 +11,7 @@ export default [
   // All Code node source files - basic linting
   {
     files: ['src/workflows/*/code-nodes/**/*.js'],
-    // Code node source files may contain @@TOKEN@@ placeholders (ADR-003) that are
+    // why: Code node source files may contain @@TOKEN@@ placeholders that are
     // only valid JavaScript once rendered at workflow-build time. Rewrite each token
     // to a string literal of itself before parsing so lint coverage applies to the
     // whole file instead of excluding it; this does not affect the committed source.

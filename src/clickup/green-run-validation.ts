@@ -771,7 +771,7 @@ export function buildEvidence(
     },
     failure_observations: {
       missing_criterios_de_aceite: "Workflow still runs; draft autochecagem may be weak — brief gate is manual only in M1",
-      duplicate_webhook: "Second delivery may post duplicate comment per ADR-001; no dedup in M1",
+      duplicate_webhook: "Second delivery may post duplicate comment per ADR-010; dedup is best-effort only",
     },
     ...(extra.revisionRound ? { revision_round: extra.revisionRound } : {}),
   };

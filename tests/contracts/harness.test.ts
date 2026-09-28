@@ -93,10 +93,10 @@ describe("io-contract.md", () => {
     }
   });
 
-  it("notes the ADR-001 no-idempotency decision", () => {
+  it("notes the ADR-010 best-effort idempotency decision", () => {
     const lower = contract.toLowerCase();
     expect(lower).toContain("idempotency");
-    expect(lower).toContain("adr-001");
+    expect(lower).toContain("adr-010");
   });
 
   it("cross-references staged agent configs and output_schema", () => {
@@ -118,7 +118,7 @@ describe("harness integration", () => {
 
   it("agents harness README links the contract artifacts", () => {
     const readme = readFileSync(HARNESS_README_PATH, "utf-8");
-    for (const fragment of ["io-contract.md", "output-schema.json", "StageInput", "StageAgentOutput", "ADR-001"]) {
+    for (const fragment of ["io-contract.md", "output-schema.json", "StageInput", "StageAgentOutput", "ADR-010"]) {
       expect(readme).toContain(fragment);
     }
   });

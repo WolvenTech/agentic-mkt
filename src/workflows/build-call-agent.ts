@@ -60,7 +60,7 @@ function conditionId(nodeName: string, index: number): string {
   return deterministicWorkflowId(WORKFLOW_NAME, `${nodeName}:condition:${index}`);
 }
 
-/** Build the Call Agent n8n sub-workflow export. Source of truth per ADR-006. */
+/** Build the Call Agent n8n sub-workflow export. Source of truth per AGENTS.md (Generated n8n Workflow JSON). */
 export function buildCallAgentWorkflow(): N8nWorkflowExport {
   const nodes: N8nNode[] = [
     {

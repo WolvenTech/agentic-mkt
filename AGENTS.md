@@ -46,7 +46,7 @@ Each row documents an artifact type, owner role, edit policy, and validation com
 | `tests/` | Directory | Test Maintainers | Holds only `consistency/` (generated-artifact vs. source), `integration/` (CLI/process boundary, gate routing), `contracts/` (non-`src/` runtime artifacts), and `live/` (credentialed, `*.live.test.ts`) suites; no loose files at root; protect test fixtures | `pnpm test` | Structured by test kind |
 | `.env.example` | File | Repo Maintainers | Committed environment contract; never expose real secrets | `grep -v "^#" .env.example \| grep -E "^[A-Z_]+="`  | Template; never secrets |
 | `.github/workflows/ci.yml` | File | CI/CD Owner | Modify to add CI steps (e.g., secret scanning); preserve validation gates | `pnpm test && pnpm build:workflows:check` | Lives CI pipeline |
-| `.gitignore` | File | Repo Maintainers | Preserve ignore rules for secrets, local state, logs, adapters (per ADR-002); re-include only the Wolven harness paths | `git check-ignore .env logs/ .agents/local .claude/settings.local.json && ! git check-ignore .agents/skills .agents/rules .agents/hooks .claude/skills` | Protective |
+| `.gitignore` | File | Repo Maintainers | Preserve ignore rules for secrets, local state, logs, adapters (see Local-Adapter Policy below); re-include only the Wolven harness paths | `git check-ignore .env logs/ .agents/local .claude/settings.local.json && ! git check-ignore .agents/skills .agents/rules .agents/hooks .claude/skills` | Protective |
 | `logs/` | Directory | Local Run Output | Local-only logs and run evidence; never versioned (no tracked files) | `git check-ignore logs/example.log && ! git ls-files logs/ \| grep .` | Ignored; ephemeral |
 | `.agents/` | Directory | Local/Tool Adapters | Local guidance for agents; can symlink or mirror `AGENTS.md`; NOT versioned, except the Wolven harness paths below | `git check-ignore .agents/local` | Ignored; optional mirror |
 | `.agents/skills/`, `.agents/rules/`, `.agents/hooks/`, `.claude/skills` | Directories / Symlink | Harness Maintainers | Wolven harness skills, standing rules, and hooks; versioned; `.claude/skills` is a symlink to `.agents/skills` | `pnpm harness:validate` | Versioned; harness |
@@ -377,8 +377,7 @@ This `AGENTS.md` is the canonical source of project policy. All other documentat
 
 ---
 
-Last updated: 2026-07-04
-Canonical scope per ADR-006 (rewrite from full scope, not extend pre-existing file)
+Last updated: 2026-09-28
 
 ## Wolven harness
 

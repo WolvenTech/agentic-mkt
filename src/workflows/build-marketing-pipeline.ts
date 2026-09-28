@@ -46,7 +46,7 @@ function routeFormatIfExpression(): string {
   return "={{ $json.stage === 'format' }}";
 }
 
-/** Build the Marketing Pipeline n8n main workflow export. Source of truth per ADR-006. */
+/** Build the Marketing Pipeline n8n main workflow export. Source of truth per AGENTS.md (Generated n8n Workflow JSON). */
 export function buildMarketingPipelineWorkflow(fieldMapping: FieldMapping): N8nWorkflowExport {
   const WORKFLOW_NAME = "Marketing Pipeline";
 

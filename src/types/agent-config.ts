@@ -6,7 +6,7 @@
  *   (see ADR-006: Use Stage-Aware Agent Contracts and Reference Files).
  *
  * - Stage agent configs (investigate, write, format) include references for role-specific
- *   templates and examples (see ADR-003: Role-Focused Self-Contained Stage Agents).
+ *   templates and examples (see ADR-006: Use Stage-Aware Agent Contracts and Reference Files).
  */
 export interface AgentConfig {
   id: string;

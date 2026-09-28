@@ -1,3 +1,10 @@
+---
+type: adr
+title: Use Local-First Verification with Live Proof as a Follow-Up Task
+description: Implementation is complete on local verification evidence; live ClickUp/n8n proof runs as a separate follow-up.
+status: stable
+---
+
 # ADR-005: Use Local-First Verification with Live Proof as a Follow-Up Task
 
 ## Status
@@ -57,17 +64,17 @@ Live ClickUp/n8n proof remains required before production rollout, but it is sch
 
 ### Risks
 
-- The team may mistake local completion for production readiness. Mitigated by documenting the live-proof step explicitly — see [ADR-008](adr-008.md) for how this risk actually materialized and was closed with an exit-code contract.
+- The team may mistake local completion for production readiness. Mitigated by documenting the live-proof step explicitly — see [ADR-008](adr-008-enforce-exit-code-contract-for-proof-and-green-run-scripts.md) for how this risk actually materialized and was closed with an exit-code contract.
 
 ## Implementation Notes
 
 - Vendor connectivity checks and live ClickUp/n8n execution inspection are kept out of the first implementation's completion gate.
-- A dedicated follow-up task covers live staged proof and deployment readiness (see [`LIVE-PROOF-RUNBOOK.md`](../agents/harness/LIVE-PROOF-RUNBOOK.md)).
+- A dedicated follow-up task covers live staged proof and deployment readiness (see [`LIVE-PROOF-RUNBOOK.md`](../../agents/harness/LIVE-PROOF-RUNBOOK.md)).
 
 ## References
 
-- [ADR-004: Replace Single-Agent Marketing Flow with Staged Content Quality Workflow](adr-004.md)
-- [ADR-008: Enforce Exit-Code Contract for Proof and Green-Run Scripts](adr-008.md)
+- [ADR-004: Replace Single-Agent Marketing Flow with Staged Content Quality Workflow](adr-004-replace-single-agent-marketing-flow-with-staged-content-quality-workflow.md)
+- [ADR-008: Enforce Exit-Code Contract for Proof and Green-Run Scripts](adr-008-enforce-exit-code-contract-for-proof-and-green-run-scripts.md)
 - `tests/marketing-pipeline.test.ts`
 - `tests/n8n-code-equivalence.test.ts`
 - `scripts/build-workflows-check.ts`

@@ -1,3 +1,10 @@
+---
+type: adr
+title: Use Stage-Aware Agent Contracts and Reference Files
+description: Stage agent configs declare skills, reference files, and a stage-aware output contract that n8n routes on.
+status: stable
+---
+
 # ADR-006: Use Stage-Aware Agent Contracts and Reference Files
 
 ## Status
@@ -91,7 +98,7 @@ If `blocker_question` is present, n8n posts a `[CQ-BLOCKER]` comment and returns
 
 ## References
 
-- [ADR-004: Replace Single-Agent Marketing Flow with Staged Content Quality Workflow](adr-004.md)
+- [ADR-004: Replace Single-Agent Marketing Flow with Staged Content Quality Workflow](adr-004-replace-single-agent-marketing-flow-with-staged-content-quality-workflow.md)
 - `src/types/agent-config.ts`
 - `src/types/call-agent-io.ts`
 - `src/call-agent/logic.ts`

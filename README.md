@@ -24,7 +24,7 @@ ClickUp: backlog → investigate → brief review → write → content review �
 
 | Path | Purpose |
 |------|---------|
-| [`adrs/`](adrs/README.md) | Architecture Decision Records — durable rationale for major design choices |
+| [`docs/adrs/`](docs/adrs/) | Architecture Decision Records — durable rationale for major design choices |
 | [`integrations/marketing-pipelines/`](integrations/marketing-pipelines/README.md) | Workflow JSON exports, import/deploy runbook, host credentials, MCP stub |
 | [`integrations/clickup/`](integrations/clickup/README.md) | List schema, field mapping, webhook contract |
 | [`agents/harness/`](agents/harness/README.md) | I/O contracts, output schema, troubleshooting |

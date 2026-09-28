@@ -37,7 +37,7 @@ Code node `.js` files may contain placeholder tokens (e.g., `@@FIELD_IDS@@`) for
 
 ## GitHub repository (Call Agent config fetch)
 
-Runtime agent configs and skills are loaded from this repository via the n8n GitHub node ([ADR-002](../../adrs/adr-002.md)).
+Runtime agent configs and skills are loaded from this repository via the n8n GitHub node ([ADR-002](../../docs/adrs/adr-002-agent-config-colocated-in-agentic-mkt.md)).
 
 | Setting | Value |
 |---------|-------|

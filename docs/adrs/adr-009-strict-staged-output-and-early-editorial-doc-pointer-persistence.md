@@ -1,3 +1,10 @@
+---
+type: adr
+title: Strict Staged Output and Early Editorial Doc Pointer Persistence
+description: Staged agents use only the strict staged output contract, and the editorial Doc pointer is persisted right after Doc creation.
+status: stable
+---
+
 # ADR-009: Strict Staged Output and Early Editorial Doc Pointer Persistence
 
 ## Status
@@ -129,9 +136,9 @@ Concretely:
 
 ## References
 
-- [ADR-004: Replace Single-Agent Marketing Flow with Staged Content Quality Workflow](adr-004.md)
-- [ADR-006: Use Stage-Aware Agent Contracts and Reference Files](adr-006.md)
-- [ADR-005: Use Local-First Verification with Live Proof as a Follow-Up Task](adr-005.md)
+- [ADR-004: Replace Single-Agent Marketing Flow with Staged Content Quality Workflow](adr-004-replace-single-agent-marketing-flow-with-staged-content-quality-workflow.md)
+- [ADR-006: Use Stage-Aware Agent Contracts and Reference Files](adr-006-use-stage-aware-agent-contracts-and-reference-files.md)
+- [ADR-005: Use Local-First Verification with Live Proof as a Follow-Up Task](adr-005-use-local-first-verification-with-live-proof-as-a-follow-up-task.md)
 - `src/workflows/build-call-agent.ts`
 - `src/workflows/call-agent-n8n.ts`
 - `src/workflows/build-marketing-pipeline.ts`
