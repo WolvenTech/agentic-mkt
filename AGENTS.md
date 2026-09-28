@@ -13,11 +13,11 @@ This document defines:
 - **Generated Artifacts**: Production and validation rules for generated outputs
 - **Live Operations**: Gating and safety rules for vendor mutations (n8n, ClickUp, external APIs)
 - **Secrets & Logs**: Handling rules for credentials, sensitive data, and runtime evidence
-- **Local Adapters**: Policy for tool-specific, unversioned guidance files
+- **Local Adapters**: Policy for tool-specific, unversioned guidance files, and the versioned Wolven harness paths inside them
 - **Code Health**: YAGNI/AHA consolidation rules and cleanup judgment framework
 - **Boundaries**: The 4-5 modular ownership/contract boundaries that define the repo scaffold
 
-This guidance applies to the entire repository and supersedes tool-specific local adapters (`.agents/`, `.cursorrules`, `.clauderules`, `.claude/`, etc.), which must not define independent project policy.
+This guidance applies to the entire repository and supersedes tool-specific local adapters (`.agents/`, `.cursorrules`, `.clauderules`, `.claude/`, etc.), which must not define independent project policy. The standing rules listed under [Wolven harness](#wolven-harness) are part of this policy by reference.
 
 ---
 
@@ -46,12 +46,12 @@ Each row documents an artifact type, owner role, edit policy, and validation com
 | `tests/` | Directory | Test Maintainers | Holds only `consistency/` (generated-artifact vs. source), `integration/` (CLI/process boundary, gate routing), `contracts/` (non-`src/` runtime artifacts), and `live/` (credentialed, `*.live.test.ts`) suites; no loose files at root; protect test fixtures | `pnpm test` | Structured by test kind |
 | `.env.example` | File | Repo Maintainers | Committed environment contract; never expose real secrets | `grep -v "^#" .env.example \| grep -E "^[A-Z_]+="`  | Template; never secrets |
 | `.github/workflows/ci.yml` | File | CI/CD Owner | Modify to add CI steps (e.g., secret scanning); preserve validation gates | `pnpm test && pnpm build:workflows:check` | Lives CI pipeline |
-| `.gitignore` | File | Repo Maintainers | Preserve ignore rules for secrets, local state, logs, adapters (per ADR-002) | `git check-ignore .compozy/ .agents/ .env logs/ .claude/` | Protective |
+| `.gitignore` | File | Repo Maintainers | Preserve ignore rules for secrets, local state, logs, adapters (per ADR-002); re-include only the Wolven harness paths | `git check-ignore .env logs/ .agents/local .claude/settings.local.json && ! git check-ignore .agents/skills .agents/rules .agents/hooks .claude/skills` | Protective |
 | `logs/` | Directory | Local Run Output | Local-only logs and run evidence; never versioned (no tracked files) | `git check-ignore logs/example.log && ! git ls-files logs/ \| grep .` | Ignored; ephemeral |
-| `.agents/` | Directory | Local/Tool Adapters | Local guidance for agents; can symlink or mirror `AGENTS.md`; NOT versioned | `git check-ignore .agents/ && ! git ls-files .agents/` | Ignored; optional mirror |
+| `.agents/` | Directory | Local/Tool Adapters | Local guidance for agents; can symlink or mirror `AGENTS.md`; NOT versioned, except the Wolven harness paths below | `git check-ignore .agents/local` | Ignored; optional mirror |
+| `.agents/skills/`, `.agents/rules/`, `.agents/hooks/`, `.claude/skills` | Directories / Symlink | Harness Maintainers | Wolven harness skills, standing rules, and hooks; versioned; `.claude/skills` is a symlink to `.agents/skills` | `pnpm harness:validate` | Versioned; harness |
 | `.cursorrules` | Symlink | Cursor IDE | Symlink to canonical `AGENTS.md`; never hand-edit | `ls -l .cursorrules && git check-ignore .cursorrules` | Ignored; optional |
 | `.clauderules` | Symlink | Claude IDE | Symlink to canonical `AGENTS.md`; never hand-edit | `ls -l .clauderules && git check-ignore .clauderules` | Ignored; optional |
-| `.compozy/` | Directory | Local Planning | Task records, cleanup reports, execution artifacts; explicitly ignored | `git check-ignore .compozy/ && ! git ls-files .compozy/` | Ignored; transient |
 | `package.json` | File | Repo Maintainers | Edit to add/update scripts and dependencies; preserve command matrix | `pnpm install --dry-run && jq '.scripts' package.json > /dev/null` | Workspace config |
 
 **Key Principles:**
@@ -59,7 +59,7 @@ Each row documents an artifact type, owner role, edit policy, and validation com
 - Generated artifacts must never be hand-edited.
 - External API contracts are synced via deterministic commands (e.g., `pnpm clickup:sync`) and must not be manually adjusted.
 - Breaking changes to protected surfaces require validation of all callers.
-- Local adapters are tools-specific, unversioned, and must not define independent policy.
+- Local adapters are tools-specific, unversioned, and must not define independent policy; the Wolven harness paths are the one versioned exception, and their standing rules are canonical by reference.
 
 ---
 
@@ -86,7 +86,7 @@ Every command is classified as **Offline** (safe to run without live API access)
 
 **Gate Rules:**
 - **Every live command must be preceded by `pnpm vendor:gate`** or must explicitly call the gate internally.
-- `pnpm test:live` is wired to call `pnpm vendor:gate` automatically; other live scripts should either call `runGate()` or be routed through the gate explicitly (task_14–16 will harden this).
+- `pnpm test:live` is wired to call `pnpm vendor:gate` automatically; other live scripts should either call `runGate()` or be routed through the gate explicitly.
 - Exit codes for `pnpm vendor:gate`: **0** = healthy, **1** = missing env vars, **2** = connectivity failure. Do not proceed if exit code is 1 or 2.
 
 ---
@@ -154,7 +154,7 @@ Before any live operation, **always run `pnpm vendor:gate`** (or call `runGate()
 
 The `VENDOR_GATE_STRICT=0` environment variable allows warn-only mode (the gate prints warnings but does not block). This bypass is permitted **only in non-CI contexts** (e.g., local development). CI must never set `VENDOR_GATE_STRICT=0`; any attempt to bypass in CI is an error.
 
-**Implementation note**: The bypass is gated using `CI=false` logic in `src/clickup/vendor-gate.ts`. (Hardening this is task_14; currently deferred.)
+**Implementation note**: `src/clickup/vendor-gate.ts` rejects `VENDOR_GATE_STRICT=0` whenever `CI` is set to a truthy value.
 
 ### Rule: Scripts Must Route Through the Vendor Gate
 
@@ -164,7 +164,7 @@ All scripts that perform live operations must either:
 
 Scripts in scope: `scripts/deploy-workflows.ts`, `scripts/green-run.ts`, `scripts/verify-clickup.ts`, `scripts/inspect-executions.ts`.
 
-**Implementation note**: Routing these scripts through the gate is tasks_14–16; currently deferred.
+**Implementation note**: `scripts/deploy-workflows.ts` and `scripts/inspect-executions.ts` call `runGate()`; `scripts/green-run.ts` and `scripts/verify-clickup.ts` do not yet.
 
 ---
 
@@ -178,7 +178,7 @@ Secrets (API keys, tokens, credentials) and sensitive data (raw ClickUp task bod
 - `.env.example` is a committed template documenting required variables; it never contains real secrets.
 - A `gitleaks-action` step runs in `.github/workflows/ci.yml` before `pnpm test`, providing automatic credential detection on every commit. If `gitleaks` fails, do not commit the sensitive content; rewrite history or create a new clean commit.
 
-**Implementation note**: The gitleaks step is task_17; currently deferred.
+**Implementation note**: The gitleaks step is not yet in `.github/workflows/ci.yml`.
 
 ### Rule: Log Writers Must Redact Sensitive Data
 
@@ -204,12 +204,12 @@ Safe to delete any subdirectory under `logs/green-run/` or `logs/content-quality
 
 ## Local-Adapter Policy and Unversioned State
 
-Local tool adapters (`.agents/`, `.cursorrules`, `.clauderules`, `.claude/`, `.codex/`) are tool-specific configurations and are **never versioned** in this repository.
+Local tool adapters (`.agents/`, `.cursorrules`, `.clauderules`, `.claude/`, `.codex/`) are tool-specific configurations and are **never versioned** in this repository — except the Wolven harness paths `.agents/skills/`, `.agents/rules/`, `.agents/hooks/`, and `.claude/skills`, which are versioned so teammates and CI share them.
 
 ### Rule: Local Adapters May Mirror or Symlink Canonical Rules; No Independent Policy
 
-- Local tool adapters are explicitly ignored in `.gitignore` and are never committed.
-- These may be symlinks or mirrors of the canonical root `AGENTS.md`, but must **not define independent project policy**.
+- Local tool adapters are explicitly ignored in `.gitignore` and are never committed; `.gitignore` re-includes only the Wolven harness paths.
+- These may be symlinks or mirrors of the canonical root `AGENTS.md`, but must **not define independent project policy**. The standing rules in `.agents/rules/` are not independent: `AGENTS.md` adopts them by listing them under [Wolven harness](#wolven-harness).
 - Reusable logic lives in `src/` modules, not adapter-specific scripts or guidance files.
 - Composition roots (entry points, workflow builders, script runners) are clearly identified and reference the canonical rules, not adapter-specific guidance.
 
@@ -222,14 +222,6 @@ ln -s ../../AGENTS.md .clauderules
 ```
 
 This ensures agents reading local adapter files get the authoritative version.
-
-### Rule: Planning State in .compozy/ Is Always Local-Only
-
-The `.compozy/` directory and all its contents (task records, cleanup reports, run logs, execution state) are explicitly ignored in `.gitignore` and are never versioned.
-
-- Planning artifacts remain local-only.
-- Only durable canonical rules are promoted to committed `AGENTS.md`.
-- The cleanup-report.md records findings and dispositions locally; later tasks apply approved changes to the repository.
 
 ### Rule: Logs and Runtime Artifacts Are Ephemeral and Local-Only
 
@@ -324,8 +316,8 @@ The repository is organized around **4-5 data-ownership and contract-crossing bo
    - Boundary Crossing: Call Agent workflow ↔ Agent I/O; harness validates output against schema.
    - Validation: `pnpm test tests/contracts/agent-config.test.ts`
 
-5. **Local Planning State** (`.compozy/`, `logs/`, local adapter configs)
-   - Owner: Local Planning / Task Runners
+5. **Local Run State** (`logs/`, local adapter configs)
+   - Owner: Local Run Output / Tool Adapters
    - Policy: Never versioned. Local-only.
    - Boundary Crossing: Local artifacts inform decisions; durable rules are promoted to canonical `AGENTS.md`.
    - Validation: `git check-ignore` confirms files are ignored.
@@ -372,6 +364,7 @@ The repository uses six cleanup categories to classify artifacts. These guide co
 6. **`defer`** — Acknowledge a valid finding but postpone action.
    - Risk: Deferred findings with high risk on irreversible-harm surfaces (secrets, live-operation gates, PII) must include `risk_acceptance_owner` (a named person) and `risk_acceptance_trigger_date` (an ISO date for re-review).
    - Example: A necessary refactor that is blocked by another task, or a known risk that is being monitored.
+   - Record: a deferral doc at `docs/deferrals/<slug>/<slug>-deferral.md` (see `.agents/rules/yagni-strict.md`); high-risk ones carry the two risk-acceptance fields above in that doc.
    - Validation: Re-review on the trigger date; if the risk remains, apply the finding or escalate.
 
 ---
@@ -386,3 +379,26 @@ This `AGENTS.md` is the canonical source of project policy. All other documentat
 
 Last updated: 2026-07-04
 Canonical scope per ADR-006 (rewrite from full scope, not extend pre-existing file)
+
+## Wolven harness
+
+Skills live under `.agents/skills/` (one folder per skill, each with a
+`SKILL.md`); standing rules live under `.agents/rules/` and load
+unconditionally:
+
+- `.agents/rules/qmd-first.md` — QMD before web, ADRs first
+- `.agents/rules/yagni-strict.md` — strict YAGNI; deferrals under `docs/deferrals/` only
+- `.agents/rules/comments.md` — comment style for added lines; run `harness:comments` before handing work back
+
+Docs follow `docs/<folder>/<slug>/<slug>-<type>.md`, except ADRs, which sit
+flat as `docs/adrs/adr-NNN-<slug>.md`; `docs/WRITING-PROFILE.md` holds the
+rules every `docs/**` markdown file follows.
+
+Referencing an ADR as `ADR-NNN` or `adr-NNN-<slug>` anywhere in a tracked
+file is a claim: it must resolve to exactly one `stable` profile ADR under
+`docs/adrs/`, or the claim fails.
+
+Search this repo's knowledge with `qmd query` before answering from memory
+or the web — ADRs first, then widen.
+
+Run `harness:validate` after any change to `.agents/**` or `docs/**`.

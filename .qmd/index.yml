@@ -1,0 +1,16 @@
+collections:
+  adrs:
+    path: ./docs/adrs
+    pattern: "*.md"
+  prds:
+    path: ./docs/prds
+    pattern: "!(archived)/**/*.md"
+  specs:
+    path: ./docs/specs
+    pattern: "!(archived)/**/*.md"
+  notes:
+    path: ./docs/notes
+    pattern: "!(archived)/**/*.md"
+  deferrals:
+    path: ./docs/deferrals
+    pattern: "!(archived)/**/*.md"

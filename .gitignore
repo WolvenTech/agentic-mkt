@@ -29,9 +29,6 @@ coverage/
 *.swo
 *~
 
-# Compozy task tracking (local planning; not runtime artifacts)
-.compozy/
-
 # Local run logs
 logs/
 
@@ -44,3 +41,13 @@ agents/harness/green-run-evidence.json
 .cursorrules
 .clauderules
 .codex/
+
+# Wolven harness: shared skills and rules stay tracked
+!.agents/
+.agents/*
+!.agents/skills/
+!.agents/rules/
+!.agents/hooks/
+!.claude/
+.claude/*
+!.claude/skills

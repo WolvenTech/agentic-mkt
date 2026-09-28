@@ -1,0 +1,5 @@
+interface:
+  display_name: "Code Review"
+  short_description: "Review an open PR's diff against its cited refs and post blocking or nit findings"
+policy:
+  allow_implicit_invocation: false

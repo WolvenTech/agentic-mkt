@@ -32,7 +32,7 @@ ClickUp: backlog → investigate → brief review → write → content review �
 | [`logs/`](logs/README.md) | **Gitignored** local run output (green-run evidence, transcripts) |
 | [`tests/`](tests/) | Consistency, integration, contract, and live test suites (unit tests co-locate under `src/`) |
 
-Planning artifacts (PRD, TechSpec, tasks) live in `.compozy/tasks/` (local, gitignored).
+Planning artifacts (PRDs, specs, notes, deferrals, ADRs) live under `docs/`, following `docs/WRITING-PROFILE.md`; see the Wolven harness section of `AGENTS.md`.
 
 ### Source-of-Truth Surfaces and Local State
 
@@ -52,12 +52,11 @@ This repository contains several types of surfaces with different versioning and
 - `integrations/clickup/field-mapping.json` — ClickUp schema snapshot, synced via `pnpm clickup:sync`
 
 **Local-Only & Gitignored**
-- `.compozy/` — Planning state, task records, cleanup reports (unversioned, local-only)
 - `logs/` — Run output from `pnpm green-run` and scripts (ephemeral, untracked except README)
 - `agents/harness/green-run-evidence.json` — Local inspection artifact from live proof runs
-- `.agents/`, `.cursorrules`, `.clauderules`, `.claude/` — Local IDE/tool adapters (optional, can be symlinks to canonical `AGENTS.md`)
+- `.agents/`, `.cursorrules`, `.clauderules`, `.claude/` — Local IDE/tool adapters (optional, can be symlinks to canonical `AGENTS.md`), except the versioned Wolven harness paths `.agents/skills/`, `.agents/rules/`, `.agents/hooks/`, and `.claude/skills`
 
-**Key Principle:** Only durable architectural rules are committed (in `AGENTS.md` and this README). Generated outputs, local planning state, and tool-specific adapters remain local-only or unversioned.
+**Key Principle:** Only durable architectural rules are committed (in `AGENTS.md` and this README). Generated outputs, local run state, and tool-specific adapters remain local-only or unversioned.
 
 For the full source-of-truth map and edit policies, see [`AGENTS.md`](AGENTS.md) — especially the "Source-of-Truth Map" section.
 

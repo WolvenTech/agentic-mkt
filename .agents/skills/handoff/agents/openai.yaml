@@ -1,0 +1,5 @@
+interface:
+  display_name: "Handoff"
+  short_description: "Save a handoff document to the OS temp directory"
+policy:
+  allow_implicit_invocation: false

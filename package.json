@@ -22,12 +22,15 @@
     "clickup:verify": "tsx scripts/verify-clickup.ts",
     "green-run": "tsx scripts/green-run.ts",
     "executions:inspect": "tsx scripts/inspect-executions.ts",
-    "lint:code-nodes": "eslint 'src/workflows/*/code-nodes/**/*.js'"
+    "lint:code-nodes": "eslint 'src/workflows/*/code-nodes/**/*.js'",
+    "harness:validate": "wolven-harness validate",
+    "harness:comments": "wolven-harness comments"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/node": "26.0.0",
     "@vitest/coverage-v8": "4.1.9",
+    "@wolven-tech/harness": "^0.2.0",
     "ajv": "8.20.0",
     "eslint": "^9.0.0",
     "tsx": "4.22.4",
