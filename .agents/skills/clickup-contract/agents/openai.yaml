@@ -1,5 +1,0 @@
-interface:
-  display_name: "clickup-contract"
-  short_description: "Stub for the ClickUp API contract — not yet defined"
-policy:
-  allow_implicit_invocation: false

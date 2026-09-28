@@ -1,5 +1,0 @@
-interface:
-  display_name: "n8n-workflow-builders"
-  short_description: "Stub for n8n workflow builders — not yet defined"
-policy:
-  allow_implicit_invocation: false
