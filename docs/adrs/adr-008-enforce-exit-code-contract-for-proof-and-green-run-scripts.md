@@ -1,3 +1,10 @@
+---
+type: adr
+title: Enforce Exit-Code Contract for Proof and Green-Run Scripts
+description: Enforce explicit exit codes distinguishing passed live runs from preflight-only ready runs.
+status: stable
+---
+
 # ADR-008: Enforce Exit-Code Contract for Proof and Green-Run Scripts
 
 ## Status
@@ -10,7 +17,7 @@ Accepted
 
 ## Context
 
-[ADR-005](adr-005.md) made local-first verification the first completion gate for the staged
+[ADR-005](adr-005-use-local-first-verification-with-live-proof-as-a-follow-up-task.md) made local-first verification the first completion gate for the staged
 Content Quality Pipeline, and named the exact risk that later materialized: "team may mistake
 local completion for production readiness." That risk was mitigated only through documentation,
 not through the scripts' own exit behavior.
@@ -102,8 +109,8 @@ Concretely:
 
 - Changing exit codes is a breaking change for any script/CI step that greps stdout instead of
   checking `$?`, or that only checks `exit code == 0` without distinguishing categories.
-  Mitigated by documenting the exit-code contract in [`LIVE-PROOF-RUNBOOK.md`](../agents/harness/LIVE-PROOF-RUNBOOK.md)
-  and [`io-contract.md`](../agents/harness/io-contract.md#proof-and-green-run-exit-code-contract).
+  Mitigated by documenting the exit-code contract in [`LIVE-PROOF-RUNBOOK.md`](../../agents/harness/LIVE-PROOF-RUNBOOK.md)
+  and [`io-contract.md`](../../agents/harness/io-contract.md#proof-and-green-run-exit-code-contract).
 
 ## Implementation Notes
 
@@ -113,7 +120,7 @@ Concretely:
 
 ## References
 
-- [ADR-005: Use Local-First Verification with Live Proof as a Follow-Up Task](adr-005.md)
+- [ADR-005: Use Local-First Verification with Live Proof as a Follow-Up Task](adr-005-use-local-first-verification-with-live-proof-as-a-follow-up-task.md)
 - `src/clickup/green-run-validation.ts`
 - `scripts/content-quality-proof.ts`
 - `src/proof/local-proof.ts`

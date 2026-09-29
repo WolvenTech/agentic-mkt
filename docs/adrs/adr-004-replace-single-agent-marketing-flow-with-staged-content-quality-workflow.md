@@ -1,3 +1,10 @@
+---
+type: adr
+title: Replace Single-Agent Marketing Flow with Staged Content Quality Workflow
+description: Transition from single-agent flow to a three-stage AI pipeline with human approval gates.
+status: stable
+---
+
 # ADR-004: Replace Single-Agent Marketing Flow with Staged Content Quality Workflow
 
 ## Status
@@ -83,7 +90,7 @@ The workflow stores the canonical Doc URL/ID in a custom field (`Editorial Doc U
 
 ## References
 
-- [ADR-001: V1 Scope — Happy Path with n8n Orchestration](adr-001.md)
+- [ADR-001: V1 Scope — Happy Path with n8n Orchestration](adr-001-v1-scope-happy-path-with-n8n-orchestration.md)
 - `src/workflows/build-marketing-pipeline.ts`
 - `src/workflows/marketing-pipeline-n8n.ts`
 - `clickup/field-mapping.json`

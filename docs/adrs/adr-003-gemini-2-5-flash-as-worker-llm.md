@@ -1,8 +1,15 @@
+---
+type: adr
+title: Gemini 2.5 Flash as Worker LLM
+description: Initial worker LLM evaluation and provider-agnostic schema design using Gemini 2.5 Flash.
+status: stable
+---
+
 # ADR-003: Gemini 2.5 Flash as Worker LLM
 
 ## Status
 
-Superseded — the worker LLM is now **OpenAI `gpt-4.1-mini`** across all agent configs (see [`src/call-agent/logic.ts`](../src/call-agent/logic.ts) `DEFAULT_PROVIDER`/`DEFAULT_MODEL`). No follow-up ADR was written when the provider changed; this record is kept for the original alternatives-considered rationale (why Gemini was chosen over Claude at the time, and why the schema was built provider-agnostic).
+Superseded — the worker LLM is now **OpenAI `gpt-4.1-mini`** across all agent configs (see [`src/call-agent/logic.ts`](../../src/call-agent/logic.ts) `DEFAULT_PROVIDER`/`DEFAULT_MODEL`). No follow-up ADR was written when the provider changed; this record is kept for the original alternatives-considered rationale (why Gemini was chosen over Claude at the time, and why the schema was built provider-agnostic).
 
 ## Date
 
@@ -10,7 +17,7 @@ Superseded — the worker LLM is now **OpenAI `gpt-4.1-mini`** across all agent 
 
 ## Context
 
-[ADR-001](adr-001.md) specified Claude Sonnet 4.6 via the Anthropic Messages API as the default worker model for `linkedin-writer`. During design, the stakeholder chose to use the n8n **Google Gemini node** with **gemini-2.5-flash** instead, replacing Claude for the initial green run.
+[ADR-001](adr-001-v1-scope-happy-path-with-n8n-orchestration.md) specified Claude Sonnet 4.6 via the Anthropic Messages API as the default worker model for `linkedin-writer`. During design, the stakeholder chose to use the n8n **Google Gemini node** with **gemini-2.5-flash** instead, replacing Claude for the initial green run.
 
 Constraints: sub-60-second draft delivery target; structured JSON output `{ deliverable_markdown, resumo, autochecagem }`; n8n already hosts Google AI credentials; human review remains the quality gate.
 
@@ -73,5 +80,5 @@ Claude Sonnet 4.6 remains a documented future option once provider-agnostic rout
 
 ## References
 
-- [ADR-001: V1 Scope — Happy Path with n8n Orchestration](adr-001.md)
-- [ADR-002: Agent Config Colocated in agentic-mkt](adr-002.md)
+- [ADR-001: V1 Scope — Happy Path with n8n Orchestration](adr-001-v1-scope-happy-path-with-n8n-orchestration.md)
+- [ADR-002: Agent Config Colocated in agentic-mkt](adr-002-agent-config-colocated-in-agentic-mkt.md)

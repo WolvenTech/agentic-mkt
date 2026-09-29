@@ -1,3 +1,10 @@
+---
+type: adr
+title: Tag-Based AI Activity Signaling for Staged Columns
+description: Use ClickUp tags to provide active AI execution visibility without status column proliferation.
+status: stable
+---
+
 # ADR-007: Tag-Based AI Activity Signaling for Staged Columns
 
 ## Status
@@ -12,7 +19,7 @@ Accepted
 
 The pre-staged `Marketing Pipeline` workflow used a single `Writing` status as a de facto
 parking lot: any task in that column was self-evidently "AI is actively working this." The
-staged Content Quality Pipeline ([ADR-004](adr-004.md)) replaced that single status with three
+staged Content Quality Pipeline ([ADR-004](adr-004-replace-single-agent-marketing-flow-with-staged-content-quality-workflow.md)) replaced that single status with three
 AI-owned columns (`investigate`, `write`, `format`) and three human-gate columns
 (`brief_review`, `content_review`, `final_review`). This gives finer-grained stage visibility,
 but removes the "is AI actually on this right now" signal: a task sitting in `investigate` could
@@ -106,7 +113,7 @@ on a human, so no AI-activity signal is needed there.
 
 ## References
 
-- [ADR-004: Replace Single-Agent Marketing Flow with Staged Content Quality Workflow](adr-004.md)
+- [ADR-004: Replace Single-Agent Marketing Flow with Staged Content Quality Workflow](adr-004-replace-single-agent-marketing-flow-with-staged-content-quality-workflow.md)
 - `src/clickup/client.ts`
 - `src/marketing-pipeline/stages.ts`
 - `src/workflows/marketing-pipeline-n8n.ts`

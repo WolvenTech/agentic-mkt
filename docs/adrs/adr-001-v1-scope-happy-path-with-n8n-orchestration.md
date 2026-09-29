@@ -1,8 +1,15 @@
+---
+type: adr
+title: V1 Scope — Happy Path with n8n Orchestration
+description: Initial marketing pipeline POC scope covering the happy path with n8n orchestration, deferring dedup and verifiers.
+status: stable
+---
+
 # ADR-001: V1 Scope — Happy Path with n8n Orchestration
 
 ## Status
 
-Superseded by [ADR-004](adr-004.md) (staged Content Quality Pipeline replaced the single-agent
+Superseded by [ADR-004](adr-004-replace-single-agent-marketing-flow-with-staged-content-quality-workflow.md) (staged Content Quality Pipeline replaced the single-agent
 happy path). The idempotency/dedup-deferral decision below is still the source of truth — no
 follow-up ADR was written when dedup was later evaluated.
 

@@ -1,3 +1,10 @@
+---
+type: adr
+title: Agent Config Colocated in agentic-mkt
+description: Colocate runtime agent JSON configurations and skills in agentic-mkt for n8n to load via GitHub node.
+status: stable
+---
+
 # ADR-002: Agent Config Colocated in agentic-mkt
 
 ## Status
@@ -39,7 +46,7 @@ The **Call Agent sub-workflow** loads these files from the `agentic-mkt` GitHub 
 - **Description**: Hardcode prompts and skills as n8n static data or Code node constants.
 - **Pros**: Fastest green run; no GitHub fetch step.
 - **Cons**: Not version-controlled independently; breaks reusable Call Agent harness pattern.
-- **Why rejected**: Violates the goal of GitHub-versioned agent definitions (see [ADR-001](adr-001.md)).
+- **Why rejected**: Violates the goal of GitHub-versioned agent definitions (see [ADR-001](adr-001-v1-scope-happy-path-with-n8n-orchestration.md)).
 
 ### Alternative 3: Sync script to a separate runtime-config repo first
 
@@ -74,5 +81,5 @@ The **Call Agent sub-workflow** loads these files from the `agentic-mkt` GitHub 
 
 ## References
 
-- [ADR-001: V1 Scope — Happy Path with n8n Orchestration](adr-001.md)
+- [ADR-001: V1 Scope — Happy Path with n8n Orchestration](adr-001-v1-scope-happy-path-with-n8n-orchestration.md)
 - `skill-vault/catalog/marketing/agents/linkedin-writer/AGENT.md`
