@@ -1,0 +1,5 @@
+interface:
+  display_name: "clickup-integration"
+  short_description: "Stub for ClickUp API integration and editorial docs — not yet defined"
+policy:
+  allow_implicit_invocation: false

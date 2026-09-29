@@ -1,0 +1,5 @@
+interface:
+  display_name: "Code CI"
+  short_description: "Drive an open pull request through conflicts, comments, and CI to a merge-ready report"
+policy:
+  allow_implicit_invocation: false
