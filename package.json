@@ -23,11 +23,15 @@
     "green-run": "tsx scripts/green-run.ts",
     "executions:inspect": "tsx scripts/inspect-executions.ts",
     "lint:code-nodes": "eslint 'src/workflows/*/code-nodes/**/*.js'",
+    "format": "biome format --write .",
+    "check": "biome check .",
+    "prepare": "lefthook install",
     "harness:validate": "wolven-harness validate",
     "harness:comments": "wolven-harness comments",
     "harness:score": "harness-score"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
     "@eslint/js": "^9.0.0",
     "@types/node": "26.0.0",
     "@vitest/coverage-v8": "4.1.9",
@@ -35,6 +39,7 @@
     "ajv": "8.20.0",
     "eslint": "^9.0.0",
     "harness-score": "1.6.5",
+    "lefthook": "^2.1.14",
     "tsx": "4.22.4",
     "typescript": "6.0.3",
     "vitest": "4.1.9"
