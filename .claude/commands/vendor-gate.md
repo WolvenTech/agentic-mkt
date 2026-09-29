@@ -1,0 +1,1 @@
+../../.agents/workflows/vendor-gate.md
