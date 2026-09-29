@@ -31,7 +31,7 @@ The staged pipeline's three active agents use the same `StageAgentOutput` contra
 
 ## GitHub load paths
 
-The Call Agent sub-workflow fetches configs from the `agentic-mkt` GitHub repo ([ADR-002](../adrs/adr-002.md)):
+The Call Agent sub-workflow fetches configs from the `agentic-mkt` GitHub repo ([ADR-002](../docs/adrs/adr-002-agent-config-colocated-in-agentic-mkt.md)):
 
 | Resource | GitHub path |
 |----------|-------------|
@@ -48,7 +48,7 @@ Requires a fine-grained GitHub PAT (read-only, repo scope) in n8n. Push this rep
 
 ## Skill copy procedure (from skill-vault)
 
-Runtime skills are adapted from the sibling `skill-vault` catalog. **Manual copy until sync automation exists** ([ADR-002](../adrs/adr-002.md)).
+Runtime skills are adapted from the sibling `skill-vault` catalog. **Manual copy until sync automation exists** ([ADR-002](../docs/adrs/adr-002-agent-config-colocated-in-agentic-mkt.md)).
 
 ### Copy steps
 
@@ -81,7 +81,7 @@ Runtime skills are adapted from the sibling `skill-vault` catalog. **Manual copy
 
 **Do not block current work on the sync script** — stubs and manual copy are sufficient per PRD scope. Track drift in PR reviews when skill-vault changes land.
 
-### Provider note ([ADR-003](../adrs/adr-003.md))
+### Provider note ([ADR-003](../docs/adrs/adr-003-gemini-2-5-flash-as-worker-llm.md))
 
 All staged agent configs (`investigative-brief.json`, `long-form-argument.json`, `linkedin-format.json`) currently ship with `"provider": "openai"`, `"model": "gpt-4.1-mini"`. Update the agent JSON if the model or provider changes; the workflow does not need to change.
 

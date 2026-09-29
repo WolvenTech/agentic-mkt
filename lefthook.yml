@@ -1,0 +1,15 @@
+# Lefthook — run fast checks before a commit is created.
+# Policy: AGENTS.md.
+
+pre-commit:
+  parallel: false
+  commands:
+    biome:
+      glob:
+        - "src/**/*.{ts,js,json}"
+        - "tests/**/*.{ts,js,json}"
+        - "scripts/**/*.{ts,js,json}"
+        - "biome.json"
+        - "package.json"
+      run: pnpm exec biome check --write --files-ignore-unknown=true --no-errors-on-unmatched {staged_files}
+      stage_fixed: true

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Code PR"
+  short_description: "Push the branch and open or amend a pull request"
+policy:
+  allow_implicit_invocation: false

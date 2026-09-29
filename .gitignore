@@ -44,3 +44,23 @@ agents/harness/green-run-evidence.json
 .cursorrules
 .clauderules
 .codex/
+
+# Wolven harness: shared skills, workflows, agents, rules, hooks, and mcp stay tracked
+!.agents/
+.agents/*
+!.agents/skills/
+!.agents/rules/
+!.agents/hooks/
+!.agents/workflows/
+!.agents/agents/
+!.agents/mcp_config.json
+!.claude/
+.claude/*
+!.claude/skills/
+!.claude/commands/
+!.claude/agents/
+!.cursor/
+.cursor/*
+!.cursor/skills/
+!.cursor/commands/
+!.cursor/agents/

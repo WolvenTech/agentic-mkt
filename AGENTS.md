@@ -386,3 +386,26 @@ This `AGENTS.md` is the canonical source of project policy. All other documentat
 
 Last updated: 2026-07-04
 Canonical scope per ADR-006 (rewrite from full scope, not extend pre-existing file)
+
+## Wolven harness
+
+Skills live under `.agents/skills/` (one folder per skill, each with a
+`SKILL.md`); standing rules live under `.agents/rules/` and load
+unconditionally:
+
+- `.agents/rules/qmd-first.md` — QMD before web, ADRs first
+- `.agents/rules/yagni-strict.md` — strict YAGNI; deferrals under `docs/deferrals/` only
+- `.agents/rules/comments.md` — comment style for added lines; run `harness:comments` before handing work back
+
+Docs follow `docs/<folder>/<slug>/<slug>-<type>.md`, except ADRs, which sit
+flat as `docs/adrs/adr-NNN-<slug>.md`; `docs/WRITING-PROFILE.md` holds the
+rules every `docs/**` markdown file follows.
+
+Referencing an ADR as `ADR-NNN` or `adr-NNN-<slug>` anywhere in a tracked
+file is a claim: it must resolve to exactly one `stable` profile ADR under
+`docs/adrs/`, or the claim fails.
+
+Search this repo's knowledge with `qmd query` before answering from memory
+or the web — ADRs first, then widen.
+
+Run `harness:validate` after any change to `.agents/**` or `docs/**`.

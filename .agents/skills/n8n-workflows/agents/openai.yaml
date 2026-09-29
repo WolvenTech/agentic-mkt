@@ -1,0 +1,5 @@
+interface:
+  display_name: "n8n-workflows"
+  short_description: "Stub for n8n workflow builders and code nodes — not yet defined"
+policy:
+  allow_implicit_invocation: false

@@ -20,7 +20,7 @@ This document guides manual validation of the staged Content Quality Pipeline in
 - Custom fields present: `ACs`, `Editorial Doc Url`
 - n8n workflows exported and ready to import
 
-**Activity Tags Reference** ([ADR-007](../../adrs/adr-007.md)):
+**Activity Tags Reference** ([ADR-007](../../docs/adrs/adr-007-tag-based-ai-activity-signaling-for-staged-columns.md)):
 
 The workflow uses two task tags to signal AI activity at a glance:
 - **`agent-working`**: Set when a stage begins (before Call Agent execution). Visible as a colored chip on ClickUp card.
@@ -347,7 +347,7 @@ The staged pipeline is live and this gate has been satisfied (see [`integrations
 
 ## Proof Script Exit Codes
 
-Local verification scripts report their status via exit codes (per [ADR-008](../../adrs/adr-008.md)). When running live-proof validation, you may encounter these codes:
+Local verification scripts report their status via exit codes (per [ADR-008](../../docs/adrs/adr-008-enforce-exit-code-contract-for-proof-and-green-run-scripts.md)). When running live-proof validation, you may encounter these codes:
 
 | Exit code | Meaning | Action |
 |-----------|---------|--------|
